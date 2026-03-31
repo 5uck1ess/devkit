@@ -1,6 +1,8 @@
 # Devkit
 
-Multi-agent orchestration plugin for Claude Code. Dispatch tasks to Claude, Codex, and Gemini in parallel, run self-improvement loops, and get triple-agent code reviews.
+Developer toolkit plugin for Claude Code. Multi-agent orchestration, self-improvement loops, test generation, documentation, and more.
+
+Works with just Claude. Optionally adds Codex and Gemini for multi-perspective analysis.
 
 ## Install
 
@@ -10,57 +12,111 @@ Multi-agent orchestration plugin for Claude Code. Dispatch tasks to Claude, Code
 
 ---
 
-## Skills
-
-| Skill | Description |
-|---|---|
-| `/tri:review` | Triple-agent PR review — same prompt to Claude + Codex + Gemini, consolidated report |
-| `/tri:dispatch` | Any task to all 3 agents in parallel, compare outputs |
-| `/self:improve` | Recursive improvement loop — propose → measure → keep/discard → repeat |
-
-> Single-agent dispatch (e.g., "run this through codex") doesn't need a skill — just ask Claude directly.
-
-### Autonomy Flags
-
-Set automatically in each skill:
-
-| Agent | Flags |
-|---|---|
-| Claude | `--dangerously-skip-permissions` |
-| Codex | `--full-auto --dangerously-bypass-approvals-and-sandbox` |
-| Gemini | `-y` |
-
-### Examples
+## Quick Start
 
 ```bash
-# Triple PR review
-/tri:review check for DRY violations and over-engineering
+# Check what's available
+/devkit:status
 
-# Self-improvement loop
-/self:improve --target src/ --metric "npm test" --objective "fix all failing tests"
+# Generate tests for your code
+/devkit:test-gen src/parser.ts
+
+# Fix all lint errors automatically
+/self:lint --lint "npm run lint" --target src/
+
+# Full PR preparation pipeline
+/devkit:pr-ready
+
+# Multi-agent code review (uses whatever CLIs you have)
+/tri:review
+
 ```
+
+---
+
+## Commands
+
+### Solo Commands (Claude-only, no external CLIs needed)
+
+| Command | Description |
+|---|---|
+| `/devkit:test-gen` | Generate test suite — writes tests, runs them, fixes failures |
+| `/devkit:doc-gen` | Generate documentation from code analysis |
+| `/devkit:pr-ready` | Full PR pipeline — lint, test, security, changelog, create PR |
+| `/devkit:onboard` | Generate codebase onboarding guide for new contributors |
+| `/devkit:changelog` | Generate structured changelog from git history |
+| `/devkit:workflow` | Run user-defined YAML workflows from `workflows/` |
+| `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
+
+### Self-Improvement Loops (Claude-only)
+
+Automated propose → measure → keep/discard → repeat cycles.
+
+| Command | Description |
+|---|---|
+| `/self:improve` | General-purpose improvement loop with custom metric gate |
+| `/self:test` | Iteratively generate tests until coverage target is hit |
+| `/self:lint` | Iteratively fix lint/type errors until zero remain |
+| `/self:perf` | Iteratively optimize with benchmark as the gate |
+| `/self:migrate` | Incremental migration (JS→TS, class→hooks, etc.) with test gate |
+
+### Multi-Agent Commands (Claude + optional Codex/Gemini)
+
+These run with whatever agents are available. Claude always runs. Codex and Gemini are used if installed.
+
+| Command | Description |
+|---|---|
+| `/tri:review` | Code review from 1–3 agents, consolidated report |
+| `/tri:dispatch` | Send any task to available agents, compare outputs |
+| `/tri:debug` | Multi-perspective debugging — independent root-cause analysis |
+| `/tri:test-gen` | Generate tests from multiple agents, merge best coverage |
+| `/tri:security` | Security audit from multiple agents, severity-ranked consensus |
 
 ---
 
 ## Agents
 
-Thin configs — no persona prompts, just execution constraints. Skills provide the instructions.
-
 | Agent | Model | Isolation | Effort | Max Turns | Used by |
 |---|---|---|---|---|---|
 | `reviewer` | Opus | Worktree | High | 10 | tri:review |
-| `researcher` | Sonnet | Worktree | Medium | 15 | tri:dispatch |
-| `improver` | Opus | Worktree | High | 10 | self:improve |
+| `researcher` | Sonnet | Worktree | Medium | 15 | tri:dispatch, tri:debug, onboard |
+| `improver` | Opus | Worktree | High | 10 | self:*, tri:dispatch |
+| `test-writer` | Sonnet | Worktree | Medium | 15 | test-gen, self:test, tri:test-gen |
+| `documenter` | Haiku | Worktree | Medium | 10 | doc-gen |
+| `security-auditor` | Opus | Worktree | High | 10 | tri:security, pr-ready |
+
+---
+
+## Presets
+
+Reusable prompt templates in `presets/`. Reference with `--preset`:
+
+```bash
+/tri:review --preset security-web
+/tri:security --preset security-go
+/self:perf --preset react-perf
+```
+
+### Included Presets
+
+None yet — `presets/` is reserved for future use.
 
 ---
 
 ## Architecture
 
 ```
-tri:review
-  ├── Claude  → native background agent (orchestrator sees summary only)
-  ├── Codex   → codex exec --full-auto (CLI, background process)
-  └── Gemini  → gemini -p -y (CLI, background process)
+/tri:review (or any tri:* command)
+  ├── Claude  → native background agent (always runs)
+  ├── Codex   → CLI subprocess (if installed)
+  └── Gemini  → CLI subprocess (if installed)
+
+/self:improve (or any self:* command)
+  └── Claude  → improver agent in worktree
+      ↓ propose change
+      ↓ run metric
+      ↓ keep if pass / revert if fail
+      ↓ repeat
 ```
 
 ---
@@ -69,34 +125,72 @@ tri:review
 
 ```
 devkit/
-├── manifest.json          # Plugin manifest
-├── commands/              # Claude Code skills
-│   ├── tri-review.md
-│   ├── tri-dispatch.md
-│   └── self-improve.md
-├── agents/                # Agent configs
+├── manifest.json            # Plugin manifest
+├── commands/                # Claude Code skills
+│   ├── tri-review.md        # Multi-agent review
+│   ├── tri-dispatch.md      # Multi-agent dispatch
+│   ├── tri-debug.md         # Multi-agent debugging
+│   ├── tri-test-gen.md      # Multi-agent test generation
+│   ├── tri-security.md      # Multi-agent security audit
+│   ├── self-improve.md      # General improvement loop
+│   ├── self-test.md         # Test coverage loop
+│   ├── self-lint.md         # Lint fix loop
+│   ├── self-perf.md         # Performance optimization loop
+│   ├── self-migrate.md      # Migration loop
+│   ├── test-gen.md          # Solo test generation
+│   ├── doc-gen.md           # Documentation generation
+│   ├── pr-ready.md          # PR preparation pipeline
+│   ├── onboard.md           # Codebase onboarding
+│   ├── changelog.md         # Changelog generation
+│   ├── workflow.md          # YAML workflow runner
+│   └── status.md            # Health check
+├── agents/                  # Agent configs
 │   ├── reviewer.md
 │   ├── researcher.md
-│   └── improver.md
+│   ├── improver.md
+│   ├── test-writer.md
+│   ├── documenter.md
+│   └── security-auditor.md
+├── workflows/               # User-defined YAML workflows
+│   └── .gitkeep
+├── presets/                  # Reusable prompt templates (planned)
+│   └── .gitkeep
 └── src/
-    └── TODO.md            # Go harness roadmap
+    └── TODO.md              # Go harness roadmap
 ```
+
+---
+
+## Autonomy Flags
+
+Set automatically in each multi-agent command:
+
+| Agent | Flags |
+|---|---|
+| Claude | `--dangerously-skip-permissions` |
+| Codex | `--full-auto --dangerously-bypass-approvals-and-sandbox` |
+| Gemini | `-y` |
+
+---
+
+## Prerequisites
+
+**Required:** Claude Code (you're already here)
+
+**Optional** (for multi-agent commands):
+```bash
+brew install codex gemini-cli
+```
+
+Check status with `/devkit:status`.
 
 ---
 
 ## Roadmap
 
 - [ ] Go CLI harness for deterministic loop control, process management, and unattended runs (see `src/TODO.md`)
-
----
-
-## Prerequisites
-
-Requires [Codex CLI](https://github.com/openai/codex) and [Gemini CLI](https://github.com/google-gemini/gemini-cli) for multi-agent dispatch:
-
-```bash
-brew install codex gemini-cli
-```
+- [ ] More presets (Python security, Go performance, etc.)
+- [ ] Preset library — curated prompt templates for common review/improvement scenarios
 
 ---
 

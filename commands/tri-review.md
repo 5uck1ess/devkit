@@ -29,9 +29,18 @@ Review this code diff. For each issue found, report:
 Focus on: bugs, security issues, DRY violations, unnecessary complexity, missing edge cases.
 ```
 
-## Step 3: Dispatch in Parallel (Hybrid)
+## Step 3: Detect Available Agents
 
-### Claude — native background agent (token-efficient)
+```bash
+HAS_CODEX=$(command -v codex && echo "yes" || echo "no")
+HAS_GEMINI=$(command -v gemini && echo "yes" || echo "no")
+```
+
+Run with whatever is available. Claude always runs. Codex and Gemini are optional.
+
+## Step 4: Dispatch in Parallel (Hybrid, Graceful Degradation)
+
+### Claude — always runs (native background agent, token-efficient)
 
 Spawn the `reviewer` agent as a background task. The orchestrator only receives the summary, not the full conversation.
 
@@ -41,27 +50,31 @@ Agent: reviewer
 Input: {prompt} + {diff}
 ```
 
-### Codex — CLI dispatch
+### Codex — if available
 
 ```bash
-codex exec -m gpt-5.4 \
-  --sandbox read-only \
-  --full-auto \
-  --skip-git-repo-check \
-  --dangerously-bypass-approvals-and-sandbox \
-  "{prompt} $(cat /tmp/tri-review-diff.txt)" > /tmp/tri-review-codex.txt 2>/dev/null &
-CODEX_PID=$!
+if [ "$HAS_CODEX" = "yes" ]; then
+  codex exec -m gpt-5.4 \
+    --sandbox read-only \
+    --full-auto \
+    --skip-git-repo-check \
+    --dangerously-bypass-approvals-and-sandbox \
+    "{prompt} $(cat /tmp/tri-review-diff.txt)" > /tmp/tri-review-codex.txt 2>/dev/null &
+  CODEX_PID=$!
+fi
 ```
 
-### Gemini — CLI dispatch
+### Gemini — if available
 
 ```bash
-gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
-  -m gemini-3.1-pro -y --output-format text \
-  > /tmp/tri-review-gemini.txt 2>/dev/null &
-GEMINI_PID=$!
+if [ "$HAS_GEMINI" = "yes" ]; then
+  gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
+    -m gemini-3.1-pro -y --output-format text \
+    > /tmp/tri-review-gemini.txt 2>/dev/null &
+  GEMINI_PID=$!
+fi
 
-wait $CODEX_PID $GEMINI_PID
+wait
 ```
 
 ## Autonomy Flags
@@ -72,7 +85,7 @@ wait $CODEX_PID $GEMINI_PID
 | Codex | CLI | `--full-auto --dangerously-bypass-approvals-and-sandbox` |
 | Gemini | CLI | `-y` |
 
-## Step 4: Consolidate
+## Step 5: Consolidate
 
 ```
 ## Triple-Agent Review: {branch_name}
@@ -94,8 +107,10 @@ wait $CODEX_PID $GEMINI_PID
 
 ## Rules
 
-- Claude uses native background agent (not `claude -p`) for token efficiency
-- Codex and Gemini run as CLI background processes
+- Claude always runs as native background agent (not `claude -p`) for token efficiency
+- Codex and Gemini are optional — run if installed, skip gracefully if not
+- Report which agents participated and how many perspectives were gathered
+- If only Claude is available, still provide the full report format
 - If one agent fails, report the others
 - For large diffs (>5000 lines), warn and suggest specific files
 - Clean up temp files after

@@ -1,15 +1,32 @@
 {
   "name": "devkit",
-  "version": "0.3.0",
-  "description": "Multi-agent orchestration toolkit — triple-agent reviews, multi-perspective dispatch, and self-recursive improvement",
+  "version": "1.0.0",
+  "description": "Developer toolkit for Claude Code — multi-agent orchestration, self-improvement loops, test generation, and more",
   "commands": [
     "commands/tri-review.md",
     "commands/tri-dispatch.md",
-    "commands/self-improve.md"
+    "commands/tri-debug.md",
+    "commands/tri-test-gen.md",
+    "commands/tri-security.md",
+    "commands/self-improve.md",
+    "commands/self-test.md",
+    "commands/self-lint.md",
+    "commands/self-perf.md",
+    "commands/self-migrate.md",
+    "commands/test-gen.md",
+    "commands/doc-gen.md",
+    "commands/pr-ready.md",
+    "commands/onboard.md",
+    "commands/changelog.md",
+    "commands/workflow.md",
+    "commands/status.md"
   ],
   "agents": [
     "agents/reviewer.md",
     "agents/researcher.md",
-    "agents/improver.md"
+    "agents/improver.md",
+    "agents/test-writer.md",
+    "agents/documenter.md",
+    "agents/security-auditor.md"
   ]
 }
