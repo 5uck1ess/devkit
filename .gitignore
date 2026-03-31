@@ -1,0 +1,19 @@
+# Credentials — never commit
+*.token
+*.secret
+*oauth*.json
+*credentials*.json
+*service-account*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Temp
+*.log
+*.tmp

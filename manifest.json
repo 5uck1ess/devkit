@@ -1,0 +1,15 @@
+{
+  "name": "devkit",
+  "version": "0.3.0",
+  "description": "Multi-agent orchestration toolkit — triple-agent reviews, multi-perspective dispatch, and self-recursive improvement",
+  "commands": [
+    "commands/tri-review.md",
+    "commands/tri-dispatch.md",
+    "commands/self-improve.md"
+  ],
+  "agents": [
+    "agents/reviewer.md",
+    "agents/researcher.md",
+    "agents/improver.md"
+  ]
+}
