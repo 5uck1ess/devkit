@@ -21,6 +21,15 @@
     "commands/workflow.md",
     "commands/status.md"
   ],
+  "skills": [
+    "skills/planning.md",
+    "skills/executing.md",
+    "skills/writing-tests.md",
+    "skills/clean-code.md",
+    "skills/dry.md",
+    "skills/yagni.md",
+    "skills/brainstorming.md"
+  ],
   "agents": [
     "agents/reviewer.md",
     "agents/researcher.md",

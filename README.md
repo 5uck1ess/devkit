@@ -91,6 +91,22 @@ These run with whatever agents are available. Claude always runs. Codex and Gemi
 
 ---
 
+## Skills
+
+Coding methodology guides that enforce consistent practices. These are loaded as reference material when relevant commands run.
+
+| Skill | Description |
+|---|---|
+| `devkit:planning` | Write implementation plans — small testable steps, dependency ordering, risk identification |
+| `devkit:executing` | Execute plans methodically — understand, implement, verify, commit |
+| `devkit:writing-tests` | Arrange-act-assert, one behavior per test, test contracts not implementation |
+| `devkit:clean-code` | Meaningful names, small functions, single responsibility, flat nesting |
+| `devkit:dry` | Rule of Three, when duplication is fine, extracting the right abstraction |
+| `devkit:yagni` | Build only what's needed, no speculative features or premature abstractions |
+| `devkit:brainstorming` | Diverge/converge ideation, evaluating ideas, avoiding premature commitment |
+
+---
+
 ## Presets
 
 Reusable prompt templates in `presets/`. Reference with `--preset`:
@@ -155,6 +171,14 @@ devkit/
 │   ├── test-writer.md
 │   ├── documenter.md
 │   └── security-auditor.md
+├── skills/                  # Coding methodology guides
+│   ├── planning.md
+│   ├── executing.md
+│   ├── writing-tests.md
+│   ├── clean-code.md
+│   ├── dry.md
+│   ├── yagni.md
+│   └── brainstorming.md
 ├── workflows/               # User-defined YAML workflows
 │   └── .gitkeep
 ├── presets/                  # Reusable prompt templates (planned)
