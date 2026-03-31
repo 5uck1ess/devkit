@@ -107,6 +107,35 @@ Coding methodology guides that enforce consistent practices. These are loaded as
 
 ---
 
+## Safety Hooks
+
+Devkit includes a `PreToolUse` hook that automatically protects against dangerous operations. Installed with the plugin — no setup required.
+
+### Blocked (hard stop)
+
+| Pattern | Why |
+|---|---|
+| `rm -rf /`, `rm -rf ~`, `rm -rf .` | Filesystem destruction |
+| `DROP TABLE`, `DROP DATABASE`, `TRUNCATE` | Database destruction |
+| `DELETE FROM` without `WHERE` | Unbounded data deletion |
+| `dd if=... of=/dev/`, `mkfs` | Disk/partition destruction |
+| Writing to `.pem`, `.key`, `.p12`, `.pfx` files | Private key overwrite |
+
+### Prompted (asks for confirmation)
+
+| Pattern | Why |
+|---|---|
+| `git push --force` to main/master | Destroys remote history |
+| `git reset --hard` | Discards uncommitted work |
+| `git checkout -- .` | Discards all unstaged changes |
+| `git clean -f` | Permanently removes untracked files |
+| `git branch -D main/master` | Deletes primary branch |
+| `chmod -R 777` | World-writable permissions |
+| `sudo rm` | Elevated privilege deletion |
+| Editing `.env`, credentials, secrets, tokens | May contain sensitive data |
+
+---
+
 ## Presets
 
 Reusable prompt templates in `presets/`. Reference with `--preset`:
@@ -179,6 +208,9 @@ devkit/
 │   ├── dry.md
 │   ├── yagni.md
 │   └── brainstorming.md
+├── hooks/                   # Safety hooks
+│   ├── hooks.json           # Hook config (auto-loaded by plugin)
+│   └── safety-check.sh      # Dangerous operation blocker
 ├── workflows/               # User-defined YAML workflows
 │   └── .gitkeep
 ├── presets/                  # Reusable prompt templates (planned)

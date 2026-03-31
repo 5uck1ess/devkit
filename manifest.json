@@ -21,6 +21,7 @@
     "commands/workflow.md",
     "commands/status.md"
   ],
+  "hooks": "hooks/hooks.json",
   "skills": [
     "skills/planning.md",
     "skills/executing.md",

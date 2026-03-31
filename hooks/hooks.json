@@ -1,0 +1,26 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
+          "statusMessage": "Safety check...",
+          "timeout": 10
+        }
+      ]
+    },
+    {
+      "matcher": "Edit|Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
+          "statusMessage": "Checking file safety...",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
