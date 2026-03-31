@@ -1,7 +1,7 @@
 {
   "name": "devkit",
   "version": "1.0.0",
-  "description": "Developer toolkit for Claude Code — multi-agent orchestration, self-improvement loops, test generation, and more",
+  "description": "Guardrails and consistency for Claude Code — deterministic workflows, metric-gated improvement loops, and multi-agent consensus",
   "commands": [
     "commands/tri-review.md",
     "commands/tri-dispatch.md",

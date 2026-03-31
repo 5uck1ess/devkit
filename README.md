@@ -1,6 +1,10 @@
 # Devkit
 
-Developer toolkit plugin for Claude Code. Multi-agent orchestration, self-improvement loops, test generation, documentation, and more.
+Guardrails and consistency for Claude Code.
+
+AI agents are powerful but unpredictable — they skip steps, jump to conclusions, and refactor things you didn't ask them to touch. Devkit enforces deterministic, step-by-step workflows that keep Claude on track: propose one change, measure it, keep or revert, repeat. No freestyling.
+
+Every command follows a defined sequence. Self-improvement loops gate each change behind a metric. Multi-agent commands dispatch the same task to multiple models and consolidate consensus. The result is reproducible, auditable work — not whatever Claude felt like doing.
 
 Works with just Claude. Optionally adds Codex and Gemini for multi-perspective analysis.
 
