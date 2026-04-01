@@ -253,6 +253,22 @@ brew install codex gemini-cli
 
 Check status with `/devkit:status`.
 
+### Codex Plugin Commands
+
+Installing [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) gives you these additional commands:
+
+| Command | Description |
+|---|---|
+| `/codex:rescue` | Delegate a task to Codex (investigation, fixes, continuation) |
+| `/codex:review` | Code review via Codex (compare against base branch) |
+| `/codex:adversarial-review` | Adversarial review — Codex actively tries to break your code |
+| `/codex:result` | Retrieve results from a background Codex task |
+| `/codex:status` | Check status of running Codex tasks |
+
+**Flags:** `--model gpt-5.4` / `gpt-5.4-mini` / `gpt-5.4-nano`, `--effort high`, `--background`, `--wait`, `--resume`, `--fresh`
+
+Devkit's `tri:*` commands use `/codex:rescue --background` for multi-agent dispatch.
+
 ---
 
 ## Roadmap
