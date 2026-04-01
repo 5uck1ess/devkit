@@ -275,6 +275,7 @@ Check status with `/devkit:status`.
 | NemoClaw | NVIDIA sandboxed OpenClaw runtime | [GitHub](https://github.com/NVIDIA/NemoClaw) |
 | GSD-2 | Autonomous project execution (milestone→task) | [GitHub](https://github.com/gsd-build/gsd-2) |
 | metaswarm | 18 agents, 13 skills for Claude/Gemini/Codex | [GitHub](https://github.com/dsifry/metaswarm) |
+| skill-codex | Claude Code ↔ Codex bridge | [GitHub](https://github.com/skills-directory/skill-codex) |
 | codex-plugin-cc | Official OpenAI Codex plugin for Claude Code | [GitHub](https://github.com/openai/codex-plugin-cc) |
 
 ### Skills & Marketplaces
