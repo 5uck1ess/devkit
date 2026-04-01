@@ -14,6 +14,12 @@ Automated loop that runs your linter or type checker, fixes issues one at a time
 3. **Iterations** — max cycles (default: 20)
 4. **Budget** — max USD (default: $2)
 
+## Budget & Early Exit
+
+- **Token budget:** ~200k tokens. Lint fixes are usually cheap.
+- **Early exit:** Stop immediately when error count reaches 0.
+- **Stuck detection:** If 3 consecutive iterations show no improvement (error count doesn't decrease), stop and report. See the `stuck` skill.
+
 ## Step 1: Establish Baseline
 
 ```bash

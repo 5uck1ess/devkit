@@ -22,7 +22,15 @@ HAS_GEMINI=$(command -v gemini && echo "yes" || echo "no")
 
 Run with whatever is available. Claude always runs.
 
+## Concurrency & Budget
+
+- **Concurrency limit:** Max 3 parallel agents.
+- **Token budget:** ~300k tokens across all agents.
+- **Rate limiting:** If API throttles, stagger agent launches with brief delays.
+
 ## Execution (Hybrid, Graceful Degradation)
+
+**[PARALLEL]** Launch all available agents concurrently:
 
 ### Claude — always runs (native background agent)
 

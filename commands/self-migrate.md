@@ -15,6 +15,12 @@ Automated, incremental migration loop. Each iteration migrates a small piece, ru
 4. **Iterations** — max cycles (default: 20)
 5. **Budget** — max USD (default: $3)
 
+## Budget & Early Exit
+
+- **Token budget:** ~400k tokens. Migrations can touch many files.
+- **Early exit:** Stop when all target files are migrated — don't run remaining iterations.
+- **Stuck detection:** If 3 consecutive iterations fail (tests break after migration), stop and report. The remaining files may need manual intervention. See the `stuck` skill.
+
 ## Step 1: Establish Baseline
 
 ```bash

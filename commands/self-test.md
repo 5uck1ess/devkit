@@ -15,6 +15,12 @@ Automated loop that generates tests, runs them, measures coverage, and iterates 
 4. **Iterations** — max cycles (default: 10)
 5. **Budget** — max USD (default: $2)
 
+## Budget & Early Exit
+
+- **Token budget:** ~300k tokens. If approaching limit, reduce remaining iteration count.
+- **Early exit:** Stop immediately when coverage target is met — don't run remaining iterations.
+- **Stuck detection:** If 3 consecutive iterations fail (tests break), stop and report. See the `stuck` skill.
+
 ## Step 1: Detect Test Framework
 
 ```bash

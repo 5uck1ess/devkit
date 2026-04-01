@@ -15,6 +15,12 @@ Autonomous, iterative improvement of a target file or directory. Each iteration:
 4. **Iterations** — max cycles (default: 10)
 5. **Budget** — max USD (default: $2)
 
+## Budget & Early Exit
+
+- **Token budget:** ~300k tokens. If approaching limit, reduce remaining iteration count.
+- **Early exit:** Stop the loop immediately if the metric output contains the objective target (e.g., "0 errors", "100%", or a user-specified success string).
+- **Stuck detection:** If 3 consecutive iterations fail (revert), stop the loop and report. Don't keep trying the same failing approach. See the `stuck` skill.
+
 ## Step 1: Establish Baseline
 
 ```bash

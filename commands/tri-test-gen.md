@@ -33,7 +33,15 @@ Target: {target_files}
 Code: {source_code}
 ```
 
+## Concurrency & Budget
+
+- **Concurrency limit:** Max 3 parallel agents.
+- **Token budget:** ~400k tokens across all agents. Test generation can be verbose.
+- **Rate limiting:** If API throttles, stagger agent launches.
+
 ## Step 4: Dispatch (Hybrid, Graceful Degradation)
+
+**[PARALLEL]** Launch all available agents concurrently:
 
 ### Claude — always runs
 

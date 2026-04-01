@@ -20,11 +20,13 @@ Before searching, clarify:
 Restate the research question precisely.
 ```
 
-Ask the user these questions. Don't proceed until the question is clear.
+Use `AskUserQuestion` to ask these questions explicitly. Don't proceed until the question is clear.
 
 ## Step 2: Search (Three Perspectives)
 
-Run three parallel search strategies using the `researcher` agent:
+Run three search strategies using the `researcher` agent.
+
+**[PARALLEL]** Launch all three searches concurrently (max 3 agents):
 
 ### Broad Search
 
@@ -51,7 +53,12 @@ Agent: researcher
 Input: "problems with", "alternatives to", "vs" queries related to the topic
 ```
 
-Run all three in parallel where possible.
+All three run in parallel. Collect results before proceeding to analysis.
+
+## Budget
+
+- **Token budget:** ~300k tokens. Web search and reading can be expensive.
+- **Early exit:** If the first search pass answers the question clearly, skip follow-up loops.
 
 ## Step 3: Analyze
 

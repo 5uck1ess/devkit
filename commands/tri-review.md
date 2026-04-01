@@ -38,7 +38,15 @@ HAS_GEMINI=$(command -v gemini && echo "yes" || echo "no")
 
 Run with whatever is available. Claude always runs. Codex and Gemini are optional.
 
+## Concurrency & Budget
+
+- **Concurrency limit:** Max 3 parallel agents. All dispatches below run concurrently.
+- **Token budget:** ~300k tokens across all agents.
+- **Rate limiting:** If you hit API rate limits, wait and retry. Don't launch all agents simultaneously if the API is throttling.
+
 ## Step 4: Dispatch in Parallel (Hybrid, Graceful Degradation)
+
+**[PARALLEL]** Launch all available agents concurrently:
 
 ### Claude — always runs (native background agent, token-efficient)
 

@@ -7,6 +7,12 @@ description: Full lifecycle refactor — analyze code smells, plan transformatio
 
 Complete refactor lifecycle: analyze → plan → restructure → verify → compare.
 
+## Budget & Early Exit
+
+- **Token budget:** ~400k tokens. Refactors can touch many files.
+- **Early exit:** Stop the refactor loop when all planned steps are complete and tests pass.
+- **Stuck detection:** If 3 consecutive refactor steps break tests, stop and report. See the `stuck` skill.
+
 ## Step 1: Analyze
 
 ```

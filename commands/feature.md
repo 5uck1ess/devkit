@@ -62,9 +62,14 @@ Run the full test suite (not just the new tests). If tests fail, fix them — de
 
 Run the project's linter on changed files. If there are violations, fix them without changing code behavior. Loop up to 4 times until clean.
 
+## Budget
+
+- **Token budget:** ~500k tokens. Features are the most expensive workflow.
+- If approaching budget, skip the review step and report what was completed.
+
 ## Step 7: Review
 
-Spawn the `reviewer` agent to review all changes:
+**[PARALLEL]** Spawn the `reviewer` agent to review all changes (can run concurrently with any remaining lint fixes):
 
 ```
 Task: Review all changes made in this feature session.

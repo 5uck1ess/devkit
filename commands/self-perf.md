@@ -15,6 +15,12 @@ Automated loop that profiles, optimizes, benchmarks, and keeps only changes that
 4. **Iterations** — max cycles (default: 10)
 5. **Budget** — max USD (default: $2)
 
+## Budget & Early Exit
+
+- **Token budget:** ~300k tokens. Performance analysis can be expensive.
+- **Early exit:** Stop if the benchmark target is met (user-specified threshold in objective).
+- **Stuck detection:** If 3 consecutive iterations fail or show no improvement, stop. Diminishing returns are common in perf optimization. See the `stuck` skill.
+
 ## Step 1: Establish Baseline
 
 ```bash

@@ -7,6 +7,12 @@ description: Full lifecycle bug fix — reproduce, diagnose, fix, regression tes
 
 Complete bug fix lifecycle: reproduce → diagnose root cause → fix → regression test → verify.
 
+## Budget & Early Exit
+
+- **Token budget:** ~300k tokens.
+- **Early exit:** Stop the test loop when all tests pass. Don't iterate further.
+- **Stuck detection:** If 3 consecutive fix attempts fail, stop and report. See the `stuck` skill.
+
 ## Step 1: Reproduce
 
 ```

@@ -49,7 +49,15 @@ For each finding, report:
 Code: {diff_or_source}
 ```
 
+## Concurrency & Budget
+
+- **Concurrency limit:** Max 3 parallel agents.
+- **Token budget:** ~300k tokens across all agents.
+- **Rate limiting:** If API throttles, stagger agent launches.
+
 ## Step 4: Dispatch (Hybrid, Graceful Degradation)
+
+**[PARALLEL]** Launch all available agents concurrently:
 
 ### Claude — always runs
 

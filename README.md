@@ -54,6 +54,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 | `/devkit:feature` | Full feature lifecycle — brainstorm, plan, implement, test, lint, review |
 | `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
 | `/devkit:research` | Deep research — clarify, parallel search, analyze sources, synthesize |
+| `/devkit:decompose` | Goal decomposition — break into task DAG, assign agents, execute in dependency order |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -108,6 +109,10 @@ Coding methodology guides that enforce consistent practices. These are loaded as
 | `devkit:dry` | Rule of Three, when duplication is fine, extracting the right abstraction |
 | `devkit:yagni` | Build only what's needed, no speculative features or premature abstractions |
 | `devkit:brainstorming` | Diverge/converge ideation, evaluating ideas, avoiding premature commitment |
+| `devkit:skill-authoring` | How to write new skills — format, frontmatter, progressive disclosure |
+| `devkit:creating-workflows` | How to create workflow YAML files — schema, step types, interpolation |
+| `devkit:stuck` | Detect agent looping/failing, structured recovery — backtrack, simplify, escalate |
+| `devkit:verify` | Output validation checklist before proceeding or reporting completion |
 
 ---
 
@@ -179,6 +184,8 @@ None yet — `presets/` is reserved for future use.
 ```
 devkit/
 ├── manifest.json            # Plugin manifest
+├── ROADMAP.md               # Implemented features and future plans
+├── PREFERENCES.md           # Agent behavior guidelines and coding standards
 ├── commands/                # Claude Code skills
 │   ├── tri-review.md        # Multi-agent review
 │   ├── tri-dispatch.md      # Multi-agent dispatch
@@ -200,7 +207,8 @@ devkit/
 │   ├── bugfix.md            # Bug fix lifecycle
 │   ├── feature.md           # Feature development lifecycle
 │   ├── refactor.md          # Refactoring lifecycle
-│   └── research.md          # Deep research workflow
+│   ├── research.md          # Deep research workflow
+│   └── decompose.md         # Goal decomposition into task DAG
 ├── agents/                  # Agent configs
 │   ├── reviewer.md
 │   ├── researcher.md
@@ -215,7 +223,11 @@ devkit/
 │   ├── clean-code.md
 │   ├── dry.md
 │   ├── yagni.md
-│   └── brainstorming.md
+│   ├── brainstorming.md
+│   ├── skill-authoring.md
+│   ├── creating-workflows.md
+│   ├── stuck.md
+│   └── verify.md
 ├── hooks/                   # Safety hooks
 │   ├── hooks.json           # Hook config (auto-loaded by plugin)
 │   └── safety-check.sh      # Dangerous operation blocker
@@ -273,8 +285,11 @@ Devkit's `tri:*` commands use `/codex:rescue --background` for multi-agent dispa
 
 ## Roadmap
 
+See [ROADMAP.md](ROADMAP.md) for full details.
+
 - [ ] Go CLI harness for deterministic loop control, process management, and unattended runs (see `src/TODO.md`)
-- [ ] More presets (Python security, Go performance, etc.)
+- [ ] Cost event hooks — budget threshold events with auto-downgrade actions
+- [ ] Execution registry — centralized step tracking with timing and token usage
 - [ ] Preset library — curated prompt templates for common review/improvement scenarios
 
 ---
