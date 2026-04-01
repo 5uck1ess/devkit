@@ -52,17 +52,12 @@ Input: {prompt} + {diff}
 
 ### Codex — if available
 
-```bash
-if [ "$HAS_CODEX" = "yes" ]; then
-  codex exec -m gpt-5.4 \
-    --sandbox read-only \
-    --full-auto \
-    --skip-git-repo-check \
-    --dangerously-bypass-approvals-and-sandbox \
-    "{prompt} $(cat /tmp/tri-review-diff.txt)" > /tmp/tri-review-codex.txt 2>/dev/null &
-  CODEX_PID=$!
-fi
 ```
+/codex:rescue --model gpt-5.4 --effort high --background \
+  "{prompt} $(cat /tmp/tri-review-diff.txt)"
+```
+
+Retrieve result with `/codex:result` when done.
 
 ### Gemini — if available
 
@@ -82,7 +77,7 @@ wait
 | Agent | Method | Flags |
 |---|---|---|
 | Claude | Native background agent | `isolation: worktree`, `background: true` |
-| Codex | CLI | `--full-auto --dangerously-bypass-approvals-and-sandbox` |
+| Codex | Official plugin | `/codex:rescue --background` |
 | Gemini | CLI | `-y` |
 
 ## Step 5: Consolidate

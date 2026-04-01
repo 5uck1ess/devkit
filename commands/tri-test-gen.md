@@ -45,16 +45,11 @@ Input: {prompt} + {source_code}
 
 ### Codex — if available
 
-```bash
-if [ "$HAS_CODEX" = "yes" ]; then
-  codex exec -m gpt-5.4 \
-    --sandbox read-only \
-    --full-auto \
-    --skip-git-repo-check \
-    --dangerously-bypass-approvals-and-sandbox \
-    "{prompt}" > /tmp/tri-test-codex.txt 2>/dev/null &
-fi
 ```
+/codex:rescue --model gpt-5.4 --effort high --background "{prompt}"
+```
+
+Retrieve result with `/codex:result` when done.
 
 ### Gemini — if available
 

@@ -236,7 +236,7 @@ Set automatically in each multi-agent command:
 | Agent | Flags |
 |---|---|
 | Claude | `--dangerously-skip-permissions` |
-| Codex | `--full-auto --dangerously-bypass-approvals-and-sandbox` |
+| Codex | `/codex:rescue --background` (via [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)) |
 | Gemini | `-y` |
 
 ---
@@ -248,6 +248,7 @@ Set automatically in each multi-agent command:
 **Optional** (for multi-agent commands):
 ```bash
 brew install codex gemini-cli
+/plugin install github.com/openai/codex-plugin-cc
 ```
 
 Check status with `/devkit:status`.
@@ -275,6 +276,7 @@ Check status with `/devkit:status`.
 | NemoClaw | NVIDIA sandboxed OpenClaw runtime | [GitHub](https://github.com/NVIDIA/NemoClaw) |
 | GSD-2 | Autonomous project execution (milestone→task) | [GitHub](https://github.com/gsd-build/gsd-2) |
 | metaswarm | 18 agents, 13 skills for Claude/Gemini/Codex | [GitHub](https://github.com/dsifry/metaswarm) |
+| codex-plugin-cc | Official OpenAI Codex plugin for Claude Code | [GitHub](https://github.com/openai/codex-plugin-cc) |
 
 ### Skills & Marketplaces
 
@@ -284,6 +286,7 @@ Check status with `/devkit:status`.
 | superpowers-skills | Community skills for superpowers | [GitHub](https://github.com/obra/superpowers-skills) |
 | awesome-claude-skills | 50+ verified skills collection | [GitHub](https://github.com/karanb192/awesome-claude-skills) |
 | taste-skill | Frontend design quality for AI agents | [GitHub](https://github.com/Leonxlnx/taste-skill) |
+| claude-code-system-prompts | Claude Code system prompt collection | [GitHub](https://github.com/Leonxlnx/claude-code-system-prompts) |
 | rune | Lean skill ecosystem | [GitHub](https://github.com/Rune-kit/rune) |
 
 ### TDD & Quality
