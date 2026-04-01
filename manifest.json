@@ -22,7 +22,8 @@
     "commands/status.md",
     "commands/bugfix.md",
     "commands/feature.md",
-    "commands/refactor.md"
+    "commands/refactor.md",
+    "commands/research.md"
   ],
   "hooks": "hooks/hooks.json",
   "skills": [

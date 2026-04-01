@@ -53,6 +53,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 | `/devkit:bugfix` | Full bug fix lifecycle — reproduce, diagnose, fix, regression test, verify |
 | `/devkit:feature` | Full feature lifecycle — brainstorm, plan, implement, test, lint, review |
 | `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
+| `/devkit:research` | Deep research — clarify, parallel search, analyze sources, synthesize |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -198,7 +199,8 @@ devkit/
 │   ├── status.md            # Health check
 │   ├── bugfix.md            # Bug fix lifecycle
 │   ├── feature.md           # Feature development lifecycle
-│   └── refactor.md          # Refactoring lifecycle
+│   ├── refactor.md          # Refactoring lifecycle
+│   └── research.md          # Deep research workflow
 ├── agents/                  # Agent configs
 │   ├── reviewer.md
 │   ├── researcher.md
