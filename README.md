@@ -50,6 +50,9 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 | `/devkit:onboard` | Generate codebase onboarding guide for new contributors |
 | `/devkit:changelog` | Generate structured changelog from git history |
 | `/devkit:workflow` | Run user-defined YAML workflows from `workflows/` |
+| `/devkit:bugfix` | Full bug fix lifecycle — reproduce, diagnose, fix, regression test, verify |
+| `/devkit:feature` | Full feature lifecycle — brainstorm, plan, implement, test, lint, review |
+| `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -192,7 +195,10 @@ devkit/
 │   ├── onboard.md           # Codebase onboarding
 │   ├── changelog.md         # Changelog generation
 │   ├── workflow.md          # YAML workflow runner
-│   └── status.md            # Health check
+│   ├── status.md            # Health check
+│   ├── bugfix.md            # Bug fix lifecycle
+│   ├── feature.md           # Feature development lifecycle
+│   └── refactor.md          # Refactoring lifecycle
 ├── agents/                  # Agent configs
 │   ├── reviewer.md
 │   ├── researcher.md

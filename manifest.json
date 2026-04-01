@@ -19,7 +19,10 @@
     "commands/onboard.md",
     "commands/changelog.md",
     "commands/workflow.md",
-    "commands/status.md"
+    "commands/status.md",
+    "commands/bugfix.md",
+    "commands/feature.md",
+    "commands/refactor.md"
   ],
   "hooks": "hooks/hooks.json",
   "skills": [
