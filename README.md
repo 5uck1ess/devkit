@@ -270,7 +270,6 @@ Check status with `/devkit:status`.
 | Tool | Description | Link |
 |---|---|---|
 | pthd | mprocs-based parallel agent panes | [GitHub](https://github.com/pandego/parallel-thread-skill) |
-| skill-codex | Claude Code ↔ Codex bridge | [GitHub](https://github.com/skills-directory/skill-codex) |
 | OpenClaw | Personal AI assistant platform | [GitHub](https://github.com/openclaw/openclaw) |
 | claw-multi-agent | OpenClaw parallel orchestration | [GitHub](https://github.com/zcyynl/claw-multi-agent) |
 | NemoClaw | NVIDIA sandboxed OpenClaw runtime | [GitHub](https://github.com/NVIDIA/NemoClaw) |
