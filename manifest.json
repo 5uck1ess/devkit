@@ -24,6 +24,7 @@
     "commands/feature.md",
     "commands/refactor.md",
     "commands/research.md",
+    "commands/scrape.md",
     "commands/decompose.md"
   ],
   "skills": [
