@@ -1,0 +1,95 @@
+name: Research
+description: Deep research — clarify with user, parallel search, analyze, synthesize
+
+budget:
+  limit: 300000
+  downgrade: fast
+
+steps:
+  - id: clarify
+    model: smart
+    prompt: |
+      The user wants to research: {{input}}
+
+      Use ask_user to clarify before searching:
+      - What specifically are we trying to learn?
+      - What constraints matter (language, framework, scale)?
+      - Any sources they already know about?
+
+      After getting their answer, restate the research question precisely.
+
+  - id: search-broad
+    model: general
+    prompt: |
+      Research question: {{clarify}}
+
+      Use web_search with a broad query to find general sources.
+      Collect titles, URLs, and key snippets.
+
+  - id: search-specific
+    model: general
+    prompt: |
+      Research question: {{clarify}}
+
+      Use web_search with specific technical queries targeting
+      documentation, benchmarks, or comparisons related to the question.
+      Use different search terms than a broad search would.
+
+  - id: search-alternatives
+    model: fast
+    prompt: |
+      Research question: {{clarify}}
+
+      Use web_search to find contrarian or alternative viewpoints.
+      Search for "problems with", "alternatives to", or "vs" queries.
+
+  - id: dispatch-searches
+    parallel: [search-broad, search-specific, search-alternatives]
+
+  - id: analyze
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Sources from broad search:
+      {{search-broad}}
+
+      Sources from specific search:
+      {{search-specific}}
+
+      Alternative viewpoints:
+      {{search-alternatives}}
+
+      Use web_read on the 3-5 most promising URLs to read them in depth.
+      Extract key findings, compare approaches, note contradictions.
+
+  - id: follow-up
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Initial analysis:
+      {{analyze}}
+
+      Are there gaps in the research? If the initial sources were weak
+      or missing key perspectives, use web_search and web_read to fill gaps.
+
+      If the analysis is thorough enough, say "RESEARCH_COMPLETE".
+    loop:
+      max: 3
+      until: RESEARCH_COMPLETE
+
+  - id: synthesize
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Full analysis:
+      {{follow-up}}
+
+      Write a clear synthesis:
+      1. **Direct answer** to the research question
+      2. **Key findings** with source URLs
+      3. **Tradeoffs** between approaches
+      4. **Open questions** that couldn't be resolved
+      5. **Recommendation** with reasoning

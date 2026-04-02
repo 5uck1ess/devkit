@@ -1,0 +1,47 @@
+name: Tri-Debug
+description: Three models diagnose a bug in parallel — compare theories
+
+steps:
+  - id: smart-diagnosis
+    model: smart
+    prompt: |
+      Debug this issue: {{input}}
+
+      Trace the root cause. Read the relevant code, check assumptions,
+      and propose a specific fix with reasoning.
+
+  - id: general-diagnosis
+    model: general
+    prompt: |
+      Debug this issue: {{input}}
+
+      What's the most likely cause? Suggest a fix.
+
+  - id: fast-diagnosis
+    model: fast
+    prompt: |
+      Debug this issue: {{input}}
+
+      Quick diagnosis — what's probably wrong and how to fix it.
+
+  - id: dispatch-debug
+    parallel: [smart-diagnosis, general-diagnosis, fast-diagnosis]
+
+  - id: compare
+    model: smart
+    prompt: |
+      Three models diagnosed the same bug. Compare their findings.
+
+      Smart:
+      {{smart-diagnosis}}
+
+      General:
+      {{general-diagnosis}}
+
+      Fast:
+      {{fast-diagnosis}}
+
+      Report:
+      ## Root cause (where they agree)
+      ## Alternative theories (where they differ)
+      ## Recommended fix

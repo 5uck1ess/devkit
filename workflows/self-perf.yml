@@ -1,0 +1,39 @@
+name: Self-Perf
+description: Profile performance, optimize hot paths, verify improvement
+
+steps:
+  - id: baseline
+    model: fast
+    prompt: |
+      Profile the target and establish a performance baseline.
+      {{input}}
+
+      Report timing, memory usage, or throughput — whatever the metric is.
+
+  - id: optimize
+    model: smart
+    prompt: |
+      Performance baseline:
+
+      {{baseline}}
+
+      Identify the bottleneck and make a targeted optimization.
+      Only change what impacts the metric — no speculative refactoring.
+
+      Re-run the benchmark. If the target metric is met, say "ALL_PASSING".
+    loop:
+      max: 5
+      until: ALL_PASSING
+
+  - id: summary
+    model: fast
+    prompt: |
+      Performance optimization complete.
+
+      Before:
+      {{baseline}}
+
+      After:
+      {{optimize}}
+
+      Report the improvement (absolute and percentage).

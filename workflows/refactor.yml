@@ -1,0 +1,91 @@
+name: Refactor
+description: Full lifecycle refactor — analyze, plan, restructure, verify nothing broke
+
+budget:
+  limit: 400000
+  downgrade: fast
+
+steps:
+  - id: analyze
+    model: smart
+    prompt: |
+      Analyze the code to refactor: {{input}}
+
+      Identify:
+      - Code smells (duplication, long functions, deep nesting, god objects)
+      - Complexity hotspots
+      - Coupling issues
+      - Naming problems
+      - What the code SHOULD look like after refactoring
+
+      Don't change anything yet — just assess.
+
+  - id: plan
+    model: smart
+    prompt: |
+      Refactoring analysis:
+
+      {{analyze}}
+
+      Create a step-by-step refactoring plan.
+      Each step should be a single, safe transformation that preserves behavior.
+      Order matters — do renames before extractions, extractions before moves.
+      Include "run tests" checkpoints between risky steps.
+
+  - id: refactor
+    model: smart
+    prompt: |
+      Refactoring plan:
+
+      {{plan}}
+
+      Execute the next incomplete step. Make the change, verify it compiles,
+      and confirm behavior is preserved.
+
+      If all steps are complete, say "ALL_DONE".
+    loop:
+      max: 15
+      until: ALL_DONE
+
+  - id: run-tests
+    model: fast
+    prompt: |
+      Run the full test suite to verify the refactoring didn't break anything.
+      Report results.
+
+      If all pass, say "ALL_PASSING".
+
+  - id: fix-tests
+    model: smart
+    prompt: |
+      Test results after refactoring:
+
+      {{run-tests}}
+
+      Fix any failures. These are likely caused by the refactoring —
+      update tests to match the new structure, or fix regressions.
+
+      Run tests again. If all pass, say "ALL_PASSING".
+    loop:
+      max: 6
+      until: ALL_PASSING
+
+  - id: comparison
+    model: smart
+    prompt: |
+      Refactoring complete. Produce a before/after comparison:
+
+      Original assessment:
+      {{analyze}}
+
+      ## What changed
+      List each transformation that was made.
+
+      ## Improvements
+      What's better now (readability, complexity, coupling).
+
+      ## Metrics
+      Lines added/removed, functions extracted, files changed.
+
+      ## Risk areas
+      Anything that should be watched closely after this refactor.

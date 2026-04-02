@@ -1,0 +1,97 @@
+name: Bug Fix
+description: Full lifecycle bug fix — reproduce, diagnose, fix, test, review
+
+budget:
+  limit: 300000
+  downgrade: fast
+
+steps:
+  - id: reproduce
+    model: smart
+    prompt: |
+      Bug report: {{input}}
+
+      Reproduce the issue:
+      1. Find the relevant code
+      2. Understand the expected vs actual behavior
+      3. Identify a minimal reproduction path
+      4. Confirm the bug exists (run the failing case if possible)
+
+  - id: diagnose
+    model: smart
+    prompt: |
+      Reproduction:
+
+      {{reproduce}}
+
+      Trace the root cause. Read the code path, check assumptions,
+      examine edge cases. Determine exactly WHY this happens,
+      not just WHERE.
+
+      Propose a specific fix with reasoning.
+
+  - id: fix
+    model: smart
+    prompt: |
+      Diagnosis:
+
+      {{diagnose}}
+
+      Implement the fix. Keep changes minimal — only touch what's
+      needed to resolve the root cause. Don't refactor surrounding code.
+
+  - id: regression-test
+    model: smart
+    prompt: |
+      A bug was fixed:
+
+      Root cause: {{diagnose}}
+      Fix: {{fix}}
+
+      Write a regression test that:
+      1. Would have caught this bug before the fix
+      2. Verifies the fix works
+      3. Covers the edge case that triggered the bug
+
+  - id: run-tests
+    model: fast
+    prompt: |
+      Run the full test suite including the new regression test.
+      Report results.
+
+      If all pass, say "ALL_PASSING".
+
+  - id: fix-tests
+    model: smart
+    prompt: |
+      Test results:
+
+      {{run-tests}}
+
+      Fix any failures. The fix may have caused side effects —
+      determine if the test or the code is wrong.
+
+      Run tests again. If all pass, say "ALL_PASSING".
+    loop:
+      max: 5
+      until: ALL_PASSING
+
+  - id: summary
+    model: fast
+    prompt: |
+      Bug fix complete. Summary:
+
+      ## Bug
+      {{reproduce}}
+
+      ## Root cause
+      {{diagnose}}
+
+      ## Fix
+      What was changed and why.
+
+      ## Regression test
+      What test was added to prevent recurrence.
+
+      ## Status
+      Test suite status. Ready to commit or remaining concerns.

@@ -1,0 +1,44 @@
+name: Self-Improve
+description: Metric-gated improvement loop — run a metric, improve code, repeat until passing
+
+steps:
+  - id: baseline
+    model: fast
+    prompt: |
+      Run the metric command to establish a baseline:
+
+      {{input}}
+
+      Report what passed, what failed, and the current score.
+
+  - id: improve
+    model: smart
+    prompt: |
+      Current state from last run:
+
+      {{baseline}}
+
+      Analyze the failures and make targeted fixes. Only change what's needed
+      to improve the metric. Don't refactor unrelated code.
+
+      After making changes, run the metric again and report results.
+      If everything passes, say "ALL_PASSING".
+    loop:
+      max: 10
+      until: ALL_PASSING
+
+  - id: report
+    model: fast
+    prompt: |
+      Improvement session complete. Summarize:
+
+      Starting state:
+      {{baseline}}
+
+      Final state:
+      {{improve}}
+
+      Report:
+      - What was fixed
+      - How many iterations it took
+      - Current metric status

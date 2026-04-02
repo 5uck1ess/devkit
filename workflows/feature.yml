@@ -1,0 +1,153 @@
+name: Feature
+description: Full lifecycle — brainstorm, plan, implement, test, lint, review
+
+budget:
+  limit: 500000
+  downgrade: fast
+
+steps:
+  - id: brainstorm
+    model: smart
+    prompt: |
+      We're building a new feature: {{input}}
+
+      Think through the design:
+      - What components need to change?
+      - What's the simplest approach that works?
+      - What are the risks or unknowns?
+      - Are there edge cases to handle upfront?
+
+      Produce a short design summary. Don't write code yet.
+
+  - id: plan
+    model: smart
+    prompt: |
+      Based on this design:
+
+      {{brainstorm}}
+
+      Create an implementation plan as a numbered todo list.
+      Each item should be a single, testable change.
+      Order by dependency — do foundations first.
+      Include a final item for writing tests.
+
+  - id: implement
+    model: smart
+    prompt: |
+      Implementation plan:
+
+      {{plan}}
+
+      Execute the next incomplete todo. Write the code, verify it works,
+      then mark it done. Keep changes small and focused.
+
+      If all todos are complete, say "ALL_DONE".
+    loop:
+      max: 20
+      until: ALL_DONE
+
+  - id: gen-tests
+    model: smart
+    prompt: |
+      Implementation complete. The feature:
+
+      {{brainstorm}}
+
+      Generate tests covering:
+      - Happy path for each new public function/endpoint
+      - Edge cases and error conditions
+      - Integration between new and existing code
+
+      Use the project's existing test framework. Place tests in the
+      project's standard test location.
+
+  - id: run-tests
+    model: fast
+    prompt: |
+      Run the full test suite (not just the new tests).
+      Report which pass, which fail, and the error messages.
+
+      If all pass, say "ALL_PASSING".
+
+  - id: fix-tests
+    model: smart
+    prompt: |
+      Test results:
+
+      {{run-tests}}
+
+      Fix any failing tests. Determine if the bug is in the test
+      or the implementation and fix accordingly.
+
+      Run tests again. If all pass, say "ALL_PASSING".
+    loop:
+      max: 8
+      until: ALL_PASSING
+
+  - id: lint
+    model: fast
+    prompt: |
+      Run the project's linter on the changed files.
+      Report any violations.
+
+      If clean, say "ALL_PASSING".
+
+  - id: fix-lint
+    model: smart
+    prompt: |
+      Lint violations:
+
+      {{lint}}
+
+      Fix the violations without changing code behavior.
+      Run the linter again. If clean, say "ALL_PASSING".
+    loop:
+      max: 4
+      until: ALL_PASSING
+
+  - id: review-smart
+    model: smart
+    prompt: |
+      Review all the changes made in this feature session.
+
+      Design intent:
+      {{brainstorm}}
+
+      Check for: correctness, security issues, missing error handling,
+      performance problems, and violations of the original design intent.
+      Be specific — reference files and line numbers.
+
+  - id: review-fast
+    model: fast
+    prompt: |
+      Quick review of the changes from this feature session.
+
+      Flag anything obvious: typos, dead code, missing imports,
+      inconsistent naming.
+
+  - id: dispatch-reviews
+    parallel: [review-smart, review-fast]
+
+  - id: final-report
+    model: fast
+    prompt: |
+      Feature session complete. Produce a summary:
+
+      ## What was built
+      {{brainstorm}}
+
+      ## Implementation
+      Brief description of what was implemented and how many steps it took.
+
+      ## Test coverage
+      {{run-tests}}
+
+      ## Review findings
+      Smart review:
+      {{review-smart}}
+
+      Quick review:
+      {{review-fast}}
+
+      ## Status
+      Ready to commit, or list remaining issues.

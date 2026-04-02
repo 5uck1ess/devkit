@@ -1,0 +1,68 @@
+name: Tri-Security
+description: Three-tier security audit — parallel review focused on vulnerabilities
+
+steps:
+  - id: gather
+    model: fast
+    prompt: |
+      Collect the code to audit: {{input}}
+
+      Output the raw content for the three security reviewers.
+
+  - id: audit-injection
+    model: smart
+    prompt: |
+      Security audit — injection and input validation:
+
+      {{gather}}
+
+      Check for: SQL injection, command injection, XSS, path traversal,
+      template injection, SSRF, deserialization attacks.
+      Rate each finding: critical, high, medium, low.
+
+  - id: audit-auth
+    model: general
+    prompt: |
+      Security audit — authentication and authorization:
+
+      {{gather}}
+
+      Check for: broken auth, missing access controls, insecure session
+      handling, privilege escalation, IDOR, JWT issues, hardcoded secrets.
+      Rate each finding: critical, high, medium, low.
+
+  - id: audit-config
+    model: fast
+    prompt: |
+      Security audit — configuration and dependencies:
+
+      {{gather}}
+
+      Check for: exposed secrets, debug mode in prod, permissive CORS,
+      missing security headers, outdated dependencies with known CVEs,
+      insecure defaults.
+      Rate each finding: critical, high, medium, low.
+
+  - id: dispatch-audits
+    parallel: [audit-injection, audit-auth, audit-config]
+
+  - id: consolidate
+    model: smart
+    prompt: |
+      Three security auditors reviewed the same code. Consolidate.
+
+      Injection audit:
+      {{audit-injection}}
+
+      Auth audit:
+      {{audit-auth}}
+
+      Config audit:
+      {{audit-config}}
+
+      Produce a security report:
+      ## Critical (fix immediately)
+      ## High (fix before merge)
+      ## Medium (fix soon)
+      ## Low (track)
+      ## Overall risk assessment

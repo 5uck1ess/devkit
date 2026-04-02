@@ -1,0 +1,39 @@
+name: Self-Lint
+description: Run linter, fix violations, repeat until clean
+
+steps:
+  - id: baseline
+    model: fast
+    prompt: |
+      Run the project's linter and report all violations.
+      {{input}}
+
+      Group by severity. Show file, line, and rule name.
+
+  - id: fix
+    model: smart
+    prompt: |
+      Lint violations:
+
+      {{baseline}}
+
+      Fix the violations. Prioritize errors over warnings.
+      Don't change code behavior — only fix lint issues.
+
+      Run the linter again. If clean, say "ALL_PASSING".
+    loop:
+      max: 6
+      until: ALL_PASSING
+
+  - id: summary
+    model: fast
+    prompt: |
+      Lint fix session complete.
+
+      Starting violations:
+      {{baseline}}
+
+      Final state:
+      {{fix}}
+
+      Summarize what was fixed.

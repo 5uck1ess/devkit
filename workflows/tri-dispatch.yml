@@ -1,0 +1,46 @@
+name: Tri-Dispatch
+description: Same task sent to three model tiers in parallel — compare their approaches
+
+steps:
+  - id: smart-take
+    model: smart
+    prompt: |
+      {{input}}
+
+      Give your best, most thorough answer.
+
+  - id: general-take
+    model: general
+    prompt: |
+      {{input}}
+
+      Give a clear, balanced answer.
+
+  - id: fast-take
+    model: fast
+    prompt: |
+      {{input}}
+
+      Give a quick, direct answer.
+
+  - id: dispatch-all
+    parallel: [smart-take, general-take, fast-take]
+
+  - id: compare
+    model: smart
+    prompt: |
+      Three models answered the same question. Compare their responses.
+
+      Smart model:
+      {{smart-take}}
+
+      General model:
+      {{general-take}}
+
+      Fast model:
+      {{fast-take}}
+
+      Produce a comparison:
+      ## Where they agree
+      ## Where they differ
+      ## Best answer (and why)

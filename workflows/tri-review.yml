@@ -1,0 +1,59 @@
+name: Tri-Review
+description: Three-tier model review — reviews run in parallel, then consolidated
+
+steps:
+  - id: gather
+    model: fast
+    prompt: |
+      Collect the code or diff to review: {{input}}
+
+      Output the raw content that will be sent to all three reviewers.
+
+  - id: review-smart
+    model: smart
+    prompt: |
+      You are the senior reviewer. Review this code thoroughly:
+
+      {{gather}}
+
+      Focus on architecture, correctness, and security. Be detailed.
+
+  - id: review-general
+    model: general
+    prompt: |
+      Review this code for quality and maintainability:
+
+      {{gather}}
+
+      Focus on readability, naming, duplication, and test coverage.
+
+  - id: review-fast
+    model: fast
+    prompt: |
+      Quick review of this code:
+
+      {{gather}}
+
+      Flag anything obviously wrong: typos, missing error handling, dead code.
+
+  - id: dispatch-reviews
+    parallel: [review-smart, review-general, review-fast]
+
+  - id: consolidate
+    model: smart
+    prompt: |
+      Three reviewers analyzed the same code. Consolidate their findings.
+
+      Senior review:
+      {{review-smart}}
+
+      Quality review:
+      {{review-general}}
+
+      Quick review:
+      {{review-fast}}
+
+      Produce a unified report:
+      ## Agreed (found by 2+ reviewers)
+      ## Unique finds (one reviewer only)
+      ## Verdict
