@@ -1,0 +1,7 @@
+{
+  "name": "devkit",
+  "description": "Guardrails and consistency for Claude Code — deterministic workflows, metric-gated improvement loops, and multi-agent consensus",
+  "author": {
+    "name": "5uck1ess"
+  }
+}
