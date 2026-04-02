@@ -47,11 +47,12 @@ where "content" is the Markdown.
 
 **Firecrawl (if FIRECRAWL_API_KEY is set and --backend firecrawl):**
 ```
-Use Bash to call:
-curl -s -X POST https://api.firecrawl.dev/v1/scrape \
-  -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"url":"{url}","formats":["markdown"]}'
+Use Bash to call (use jq to safely construct JSON — never interpolate URLs directly):
+jq -n --arg url "{url}" '{"url": $url, "formats": ["markdown"]}' | \
+  curl -s -X POST https://api.firecrawl.dev/v1/scrape \
+    -H "Authorization: Bearer $FIRECRAWL_API_KEY" \
+    -H "Content-Type: application/json" \
+    -d @-
 
 Response contains: { "data": { "markdown": "...", "metadata": { "title": "..." } } }
 ```
@@ -105,6 +106,9 @@ For multiple URLs, output a JSON array.
 
 ## Rules
 
+- **URL validation** — only accept `http://` and `https://` URLs. Reject `file://`, `ftp://`, `data:`, and all other schemes. Reject URLs targeting private/reserved IPs: `localhost`, `127.0.0.1`, `0.0.0.0`, `169.254.x.x`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `[::1]`. Reject URLs containing `@` (credential-in-URL attacks).
+- **No shell injection** — never interpolate user URLs directly into shell command strings. Use `jq` to construct JSON payloads for curl.
+- **API keys from env only** — never hardcode API keys. Always reference `$JINA_API_KEY`, `$FIRECRAWL_API_KEY` from environment variables.
 - Always try Jina Reader first — it's free and produces the cleanest output
 - Respect rate limits — if scraping many URLs, add a brief pause between requests
 - Don't scrape login-gated or paywall content — report it as inaccessible
