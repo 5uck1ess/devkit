@@ -10,8 +10,8 @@ FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
 # --- Bash: dangerous commands ---
 if [ "$TOOL_NAME" = "Bash" ]; then
 
-  # BLOCK: catastrophic filesystem destruction
-  if echo "$COMMAND" | grep -qE 'rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|--force\s+)?(\/|~|\$HOME)\b'; then
+  # BLOCK: catastrophic filesystem destruction (rm -rf / or rm -rf ~ but not git rm)
+  if echo "$COMMAND" | grep -qE '(^|[;&|]\s*)rm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|--force\s+)?(\/\s*$|\/\s+|~\s|~\/|\$HOME\b)'; then
     echo "BLOCKED: destructive rm targeting root or home directory" >&2
     exit 2
   fi
