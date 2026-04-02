@@ -1,0 +1,15 @@
+{
+  "name": "5uck1ess-devkit",
+  "owner": "5uck1ess",
+  "version": "1.1.0",
+  "description": "Guardrails and consistency for Claude Code — deterministic workflows, metric-gated improvement loops, and multi-agent consensus",
+  "plugins": [
+    {
+      "name": "devkit",
+      "description": "Deterministic workflows, multi-agent consensus, and improvement loops for Claude Code",
+      "version": "1.1.0",
+      "author": "5uck1ess",
+      "source": "."
+    }
+  ]
+}

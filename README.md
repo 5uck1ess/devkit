@@ -11,7 +11,8 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 ## Install
 
 ```bash
-/plugin install github.com/5uck1ess/devkit
+/plugin marketplace add 5uck1ess/devkit
+/plugin install devkit@5uck1ess-devkit
 ```
 
 ---
