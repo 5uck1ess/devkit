@@ -11,8 +11,8 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 ## Install
 
 ```bash
-/plugin marketplace add 5uck1ess/devkit
-/plugin install devkit@5uck1ess-devkit
+/plugin marketplace add https://github.com/5uck1ess/marketplace.git
+/plugin install devkit@5uck1ess-plugins
 ```
 
 ---
@@ -116,6 +116,26 @@ Coding methodology guides that enforce consistent practices. These are loaded as
 | `devkit:verify` | Output validation checklist before proceeding or reporting completion |
 
 ---
+
+## RTK Token Optimization
+
+Devkit includes an optional [RTK](https://github.com/rtk-ai/rtk) integration that compresses Bash command output before it reaches the context window — **60-90% token savings** on common operations.
+
+| Operation | Before | After | Savings |
+|---|---|---|---|
+| Directory listing | ~2,000 tokens | ~400 tokens | 80% |
+| Test output | ~25,000 tokens | ~2,500 tokens | 90% |
+| Git operations | ~3,000 tokens | ~600 tokens | 80% |
+| Search results | ~16,000 tokens | ~3,200 tokens | 80% |
+
+**How it works:** A `PreToolUse` hook rewrites Bash commands through RTK (e.g., `git status` → `rtk git status`). If RTK is not installed, the hook is a no-op — everything works normally, just without compression.
+
+**Install RTK:**
+```bash
+brew install rtk
+```
+
+Verify with `/devkit:status` — RTK will show as installed with version.
 
 ## Safety Hooks
 
@@ -229,11 +249,23 @@ devkit/
 │   ├── creating-workflows.md
 │   ├── stuck.md
 │   └── verify.md
-├── hooks/                   # Safety hooks
+├── hooks/                   # Safety + optimization hooks
 │   ├── hooks.json           # Hook config (auto-loaded by plugin)
-│   └── safety-check.sh      # Dangerous operation blocker
-├── workflows/               # User-defined YAML workflows
-│   └── .gitkeep
+│   ├── safety-check.sh      # Dangerous operation blocker
+│   └── rtk-rewrite.sh       # RTK token optimization (optional)
+├── workflows/               # YAML workflow definitions
+│   ├── feature.yml          # Full feature lifecycle
+│   ├── bugfix.yml           # Bug fix lifecycle
+│   ├── refactor.yml         # Refactor lifecycle
+│   ├── research.yml         # Deep research pipeline
+│   ├── self-improve.yml     # Metric-gated improvement loop
+│   ├── self-test.yml        # Test fix loop
+│   ├── self-lint.yml        # Lint fix loop
+│   ├── self-perf.yml        # Performance optimization loop
+│   ├── tri-review.yml       # Three-tier code review
+│   ├── tri-dispatch.yml     # Three-tier task dispatch
+│   ├── tri-debug.yml        # Three-tier debugging
+│   └── tri-security.yml     # Three-tier security audit
 ├── presets/                  # Reusable prompt templates (planned)
 │   └── .gitkeep
 └── src/
@@ -262,6 +294,11 @@ Set automatically in each multi-agent command:
 ```bash
 brew install codex gemini-cli
 /plugin install github.com/openai/codex-plugin-cc
+```
+
+**Optional** (for token optimization):
+```bash
+brew install rtk
 ```
 
 Check status with `/devkit:status`.
@@ -296,6 +333,12 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 ---
 
 ## References
+
+### Token Optimization
+
+| Tool | Description | Link |
+|---|---|---|
+| RTK | Rust Token Killer — 60-90% token savings on Bash output | [GitHub](https://github.com/rtk-ai/rtk) |
 
 ### Multi-Agent & Orchestration
 

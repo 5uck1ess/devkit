@@ -11,6 +11,9 @@
 - **Concurrency limits** — Max 3 parallel agents in multi-agent commands
 - **Early-exit conditions** — Self-improvement loops stop when goal is met, not just at max iterations
 - **Token budget guidance** — Per-command budget recommendations with model downgrade patterns
+- **RTK token optimization** — Optional PreToolUse hook compresses Bash output via RTK (60-90% savings)
+- **12 YAML workflows** — Portable workflow definitions (feature, bugfix, refactor, research, self-*, tri-*)
+- **Separate marketplace** — Multi-plugin marketplace at `5uck1ess/marketplace`
 
 ## Future
 

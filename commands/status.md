@@ -17,6 +17,16 @@ echo -n "codex: " && (command -v codex && codex --version 2>/dev/null || echo "n
 echo -n "gemini: " && (command -v gemini && gemini --version 2>/dev/null || echo "not installed")
 echo -n "gh: " && (command -v gh && gh --version 2>/dev/null | head -1 || echo "not installed")
 echo -n "rtk: " && (command -v rtk && rtk --version 2>/dev/null || echo "not installed (optional — 60-90% token savings)")
+echo ""
+echo "=== RTK Status ==="
+if command -v rtk >/dev/null 2>&1; then
+  echo "installed: $(rtk --version 2>/dev/null)"
+  echo "latest: check with 'brew outdated rtk' or 'rtk --version'"
+  rtk gain 2>/dev/null | head -5 || echo "no session data yet"
+else
+  echo "not installed — install with: brew install rtk"
+  echo "saves 60-90% tokens on Bash output (tests, git, ls, grep, etc.)"
+fi
 ```
 
 ### Agent Availability

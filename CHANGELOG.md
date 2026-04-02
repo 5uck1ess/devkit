@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- Add RTK token optimization hook — 60-90% savings on Bash output (optional, no-op if rtk not installed)
+- Add 12 YAML workflow definitions from pikit: feature, bugfix, refactor, research, self-improve, self-test, self-lint, self-perf, tri-review, tri-dispatch, tri-debug, tri-security
+- Move marketplace to separate repo (`5uck1ess/marketplace`) for multi-plugin support
+- Update install instructions to use new marketplace URL
+- Add RTK to `/devkit:status` health check
+
 ## 1.1.0
 
 - Add `decompose` command — goal decomposition into task DAG with dependency ordering
