@@ -16,6 +16,7 @@ echo "=== CLI Status ==="
 echo -n "codex: " && (command -v codex && codex --version 2>/dev/null || echo "not installed")
 echo -n "gemini: " && (command -v gemini && gemini --version 2>/dev/null || echo "not installed")
 echo -n "gh: " && (command -v gh && gh --version 2>/dev/null | head -1 || echo "not installed")
+echo -n "rtk: " && (command -v rtk && rtk --version 2>/dev/null || echo "not installed (optional — 60-90% token savings)")
 ```
 
 ### Agent Availability
@@ -35,6 +36,7 @@ List all commands, marking which ones need external CLIs:
 | codex | ✓ installed (v1.2.0) | tri:* commands |
 | gemini | ✗ not installed | tri:* commands |
 | gh | ✓ installed (v2.40.0) | devkit:pr-ready |
+| rtk | ✓ installed (v0.34.2) | token optimization (optional) |
 
 ### Commands
 | Command | Status | Notes |

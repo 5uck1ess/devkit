@@ -1,5 +1,5 @@
 {
-  "description": "Safety hooks that protect against dangerous operations in Bash, Edit, and Write tools",
+  "description": "Safety hooks and RTK token optimization for Bash, Edit, and Write tools",
   "hooks": {
     "PreToolUse": [
       {
@@ -10,6 +10,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
             "statusMessage": "Safety check...",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/rtk-rewrite.sh",
+            "statusMessage": "RTK optimize...",
+            "timeout": 5
           }
         ]
       },
