@@ -10,7 +10,12 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
             "statusMessage": "Safety check...",
             "timeout": 10
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/rtk-rewrite.sh",

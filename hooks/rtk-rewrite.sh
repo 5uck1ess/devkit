@@ -21,7 +21,8 @@ REWRITTEN=$(rtk rewrite "$COMMAND" 2>/dev/null) || exit 0
 jq -n --arg cmd "$REWRITTEN" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
-    modifiedToolInput: {
+    permissionDecision: "allow",
+    updatedInput: {
       command: $cmd
     }
   }
