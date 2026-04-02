@@ -17,13 +17,17 @@ REWRITTEN=$(rtk rewrite "$COMMAND" 2>/dev/null) || exit 0
 # If rewrite produced the same command, skip
 [ "$REWRITTEN" = "$COMMAND" ] && exit 0
 
+# Preserve original description if present
+DESCRIPTION=$(echo "$INPUT" | jq -r '.tool_input.description // empty')
+
 # Output the rewrite
-jq -n --arg cmd "$REWRITTEN" '{
+jq -n --arg cmd "$REWRITTEN" --arg desc "$DESCRIPTION" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "allow",
     updatedInput: {
-      command: $cmd
+      command: $cmd,
+      description: $desc
     }
   }
 }'
