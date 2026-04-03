@@ -89,6 +89,9 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 		cfg.MaxFailures = 3
 	}
 
+	const similarityThreshold = 0.90
+	const maxSimilarOutputs = 2
+
 	var spentUSD float64
 	if startIter > 1 {
 		spent, _ := db.SessionTotalCost(session.ID)
@@ -96,6 +99,8 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 	}
 
 	consecutiveFailures := 0
+	consecutiveSimilar := 0
+	lastMetricOutput := ""
 	stopReason := "completed"
 
 	for i := startIter; i <= cfg.MaxIterations; i++ {
@@ -109,6 +114,10 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 		}
 		if consecutiveFailures >= cfg.MaxFailures {
 			stopReason = fmt.Sprintf("stuck — %d consecutive failures", consecutiveFailures)
+			break
+		}
+		if consecutiveSimilar >= maxSimilarOutputs {
+			stopReason = fmt.Sprintf("stuck — %d consecutive similar outputs (>%.0f%% match), agent is repeating itself", consecutiveSimilar, similarityThreshold*100)
 			break
 		}
 
@@ -166,6 +175,8 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 			step.Kept = true
 			step.ChangeSummary = summary
 			consecutiveFailures = 0
+			consecutiveSimilar = 0
+			lastMetricOutput = metricResult.Output
 			fmt.Printf("  KEPT (exit 0) — $%.4f\n", result.CostUSD)
 		} else {
 			if revertErr := git.RevertAll(); revertErr != nil {
@@ -175,7 +186,16 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 			step.Kept = false
 			step.ChangeSummary = fmt.Sprintf("metric exit %d", metricResult.ExitCode)
 			consecutiveFailures++
-			fmt.Printf("  REVERTED (exit %d) — $%.4f\n", metricResult.ExitCode, result.CostUSD)
+
+			// Detect Groundhog Day: agent keeps producing near-identical failing output
+			if lastMetricOutput != "" && lib.Similarity(lastMetricOutput, metricResult.Output) >= similarityThreshold {
+				consecutiveSimilar++
+				fmt.Printf("  REVERTED (exit %d, similar output %d/%d) — $%.4f\n", metricResult.ExitCode, consecutiveSimilar, maxSimilarOutputs, result.CostUSD)
+			} else {
+				consecutiveSimilar = 0
+				fmt.Printf("  REVERTED (exit %d) — $%.4f\n", metricResult.ExitCode, result.CostUSD)
+			}
+			lastMetricOutput = metricResult.Output
 		}
 
 		db.UpdateStep(step)
