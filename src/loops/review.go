@@ -105,15 +105,21 @@ func RunReview(ctx context.Context, db *lib.DB, available []runners.Runner, git 
 				step.Status = "failed"
 				step.ChangeSummary = err.Error()
 			}
-			db.CreateStep(step)
-			db.UpdateStep(step)
+			if dbErr := db.CreateStep(step); dbErr != nil {
+				fmt.Printf("  [%s] warning: failed to persist step: %s\n", runner.Name(), dbErr)
+			}
+			if dbErr := db.UpdateStep(step); dbErr != nil {
+				fmt.Printf("  [%s] warning: failed to update step: %s\n", runner.Name(), dbErr)
+			}
 
 			fmt.Printf("  [%s] done ($%.4f)\n", runner.Name(), res.CostUSD)
 		}(i, r)
 	}
 	wg.Wait()
 
-	db.UpdateSessionStatus(session.ID, "done")
+	if err := db.UpdateSessionStatus(session.ID, "done"); err != nil {
+		fmt.Printf("  warning: failed to update session status: %s\n", err)
+	}
 
 	return &ReviewResult{Session: session, Results: results}, nil
 }

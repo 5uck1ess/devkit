@@ -43,6 +43,9 @@ func RunBugfix(ctx context.Context, db *lib.DB, runner runners.Runner, git *lib.
 	fmt.Printf("Bugfix session %s on branch %s\n\n", session.ID, branchName)
 
 	var spentUSD float64
+	checkBudget := func() bool {
+		return cfg.BudgetUSD > 0 && spentUSD >= cfg.BudgetUSD
+	}
 	opts := runners.RunOpts{
 		WorkDir:      cfg.RepoRoot,
 		AllowedTools: "Bash,Read,Edit,Write,Grep,Glob",
@@ -80,6 +83,13 @@ Read the relevant code. Identify the exact root cause. Report:
 	db.UpdateStep(diagStep)
 	fmt.Printf("  Diagnosis complete ($%.4f)\n\n", diagResult.CostUSD)
 
+	if checkBudget() {
+		fmt.Printf("  Budget exhausted ($%.2f of $%.2f) — stopping after diagnosis\n", spentUSD, cfg.BudgetUSD)
+		db.UpdateSessionStatus(session.ID, "failed")
+		allSteps, _ := db.GetSteps(session.ID)
+		return &BugfixResult{Session: session, Steps: allSteps}, nil
+	}
+
 	// Step 2: Fix
 	fmt.Println("--- Step 2: Fix ---")
 	fixStep := &lib.Step{SessionID: session.ID, Iteration: 2, Status: "running", AgentName: runner.Name()}
@@ -113,7 +123,7 @@ Make the minimal change needed to fix the bug. Do not refactor unrelated code.`,
 	fmt.Printf("  Fix applied ($%.4f)\n\n", fixResult.CostUSD)
 
 	// Step 3: Verify
-	if cfg.TestCmd != "" {
+	if cfg.TestCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 3: Verify ---")
 		testMetric := lib.RunMetric(ctx, cfg.TestCmd, cfg.RepoRoot)
 		if testMetric.ExitCode == 0 {

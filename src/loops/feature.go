@@ -45,6 +45,9 @@ func RunFeature(ctx context.Context, db *lib.DB, runner runners.Runner, git *lib
 	fmt.Printf("Feature session %s on branch %s\n\n", session.ID, branchName)
 
 	var spentUSD float64
+	checkBudget := func() bool {
+		return cfg.BudgetUSD > 0 && spentUSD >= cfg.BudgetUSD
+	}
 	opts := runners.RunOpts{
 		WorkDir:      cfg.RepoRoot,
 		AllowedTools: "Bash,Read,Edit,Write,Grep,Glob",
@@ -78,6 +81,13 @@ Output ONLY the plan as a numbered list. Do not write any code yet.`, cfg.Descri
 	planStep.ChangeSummary = truncate(planResult.Output, 200)
 	db.UpdateStep(planStep)
 	fmt.Printf("  Plan complete ($%.4f)\n\n", planResult.CostUSD)
+
+	if checkBudget() {
+		fmt.Printf("  Budget exhausted ($%.2f of $%.2f) — stopping after plan\n", spentUSD, cfg.BudgetUSD)
+		db.UpdateSessionStatus(session.ID, "failed")
+		allSteps, _ := db.GetSteps(session.ID)
+		return &FeatureResult{Session: session, Steps: allSteps}, nil
+	}
 
 	// Step 2: Implement
 	fmt.Println("--- Step 2: Implement ---")
@@ -113,7 +123,7 @@ Write the code. Make all necessary changes. Do not skip any plan items.`, cfg.De
 	fmt.Printf("  Implemented ($%.4f)\n\n", implResult.CostUSD)
 
 	// Step 3: Test (if test command provided)
-	if cfg.TestCmd != "" {
+	if cfg.TestCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 3: Test ---")
 		for attempt := 1; attempt <= 3; attempt++ {
 			if ctx.Err() != nil {
@@ -153,7 +163,7 @@ Fix the code so tests pass.`, cfg.TestCmd, testMetric.Output), opts)
 	}
 
 	// Step 4: Lint (if lint command provided)
-	if cfg.LintCmd != "" {
+	if cfg.LintCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 4: Lint ---")
 		lintMetric := lib.RunMetric(ctx, cfg.LintCmd, cfg.RepoRoot)
 		if lintMetric.ExitCode != 0 {

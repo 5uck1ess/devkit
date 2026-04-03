@@ -45,6 +45,9 @@ func RunRefactor(ctx context.Context, db *lib.DB, runner runners.Runner, git *li
 	fmt.Printf("Refactor session %s on branch %s\n\n", session.ID, branchName)
 
 	var spentUSD float64
+	checkBudget := func() bool {
+		return cfg.BudgetUSD > 0 && spentUSD >= cfg.BudgetUSD
+	}
 	opts := runners.RunOpts{
 		WorkDir:      cfg.RepoRoot,
 		AllowedTools: "Bash,Read,Edit,Write,Grep,Glob",
@@ -90,6 +93,13 @@ Do not make any changes yet — analysis only.`, cfg.Target, cfg.Description), o
 	analyzeStep.ChangeSummary = truncate(analyzeResult.Output, 200)
 	db.UpdateStep(analyzeStep)
 	fmt.Printf("  Analysis complete ($%.4f)\n\n", analyzeResult.CostUSD)
+
+	if checkBudget() {
+		fmt.Printf("  Budget exhausted ($%.2f of $%.2f) — stopping after analysis\n", spentUSD, cfg.BudgetUSD)
+		db.UpdateSessionStatus(session.ID, "failed")
+		allSteps, _ := db.GetSteps(session.ID)
+		return &RefactorResult{Session: session, Steps: allSteps}, nil
+	}
 
 	// Step 2: Transform
 	fmt.Println("--- Step 2: Transform ---")

@@ -11,7 +11,10 @@ import (
 
 func NewSessionID() string {
 	b := make([]byte, 6)
-	rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback to timestamp-based ID if crypto/rand fails
+		return fmt.Sprintf("%x", os.Getpid())
+	}
 	return hex.EncodeToString(b)
 }
 
@@ -21,7 +24,7 @@ func SessionDir(repoRoot, sessionID string) string {
 
 func EnsureSessionDir(repoRoot, sessionID string) error {
 	dir := SessionDir(repoRoot, sessionID)
-	return os.MkdirAll(dir, 0o755)
+	return os.MkdirAll(dir, 0o700)
 }
 
 func HandoffPath(repoRoot, sessionID string) string {
@@ -30,7 +33,7 @@ func HandoffPath(repoRoot, sessionID string) string {
 
 func WriteHandoff(repoRoot string, session *Session, steps []Step, baseline MetricResult) error {
 	dir := SessionDir(repoRoot, session.ID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 
