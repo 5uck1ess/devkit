@@ -9,9 +9,9 @@ import (
 )
 
 type TestGenConfig struct {
-	Target   string
-	TestCmd  string
-	RepoRoot string
+	Target    string
+	TestCmd   string
+	RepoRoot  string
 	BudgetUSD float64
 }
 

@@ -24,11 +24,11 @@ type FeatureResult struct {
 
 func RunFeature(ctx context.Context, db *lib.DB, runner runners.Runner, git *lib.Git, cfg FeatureConfig) (*FeatureResult, error) {
 	session := &lib.Session{
-		ID:       lib.NewSessionID(),
-		Workflow: "feature",
-		Target:   cfg.Target,
-		Prompt:   cfg.Description,
-		Status:   "running",
+		ID:        lib.NewSessionID(),
+		Workflow:  "feature",
+		Target:    cfg.Target,
+		Prompt:    cfg.Description,
+		Status:    "running",
 		BudgetUSD: cfg.BudgetUSD,
 	}
 	if err := db.CreateSession(session); err != nil {

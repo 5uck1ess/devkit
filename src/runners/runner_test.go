@@ -17,8 +17,8 @@ func NewMockRunner(name string, responses []RunResult, errors []error) *MockRunn
 	return &MockRunner{name: name, responses: responses, errors: errors}
 }
 
-func (m *MockRunner) Name() string     { return m.name }
-func (m *MockRunner) Available() bool  { return true }
+func (m *MockRunner) Name() string    { return m.name }
+func (m *MockRunner) Available() bool { return true }
 
 func (m *MockRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
 	idx := m.callIdx

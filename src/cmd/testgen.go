@@ -37,9 +37,9 @@ var testGenCmd = &cobra.Command{
 		}
 
 		result, err := loops.RunTestGen(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.TestGenConfig{
-			Target:   strings.Join(args, " "),
-			TestCmd:  testCmd,
-			RepoRoot: repoRoot,
+			Target:    strings.Join(args, " "),
+			TestCmd:   testCmd,
+			RepoRoot:  repoRoot,
 			BudgetUSD: budget,
 		})
 		if err != nil {
