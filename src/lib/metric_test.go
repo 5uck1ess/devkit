@@ -23,10 +23,11 @@ func TestRunMetricFailure(t *testing.T) {
 }
 
 func TestRunMetricTruncation(t *testing.T) {
-	// Generate output larger than 4096 bytes
-	result := RunMetric(context.Background(), "head -c 5000 /dev/zero | tr '\\0' 'a'", t.TempDir())
-	if len(result.Output) > 4200 {
-		t.Errorf("output should be truncated, got %d bytes", len(result.Output))
+	// Generate output larger than 4096 bytes using portable printf
+	result := RunMetric(context.Background(), "printf '%5000s' ' ' | tr ' ' 'a'", t.TempDir())
+	maxExpected := 4096 + len("\n... (truncated)")
+	if len(result.Output) > maxExpected {
+		t.Errorf("output should be truncated to ~%d, got %d bytes", maxExpected, len(result.Output))
 	}
 }
 

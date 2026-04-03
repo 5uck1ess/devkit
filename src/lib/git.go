@@ -70,8 +70,7 @@ func (g *Git) DiffStat() (string, error) {
 func (g *Git) DefaultBranch() string {
 	// Try to detect from remote
 	if ref, err := g.run("symbolic-ref", "refs/remotes/origin/HEAD"); err == nil {
-		parts := strings.Split(ref, "/")
-		return parts[len(parts)-1]
+		return strings.TrimPrefix(ref, "refs/remotes/origin/")
 	}
 	// Fallback: try main, then master
 	if _, err := g.run("rev-parse", "--verify", "main"); err == nil {

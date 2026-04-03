@@ -37,10 +37,13 @@ func (m *MockRunner) CallCount() int { return m.callIdx }
 
 func TestDetectRunners(t *testing.T) {
 	available := DetectRunners()
-	// At minimum claude should be available in dev environment
-	// but we can't guarantee it in CI, so just check it doesn't panic
-	if available == nil {
-		// nil is fine — means nothing is installed
+	for _, r := range available {
+		if r.Name() == "" {
+			t.Error("runner has empty name")
+		}
+		if !r.Available() {
+			t.Errorf("runner %s reported as available but Available() returns false", r.Name())
+		}
 	}
 }
 

@@ -75,7 +75,9 @@ Write actual test code — no placeholders or TODOs.`, cfg.Target), opts)
 		return nil, fmt.Errorf("generate step failed: %w", err)
 	}
 	spentUSD += genResult.CostUSD
-	git.CommitAll(fmt.Sprintf("test-gen(%s): generate tests", session.ID))
+	if err := git.CommitAll(fmt.Sprintf("test-gen(%s): generate tests", session.ID)); err != nil {
+		fmt.Printf("  Warning: commit failed: %s\n", err)
+	}
 	genStep.Status = "kept"
 	genStep.Kept = true
 	genStep.CostUSD = genResult.CostUSD
@@ -84,6 +86,7 @@ Write actual test code — no placeholders or TODOs.`, cfg.Target), opts)
 	fmt.Printf("  Tests generated ($%.4f)\n\n", genResult.CostUSD)
 
 	// Step 2: Run tests and fix failures (up to 5 attempts)
+	testsPass := cfg.TestCmd == ""
 	if cfg.TestCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 2: Run & Fix ---")
 		for attempt := 1; attempt <= 5; attempt++ {
@@ -93,6 +96,7 @@ Write actual test code — no placeholders or TODOs.`, cfg.Target), opts)
 			testMetric := lib.RunMetric(ctx, cfg.TestCmd, cfg.RepoRoot)
 			if testMetric.ExitCode == 0 {
 				fmt.Printf("  All tests passing (attempt %d)\n", attempt)
+				testsPass = true
 				break
 			}
 
@@ -115,7 +119,9 @@ Test output:
 				continue
 			}
 			spentUSD += fixResult.CostUSD
-			git.CommitAll(fmt.Sprintf("test-gen(%s): fix tests attempt %d", session.ID, attempt))
+			if err := git.CommitAll(fmt.Sprintf("test-gen(%s): fix tests attempt %d", session.ID, attempt)); err != nil {
+				fmt.Printf("  Warning: commit failed: %s\n", err)
+			}
 			fixStep.Status = "kept"
 			fixStep.Kept = true
 			fixStep.CostUSD = fixResult.CostUSD
@@ -123,9 +129,16 @@ Test output:
 		}
 	}
 
-	db.UpdateSessionStatus(session.ID, "done")
-	allSteps, _ := db.GetSteps(session.ID)
-	lib.WriteReport(cfg.RepoRoot, session, allSteps, "completed")
+	status := "done"
+	if !testsPass {
+		status = "failed"
+	}
+	db.UpdateSessionStatus(session.ID, status)
+	allSteps, err := db.GetSteps(session.ID)
+	if err != nil {
+		fmt.Printf("  Warning: failed to get steps for report: %s\n", err)
+	}
+	lib.WriteReport(cfg.RepoRoot, session, allSteps, status)
 
 	return &TestGenResult{Session: session, Steps: allSteps}, nil
 }

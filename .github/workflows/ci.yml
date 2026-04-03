@@ -31,5 +31,9 @@ jobs:
 
       - name: Check formatting
         run: |
-          gofmt -l .
-          test -z "$(gofmt -l .)" || (echo "Files not formatted:" && gofmt -l . && exit 1)
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi

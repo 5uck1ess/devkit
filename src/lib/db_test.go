@@ -17,6 +17,20 @@ func tempDB(t *testing.T) *DB {
 	return db
 }
 
+func mustCreateSession(t *testing.T, db *DB, s *Session) {
+	t.Helper()
+	if err := db.CreateSession(s); err != nil {
+		t.Fatalf("setup: create session: %v", err)
+	}
+}
+
+func mustCreateStep(t *testing.T, db *DB, s *Step) {
+	t.Helper()
+	if err := db.CreateStep(s); err != nil {
+		t.Fatalf("setup: create step: %v", err)
+	}
+}
+
 func TestCreateAndGetSession(t *testing.T) {
 	db := tempDB(t)
 
@@ -27,9 +41,7 @@ func TestCreateAndGetSession(t *testing.T) {
 		Metric:   "go test ./...",
 		Status:   "running",
 	}
-	if err := db.CreateSession(s); err != nil {
-		t.Fatalf("create: %v", err)
-	}
+	mustCreateSession(t, db, s)
 
 	got, err := db.GetSession("abc123def456")
 	if err != nil {
@@ -53,14 +65,16 @@ func TestGetSessionNotFound(t *testing.T) {
 
 func TestUpdateSessionStatus(t *testing.T) {
 	db := tempDB(t)
-	s := &Session{ID: "test12345678", Workflow: "improve", Status: "running"}
-	db.CreateSession(s)
+	mustCreateSession(t, db, &Session{ID: "test12345678", Workflow: "improve", Status: "running"})
 
 	if err := db.UpdateSessionStatus("test12345678", "done"); err != nil {
 		t.Fatalf("update: %v", err)
 	}
 
-	got, _ := db.GetSession("test12345678")
+	got, err := db.GetSession("test12345678")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
 	if got.Status != "done" {
 		t.Errorf("status = %q, want done", got.Status)
 	}
@@ -68,12 +82,10 @@ func TestUpdateSessionStatus(t *testing.T) {
 
 func TestCreateAndGetSteps(t *testing.T) {
 	db := tempDB(t)
-	db.CreateSession(&Session{ID: "sess12345678", Workflow: "improve", Status: "running"})
+	mustCreateSession(t, db, &Session{ID: "sess12345678", Workflow: "improve", Status: "running"})
 
 	step := &Step{SessionID: "sess12345678", Iteration: 1, Status: "running", AgentName: "claude"}
-	if err := db.CreateStep(step); err != nil {
-		t.Fatalf("create step: %v", err)
-	}
+	mustCreateStep(t, db, step)
 	if step.ID == 0 {
 		t.Error("step ID should be set after create")
 	}
@@ -100,13 +112,15 @@ func TestCreateAndGetSteps(t *testing.T) {
 
 func TestSessionTotalCost(t *testing.T) {
 	db := tempDB(t)
-	db.CreateSession(&Session{ID: "cost12345678", Workflow: "improve", Status: "running"})
+	mustCreateSession(t, db, &Session{ID: "cost12345678", Workflow: "improve", Status: "running"})
 
 	for i := 1; i <= 3; i++ {
 		s := &Step{SessionID: "cost12345678", Iteration: i, Status: "done", AgentName: "claude"}
-		db.CreateStep(s)
+		mustCreateStep(t, db, s)
 		s.CostUSD = 0.10
-		db.UpdateStep(s)
+		if err := db.UpdateStep(s); err != nil {
+			t.Fatalf("update step %d: %v", i, err)
+		}
 	}
 
 	cost, err := db.SessionTotalCost("cost12345678")
@@ -120,8 +134,8 @@ func TestSessionTotalCost(t *testing.T) {
 
 func TestListSessions(t *testing.T) {
 	db := tempDB(t)
-	db.CreateSession(&Session{ID: "list12345678", Workflow: "improve", Status: "done"})
-	db.CreateSession(&Session{ID: "list87654321", Workflow: "review", Status: "done"})
+	mustCreateSession(t, db, &Session{ID: "list12345678", Workflow: "improve", Status: "done"})
+	mustCreateSession(t, db, &Session{ID: "list87654321", Workflow: "review", Status: "done"})
 
 	sessions, err := db.ListSessions()
 	if err != nil {
@@ -134,19 +148,24 @@ func TestListSessions(t *testing.T) {
 
 func TestLastIteration(t *testing.T) {
 	db := tempDB(t)
-	db.CreateSession(&Session{ID: "iter12345678", Workflow: "improve", Status: "running"})
+	mustCreateSession(t, db, &Session{ID: "iter12345678", Workflow: "improve", Status: "running"})
 
-	iter, _ := db.LastIteration("iter12345678")
+	iter, err := db.LastIteration("iter12345678")
+	if err != nil {
+		t.Fatalf("last iteration: %v", err)
+	}
 	if iter != 0 {
 		t.Errorf("empty session should have last iter 0, got %d", iter)
 	}
 
 	for i := 1; i <= 5; i++ {
-		s := &Step{SessionID: "iter12345678", Iteration: i, Status: "done", AgentName: "claude"}
-		db.CreateStep(s)
+		mustCreateStep(t, db, &Step{SessionID: "iter12345678", Iteration: i, Status: "done", AgentName: "claude"})
 	}
 
-	iter, _ = db.LastIteration("iter12345678")
+	iter, err = db.LastIteration("iter12345678")
+	if err != nil {
+		t.Fatalf("last iteration: %v", err)
+	}
 	if iter != 5 {
 		t.Errorf("last iter = %d, want 5", iter)
 	}
@@ -155,14 +174,18 @@ func TestLastIteration(t *testing.T) {
 func TestDBDirectoryPermissions(t *testing.T) {
 	dir := t.TempDir()
 	dbDir := filepath.Join(dir, ".devkit")
-	OpenDB(filepath.Join(dbDir, "devkit.db"))
+	db, err := OpenDB(filepath.Join(dbDir, "devkit.db"))
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
 
 	info, err := os.Stat(dbDir)
 	if err != nil {
 		t.Fatalf("stat: %v", err)
 	}
 	perm := info.Mode().Perm()
-	if perm != 0o700 {
+	if perm&0o777 != 0o700 {
 		t.Errorf("directory permissions = %o, want 700", perm)
 	}
 }

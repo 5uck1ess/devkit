@@ -7,13 +7,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 func NewSessionID() string {
 	b := make([]byte, 6)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to timestamp-based ID if crypto/rand fails
-		return fmt.Sprintf("%x", os.Getpid())
+		// Fallback: fixed-length 12-char hex from nanosecond timestamp
+		return fmt.Sprintf("%012x", time.Now().UnixNano())[:12]
 	}
 	return hex.EncodeToString(b)
 }
