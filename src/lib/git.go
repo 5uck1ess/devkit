@@ -67,10 +67,29 @@ func (g *Git) DiffStat() (string, error) {
 	return g.run("diff", "--cached", "--stat")
 }
 
+func (g *Git) DefaultBranch() string {
+	// Try to detect from remote
+	if ref, err := g.run("symbolic-ref", "refs/remotes/origin/HEAD"); err == nil {
+		return strings.TrimPrefix(ref, "refs/remotes/origin/")
+	}
+	// Fallback: try main, then master
+	if _, err := g.run("rev-parse", "--verify", "main"); err == nil {
+		return "main"
+	}
+	if _, err := g.run("rev-parse", "--verify", "master"); err == nil {
+		return "master"
+	}
+	return "main"
+}
+
 func (g *Git) DiffFromMain() (string, error) {
-	diff, err := g.run("diff", "main...HEAD")
+	base := g.DefaultBranch()
+	diff, err := g.run("diff", base+"...HEAD")
 	if err != nil {
-		// fallback to cached diff
+		// fallback to cached + unstaged
+		diff, err = g.run("diff", "HEAD")
+	}
+	if err != nil {
 		diff, err = g.run("diff", "--cached")
 	}
 	return diff, err

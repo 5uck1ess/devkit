@@ -7,6 +7,18 @@ description: Multi-agent test generation — each available agent generates test
 
 Generate tests from all available agents in parallel, then merge the best tests into a comprehensive suite.
 
+## Step 0: Harness Detection
+
+```bash
+if command -v devkit >/dev/null 2>&1; then
+  echo "Go harness detected — delegating to devkit test-gen for full output capture."
+  devkit test-gen {target} --test {test_command}
+  exit 0
+fi
+```
+
+If the `devkit` binary is in PATH, delegate entirely to it. Only fall through to plugin-based steps if the harness is not installed.
+
 ## Step 1: Analyze Target
 
 Read the target files and detect:

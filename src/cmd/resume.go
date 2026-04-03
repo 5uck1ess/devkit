@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
@@ -9,13 +11,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var sessionIDPattern = regexp.MustCompile(`^[a-f0-9]{12}$`)
+
 var resumeCmd = &cobra.Command{
 	Use:   "resume <session-id>",
 	Short: "Resume a paused or crashed session",
 	Long:  "Picks up an improve session from where it left off, using the SQLite state and handoff file.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		sessionID := args[0]
+		sessionID := strings.ToLower(args[0])
+		if !sessionIDPattern.MatchString(sessionID) {
+			return fmt.Errorf("invalid session ID %q — expected 12 hex characters (e.g., a1b2c3d4e5f6)", sessionID)
+		}
 
 		session, err := db.GetSession(sessionID)
 		if err != nil {

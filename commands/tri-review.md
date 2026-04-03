@@ -7,6 +7,20 @@ description: Triple-agent PR/code review. Claude runs as native background agent
 
 Run the same code review across three AI agents in parallel and consolidate results.
 
+## Step 0: Harness Detection
+
+```bash
+if command -v devkit >/dev/null 2>&1; then
+  echo "Go harness detected — delegating to devkit review for full output capture."
+  devkit review {prompt or default}
+  # The harness handles parallel dispatch, full stdout capture (no truncation),
+  # SQLite session tracking, and consolidated output. Skip all steps below.
+  exit 0
+fi
+```
+
+If the `devkit` binary is in PATH, delegate entirely to it. The harness avoids output truncation, captures full agent responses, and tracks sessions in SQLite. Only fall through to the plugin-based steps below if the harness is not installed.
+
 ## Step 1: Gather Context
 
 ```bash
