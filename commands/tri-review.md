@@ -10,12 +10,15 @@ Run the same code review across three AI agents in parallel and consolidate resu
 ## Step 1: Gather Context
 
 ```bash
-# Try branch diff first, fall back to last commit, then cached
-DIFF=$(git diff main...HEAD 2>/dev/null)
-if [ -z "$DIFF" ]; then DIFF=$(git diff HEAD~1 2>/dev/null); fi
-if [ -z "$DIFF" ]; then DIFF=$(git diff --cached 2>/dev/null); fi
+# Write directly to file — avoids shell variable limits and content mangling
+git diff main...HEAD > /tmp/tri-review-diff.txt 2>/dev/null
+if [ ! -s /tmp/tri-review-diff.txt ]; then git diff HEAD~1..HEAD > /tmp/tri-review-diff.txt 2>/dev/null; fi
+if [ ! -s /tmp/tri-review-diff.txt ]; then git diff --cached > /tmp/tri-review-diff.txt 2>/dev/null; fi
 
-echo "$DIFF" > /tmp/tri-review-diff.txt
+DIFF_LINES=$(wc -l < /tmp/tri-review-diff.txt)
+if [ "$DIFF_LINES" -gt 5000 ]; then
+  echo "WARNING: Diff is $DIFF_LINES lines. Consider narrowing to specific files."
+fi
 ```
 
 If all empty, ask the user what to review.
@@ -72,9 +75,11 @@ Agent: reviewer
 Input: {prompt}
 
 ```diff
-{paste the actual diff content here — do NOT tell the agent to run git diff}
+{diff}
 ```
 ```
+
+<!-- The orchestrator MUST inline the diff content here from /tmp/tri-review-diff.txt. The agent runs in a worktree and cannot fetch it. -->
 
 ### Codex — if available
 

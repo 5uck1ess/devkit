@@ -52,37 +52,45 @@ Code: {source_code}
 
 **[PARALLEL]** Launch all available agents concurrently:
 
+**CRITICAL:** All source code MUST be passed inline in each agent's prompt. Worktree-isolated agents cannot see the latest commits.
+
 ### Claude — always runs
 
+Pass the source code inline — the agent runs in a worktree and cannot see recent changes.
+
 ```
-Task: Generate tests for {target} using the test-writer agent.
+Task: Generate tests for {target}.
 Agent: test-writer
-Input: {prompt} + {source_code}
+Input: {prompt}
+
+{source_code — inlined here by the orchestrator}
 ```
+
+<!-- The orchestrator MUST inline the source code here. The agent runs in a worktree and cannot fetch it. -->
 
 ### Codex — if available
 
 ```
-/codex:rescue --effort high --background "{prompt}"
+/codex:rescue --effort high --background "{prompt} {source_code}"
 ```
 
-Retrieve result with `/codex:result` when done.
+Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
 
 ### Gemini — if available
 
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --background "{prompt}"
+/gemini:rescue --background "{prompt} {source_code}"
 ```
 
-Retrieve result with `/gemini:result` when done.
+Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
 
 **CLI fallback (only if plugin not installed):**
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "{prompt}" -y \
+  gemini -p "{prompt} {source_code}" -y \
     --output-format text > /tmp/tri-test-gemini.txt 2>/dev/null &
 fi
 

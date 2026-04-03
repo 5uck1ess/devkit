@@ -39,14 +39,18 @@ Run with whatever is available. Claude always runs. Prefer plugin over CLI.
 
 **[PARALLEL]** Launch all available agents concurrently:
 
+**CRITICAL:** Pass the full prompt and any relevant context inline to each agent. Worktree-isolated agents cannot see the latest commits or local state.
+
 ### Claude — always runs (native background agent)
 
-Spawn the `researcher` agent as a background task:
+Spawn the `researcher` agent as a background task with the full prompt inline:
 
 ```
-Task: {user's task}
+Task: {user's task — full prompt inlined here}
 Agent: researcher
 ```
+
+<!-- The orchestrator MUST inline the complete task prompt. The agent runs in a worktree. -->
 
 ### Codex — if available
 
@@ -54,7 +58,7 @@ Agent: researcher
 /codex:rescue --effort high --background "$PROMPT"
 ```
 
-Retrieve result with `/codex:result` when done.
+Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
 
 ### Gemini — if available
 
@@ -64,7 +68,7 @@ Retrieve result with `/codex:result` when done.
 /gemini:rescue --background "$PROMPT"
 ```
 
-Retrieve result with `/gemini:result` when done.
+Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
 
 **CLI fallback (only if plugin not installed):**
 

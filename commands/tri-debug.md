@@ -60,37 +60,43 @@ Relevant code: {source_files}
 
 **[PARALLEL]** Launch all available agents concurrently:
 
+**CRITICAL:** All context (bug description, stack trace, relevant code) MUST be passed inline in each agent's prompt. Worktree-isolated agents cannot see the latest commits or local state.
+
 ### Claude — always runs (native background agent)
 
 ```
-Task: Debug this issue using the researcher agent.
+Task: Debug this issue.
 Agent: researcher
-Input: {prompt} + {context}
+Input: {prompt}
+
+{context — bug description, stack trace, relevant code inlined here}
 ```
+
+<!-- The orchestrator MUST inline all context here. The agent runs in a worktree and cannot fetch it. -->
 
 ### Codex — if available
 
 ```
-/codex:rescue --effort high --background "{prompt}"
+/codex:rescue --effort high --background "{prompt} {context}"
 ```
 
-Retrieve result with `/codex:result` when done.
+Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
 
 ### Gemini — if available
 
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --background "{prompt}"
+/gemini:rescue --background "{prompt} {context}"
 ```
 
-Retrieve result with `/gemini:result` when done.
+Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
 
 **CLI fallback (only if plugin not installed):**
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "{prompt}" -y \
+  gemini -p "{prompt} {context}" -y \
     --output-format text > /tmp/tri-debug-gemini.txt 2>/dev/null &
   GEMINI_PID=$!
 fi
