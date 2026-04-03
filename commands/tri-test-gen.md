@@ -63,7 +63,7 @@ Input: {prompt} + {source_code}
 ### Codex — if available
 
 ```
-/codex:rescue --model gpt-5.4 --effort high --background "{prompt}"
+/codex:rescue --effort high --background "{prompt}"
 ```
 
 Retrieve result with `/codex:result` when done.
@@ -73,7 +73,7 @@ Retrieve result with `/codex:result` when done.
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --model gemini-3.1-pro --background "{prompt}"
+/gemini:rescue --background "{prompt}"
 ```
 
 Retrieve result with `/gemini:result` when done.
@@ -82,7 +82,7 @@ Retrieve result with `/gemini:result` when done.
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "{prompt}" -m gemini-3.1-pro -y \
+  gemini -p "{prompt}" -y \
     --output-format text > /tmp/tri-test-gemini.txt 2>/dev/null &
 fi
 

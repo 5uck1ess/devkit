@@ -51,7 +51,7 @@ Agent: researcher
 ### Codex — if available
 
 ```
-/codex:rescue --model gpt-5.4 --effort high --background "$PROMPT"
+/codex:rescue --effort high --background "$PROMPT"
 ```
 
 Retrieve result with `/codex:result` when done.
@@ -61,7 +61,7 @@ Retrieve result with `/codex:result` when done.
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --model gemini-3.1-pro --background "$PROMPT"
+/gemini:rescue --background "$PROMPT"
 ```
 
 Retrieve result with `/gemini:result` when done.
@@ -70,7 +70,7 @@ Retrieve result with `/gemini:result` when done.
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "$PROMPT" -m gemini-3.1-pro -y \
+  gemini -p "$PROMPT" -y \
     --output-format text > /tmp/tri-dispatch-gemini.txt 2>/dev/null &
 fi
 
