@@ -39,9 +39,13 @@ func showAllSessions() error {
 	fmt.Printf("%-14s %-10s %-10s %-8s %s\n", "-------", "--------", "------", "----", "-------")
 
 	for _, s := range sessions {
-		cost, _ := db.SessionTotalCost(s.ID)
+		cost, err := db.SessionTotalCost(s.ID)
+		costStr := fmt.Sprintf("$%.4f", cost)
+		if err != nil {
+			costStr = "unknown"
+		}
 		age := formatAge(s.CreatedAt)
-		fmt.Printf("%-14s %-10s %-10s $%-7.4f %s\n", s.ID, s.Workflow, s.Status, cost, age)
+		fmt.Printf("%-14s %-10s %-10s %-8s %s\n", s.ID, s.Workflow, s.Status, costStr, age)
 	}
 	return nil
 }

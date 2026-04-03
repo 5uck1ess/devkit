@@ -23,7 +23,12 @@ var dispatchCmd = &cobra.Command{
 
 		var agents []string
 		if agentList != "" {
-			agents = strings.Split(agentList, ",")
+			for _, a := range strings.Split(agentList, ",") {
+				a = strings.TrimSpace(a)
+				if a != "" {
+					agents = append(agents, a)
+				}
+			}
 		}
 
 		available := runners.DetectRunners()

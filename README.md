@@ -286,6 +286,61 @@ Set automatically in each multi-agent command:
 
 ---
 
+## Go CLI Harness
+
+Deterministic orchestration binary — the machine controls the loop, Claude is the body.
+
+```bash
+cd src && make build
+./bin/devkit --help
+```
+
+### Commands
+
+| Command | Description |
+|---|---|
+| `devkit improve` | Metric-gated iteration loop — one Claude invocation per iteration |
+| `devkit feature` | Plan, implement, test, lint — commits only after tests pass |
+| `devkit bugfix` | Diagnose, fix, verify — reverts if tests break |
+| `devkit refactor` | Analyze, transform, verify — reverts if behavior changes |
+| `devkit test-gen` | Generate tests, run, fix failures — iterates until green |
+| `devkit review` | Parallel multi-agent code review (Claude + Codex + Gemini) |
+| `devkit dispatch` | Send any task to multiple agents, compare outputs |
+| `devkit status` | Show all sessions, costs, iteration history |
+| `devkit resume` | Pick up a crashed or paused session |
+
+### What it does that plugins can't
+
+- **Exact iteration counts** — Go binary owns the loop, not the LLM
+- **Crash recovery** — SQLite state + handoff files survive crashes
+- **Hard budget caps** — stops spawning at your dollar limit
+- **CI/CD integration** — runs headless, no conversation needed
+- **True parallel dispatch** — goroutines, not sequential prompts
+
+### Examples
+
+```bash
+# Run 50 improvement iterations overnight, stop at $20
+devkit improve --metric "npm test" --iterations 50 --budget 20.00
+
+# Implement a feature with test verification
+devkit feature "add JWT auth" --target src/auth/ --test "npm test"
+
+# Fix a bug with automated verification
+devkit bugfix "login 500 on plus sign emails" --test "go test ./..."
+
+# Generate tests for a module
+devkit test-gen src/parser/ --test "go test ./..."
+
+# Resume a crashed session
+devkit resume abc123def456
+
+# Check what happened
+devkit status
+```
+
+---
+
 ## Prerequisites
 
 **Required:** Claude Code (you're already here)

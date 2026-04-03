@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
@@ -16,6 +17,9 @@ var resumeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		sessionID := args[0]
+		if !regexp.MustCompile(`^[a-f0-9]{12}$`).MatchString(sessionID) {
+			return fmt.Errorf("invalid session ID %q — expected 12 hex characters (e.g., a1b2c3d4e5f6)", sessionID)
+		}
 
 		session, err := db.GetSession(sessionID)
 		if err != nil {
