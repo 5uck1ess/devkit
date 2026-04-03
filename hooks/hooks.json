@@ -1,5 +1,5 @@
 {
-  "description": "Safety hooks and RTK token optimization for Bash, Edit, and Write tools",
+  "description": "Multi-layer enforcement stack: PreToolUse safety + RTK optimization, PostToolUse validation, SubagentStop verification, Stop quality gate",
   "hooks": {
     "PreToolUse": [
       {
@@ -31,6 +31,56 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
             "statusMessage": "Checking file safety...",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-validate.sh",
+            "statusMessage": "Validating output...",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-validate.sh",
+            "statusMessage": "Validating write...",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/subagent-stop.sh",
+            "statusMessage": "Verifying agent work...",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-gate.sh",
+            "statusMessage": "Quality gate...",
             "timeout": 10
           }
         ]

@@ -1385,6 +1385,77 @@ func TestBuildImprovePrompt_EmptyFields(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RunImproveLoop — similarity detection
+// ---------------------------------------------------------------------------
+
+func TestRunImproveLoop_SimilarOutputStopsEarly(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// All iterations will fail (metric "false"), and the agent produces
+	// near-identical output each time. The similarity detector should
+	// stop before hitting MaxFailures (set high to prove similarity wins).
+	runner := mockRunner("claude", []runners.RunResult{
+		successResult("attempt A"),
+		successResult("attempt B"),
+		successResult("attempt C"),
+		successResult("attempt D"),
+		successResult("attempt E"),
+	}, nil)
+
+	result, err := RunImproveLoop(context.Background(), db, runner, git, ImproveConfig{
+		Target:        "src/",
+		Metric:        "echo 'FAIL: 3 errors found in parser.go' && exit 1",
+		Objective:     "fix errors",
+		MaxIterations: 10,
+		MaxFailures:   10, // high — similarity should trigger first
+		RepoRoot:      dir,
+	})
+	if err != nil {
+		t.Fatalf("RunImproveLoop: %v", err)
+	}
+	if !strings.Contains(result.StopReason, "similar outputs") {
+		t.Errorf("stop reason = %q, want 'similar outputs'", result.StopReason)
+	}
+	// Should stop after 3 iterations (2 similar = threshold)
+	if runner.CallCount() > 4 {
+		t.Errorf("runner calls = %d, expected <= 4 (similarity bail)", runner.CallCount())
+	}
+}
+
+func TestRunImproveLoop_DifferentOutputsNoSimilarityStop(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// Each iteration fails with different output — should hit MaxFailures, not similarity
+	runner := mockRunner("claude", []runners.RunResult{
+		successResult("change 1"),
+		successResult("change 2"),
+		successResult("change 3"),
+	}, nil)
+
+	// Use a script that produces different output each time
+	counterFile := filepath.Join(dir, "counter.txt")
+	os.WriteFile(counterFile, []byte("0"), 0o644)
+	metric := fmt.Sprintf(`n=$(cat %s); echo "FAIL: error $n" && echo $((n+1)) > %s && exit 1`, counterFile, counterFile)
+
+	result, err := RunImproveLoop(context.Background(), db, runner, git, ImproveConfig{
+		Target:        "src/",
+		Metric:        metric,
+		Objective:     "fix",
+		MaxIterations: 10,
+		MaxFailures:   3,
+		RepoRoot:      dir,
+	})
+	if err != nil {
+		t.Fatalf("RunImproveLoop: %v", err)
+	}
+	if !strings.Contains(result.StopReason, "consecutive failures") {
+		t.Errorf("stop reason = %q, want 'consecutive failures'", result.StopReason)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // git helper for review tests
 // ---------------------------------------------------------------------------
 
