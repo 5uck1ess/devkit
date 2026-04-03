@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0
+
+- Add Go CLI harness: deterministic loop control, multi-agent dispatch, SQLite state
+- Add test suite for runners and lib packages with race detection
+- Add CI pipeline (GitHub Actions): build, vet, test, gofmt check
+- Add `test-gen` command as composable Go primitive
+- Add `feature`, `bugfix`, `refactor` commands as composable Go primitives
+- Fix security findings: budget enforcement, permissions, DB error handling
+- Fix consensus findings from tri-review: races, exit codes, verify-before-commit
+- Add Gemini agent integration alongside Codex
+
 ## 1.2.0
 
 - Add RTK token optimization hook — 60-90% savings on Bash output (optional, no-op if rtk not installed)
