@@ -75,8 +75,8 @@ func mockRunner(name string, responses []runners.RunResult, errs []error) *mockR
 }
 
 func (m *mockRunnerT) Name() string    { return m.name }
-func (m *mockRunnerT) Available() bool  { return true }
-func (m *mockRunnerT) CallCount() int   { return m.callIdx }
+func (m *mockRunnerT) Available() bool { return true }
+func (m *mockRunnerT) CallCount() int  { return m.callIdx }
 
 func (m *mockRunnerT) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
 	idx := m.callIdx

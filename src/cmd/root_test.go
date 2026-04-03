@@ -11,8 +11,8 @@ type stubRunner struct {
 	name string
 }
 
-func (s *stubRunner) Name() string      { return s.name }
-func (s *stubRunner) Available() bool   { return true }
+func (s *stubRunner) Name() string    { return s.name }
+func (s *stubRunner) Available() bool { return true }
 func (s *stubRunner) Run(_ context.Context, _ string, _ runners.RunOpts) (runners.RunResult, error) {
 	return runners.RunResult{}, nil
 }
