@@ -10,10 +10,20 @@ Run the same code review across three AI agents in parallel and consolidate resu
 ## Step 1: Gather Context
 
 ```bash
-git diff main...HEAD > /tmp/tri-review-diff.txt
+# Write directly to file — avoids shell variable limits and content mangling
+git diff main...HEAD > /tmp/tri-review-diff.txt 2>/dev/null
+if [ ! -s /tmp/tri-review-diff.txt ]; then git diff HEAD~1..HEAD > /tmp/tri-review-diff.txt 2>/dev/null; fi
+if [ ! -s /tmp/tri-review-diff.txt ]; then git diff --cached > /tmp/tri-review-diff.txt 2>/dev/null; fi
+
+DIFF_LINES=$(wc -l < /tmp/tri-review-diff.txt)
+if [ "$DIFF_LINES" -gt 5000 ]; then
+  echo "WARNING: Diff is $DIFF_LINES lines. Consider narrowing to specific files."
+fi
 ```
 
-If empty, try `git diff --cached` or ask what to review.
+If all empty, ask the user what to review.
+
+**CRITICAL:** The diff MUST be passed inline in each agent's prompt — do NOT rely on agents fetching the diff themselves. Worktree-isolated agents cannot see the latest commits.
 
 ## Step 2: Build the Prompt
 
@@ -57,46 +67,54 @@ Run with whatever is available. Claude always runs. Codex and Gemini are optiona
 
 ### Claude — always runs (native background agent, token-efficient)
 
-Spawn the `reviewer` agent as a background task. The orchestrator only receives the summary, not the full conversation.
+Spawn the `reviewer` agent as a background task. **Pass the full diff inline in the prompt** — the agent runs in a worktree and cannot see recent commits.
 
 ```
-Task: Review this diff using the reviewer agent.
+Task: Review this code diff.
 Agent: reviewer
-Input: {prompt} + {diff}
+Input: {prompt}
+
+```diff
+{diff}
 ```
+```
+
+<!-- The orchestrator MUST inline the diff content here from /tmp/tri-review-diff.txt. The agent runs in a worktree and cannot fetch it. -->
 
 ### Codex — if available
 
 ```
-/codex:rescue --model gpt-5.4 --effort high --background \
+/codex:rescue --effort high --background \
   "{prompt} $(cat /tmp/tri-review-diff.txt)"
 ```
 
-Retrieve result with `/codex:result` when done.
+Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
 
 ### Gemini — if available
 
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --model gemini-3.1-pro --background \
+/gemini:rescue --background \
   "{prompt} $(cat /tmp/tri-review-diff.txt)"
 ```
 
-Retrieve result with `/gemini:result` when done.
+Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
 
 **CLI fallback (only if plugin not installed):**
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
-    -m gemini-3.1-pro -y --output-format text \
+    -y --output-format text \
     > /tmp/tri-review-gemini.txt 2>/dev/null &
   GEMINI_PID=$!
 fi
 
 wait
 ```
+
+Note: Gemini CLI defaults to the best available model. Don't hardcode a model name — it may not be available on all accounts.
 
 ## Autonomy Flags
 

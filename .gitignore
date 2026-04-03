@@ -8,6 +8,9 @@
 # Claude Code local config
 .claude/
 
+# Devkit runtime state
+.devkit/
+
 # OS
 .DS_Store
 Thumbs.db

@@ -15,8 +15,13 @@ Determine what to audit:
 - Otherwise, audit the full project
 
 ```bash
+# Write directly to file — avoids shell variable limits
 git diff main...HEAD > /tmp/tri-security-diff.txt 2>/dev/null
+if [ ! -s /tmp/tri-security-diff.txt ]; then git diff HEAD~1..HEAD > /tmp/tri-security-diff.txt 2>/dev/null; fi
+if [ ! -s /tmp/tri-security-diff.txt ]; then git diff --cached > /tmp/tri-security-diff.txt 2>/dev/null; fi
 ```
+
+**CRITICAL:** All code/diff MUST be passed inline in each agent's prompt. Worktree-isolated agents cannot see the latest commits.
 
 ## Step 2: Detect Available Agents
 
@@ -70,35 +75,43 @@ Code: {diff_or_source}
 
 ### Claude — always runs
 
+Pass the code/diff inline — the agent runs in a worktree and cannot see recent commits.
+
 ```
-Task: Security audit using the security-auditor agent.
+Task: Security audit of this code.
 Agent: security-auditor
-Input: {prompt} + {code}
+Input: {prompt}
+
+```diff
+{diff}
 ```
+```
+
+<!-- The orchestrator MUST inline the diff/code here. The agent runs in a worktree and cannot fetch it. -->
 
 ### Codex — if available
 
 ```
-/codex:rescue --model gpt-5.4 --effort high --background "{prompt}"
+/codex:rescue --effort high --background "{prompt} $(cat /tmp/tri-security-diff.txt)"
 ```
 
-Retrieve result with `/codex:result` when done.
+Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
 
 ### Gemini — if available
 
 **Plugin (preferred):**
 
 ```
-/gemini:rescue --model gemini-3.1-pro --background "{prompt}"
+/gemini:rescue --background "{prompt} $(cat /tmp/tri-security-diff.txt)"
 ```
 
-Retrieve result with `/gemini:result` when done.
+Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
 
 **CLI fallback (only if plugin not installed):**
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "{prompt}" -m gemini-3.1-pro -y \
+  gemini -p "{prompt} $(cat /tmp/tri-security-diff.txt)" -y \
     --output-format text > /tmp/tri-security-gemini.txt 2>/dev/null &
 fi
 
