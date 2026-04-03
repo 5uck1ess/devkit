@@ -12,13 +12,13 @@ import (
 type ClaudeRunner struct{}
 
 type claudeResponse struct {
-	Result    string `json:"result"`
-	SessionID string `json:"session_id"`
-	IsError   bool   `json:"is_error"`
-	Usage     struct {
-		InputTokens  int     `json:"input_tokens"`
-		OutputTokens int     `json:"output_tokens"`
-		CostUSD      float64 `json:"cost_usd"`
+	Result       string  `json:"result"`
+	SessionID    string  `json:"session_id"`
+	IsError      bool    `json:"is_error"`
+	TotalCostUSD float64 `json:"total_cost_usd"`
+	Usage        struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
 	} `json:"usage"`
 }
 
@@ -31,7 +31,6 @@ func (r *ClaudeRunner) Available() bool {
 
 func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
 	args := []string{
-		"--bare",
 		"-p", prompt,
 		"--output-format", "json",
 		"--no-session-persistence",
@@ -82,7 +81,7 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 		SessionID: resp.SessionID,
 		TokensIn:  resp.Usage.InputTokens,
 		TokensOut: resp.Usage.OutputTokens,
-		CostUSD:   resp.Usage.CostUSD,
+		CostUSD:   resp.TotalCostUSD,
 		ExitCode:  exitCode,
 	}, nil
 }
