@@ -5,6 +5,9 @@
 *credentials*.json
 *service-account*.json
 
+# Claude Code local config
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
