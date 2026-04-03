@@ -6,14 +6,8 @@
 # - Merge conflict markers in tracked files
 # - TODO/FIXME markers introduced in the current diff
 #
-# Hook input (JSON on stdin):
-#   .tool_name  = "Stop"
-#   .session_id = current session ID (if available)
-#
-# Exit codes:
-#   0 + permissionDecision "allow"  → session may end
-#   0 + permissionDecision "ask"    → prompt user before ending
-#   1                               → hook error (allow by default)
+# Stop hook schema:
+#   { "decision": "approve" | "block", "reason": "string" }
 
 set -euo pipefail
 
@@ -42,23 +36,17 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   fi
 fi
 
-# If warnings found, prompt the user
+# If warnings found, block with reason
 if [ -n "$WARNINGS" ]; then
-  jq -n --arg reason "$WARNINGS" '{
-    hookSpecificOutput: {
-      hookEventName: "Stop",
-      permissionDecision: "ask",
-      permissionDecisionReason: ("Quality gate: " + $reason + "Continue anyway?")
-    }
+  jq -n --arg reason "Quality gate: ${WARNINGS}Continue anyway?" '{
+    decision: "block",
+    reason: $reason
   }'
   exit 0
 fi
 
 # All clear
 jq -n '{
-  hookSpecificOutput: {
-    hookEventName: "Stop",
-    permissionDecision: "allow"
-  }
+  decision: "approve"
 }'
 exit 0

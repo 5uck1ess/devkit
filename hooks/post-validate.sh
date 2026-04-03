@@ -6,14 +6,8 @@
 # - Edit/Write operations that created files outside the repo
 # - Accidental secret/credential content in written files
 #
-# Hook input (JSON on stdin):
-#   .tool_name       = "Bash" | "Edit" | "Write"
-#   .tool_input      = the original tool input
-#   .tool_output     = the tool's output/result
-#
-# Exit codes:
-#   0 → allow (with optional feedback message)
-#   1 → hook error (allow by default)
+# PostToolUse hook schema:
+#   { "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": "string" } }
 
 set -euo pipefail
 
@@ -25,14 +19,12 @@ CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty')
 
 # --- Bash: check for suppressed errors ---
 if [ "$TOOL_NAME" = "Bash" ]; then
-  # Flag common error patterns in output that the agent might miss
   ERROR_MATCHES=$(printf '%s\n' "$TOOL_OUTPUT" | grep -iE 'permission denied|no such file or directory|command not found|segmentation fault|killed|out of memory' | head -3 || true)
   if [ -n "$ERROR_MATCHES" ]; then
     jq -n --arg msg "$ERROR_MATCHES" '{
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
-        permissionDecision: "allow",
-        permissionDecisionReason: ("Warning: command output contains error signals — verify this was expected: " + $msg)
+        additionalContext: ("Warning: command output contains error signals — verify this was expected: " + $msg)
       }
     }'
     exit 0
@@ -47,13 +39,11 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   fi
 
   if [ -n "$CHECK_CONTENT" ]; then
-    # Check for patterns that look like hardcoded secrets
     if echo "$CHECK_CONTENT" | grep -qE '(sk-[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|ghp_[a-zA-Z0-9]{36}|-----BEGIN (RSA |EC )?PRIVATE KEY)'; then
       jq -n '{
         hookSpecificOutput: {
           hookEventName: "PostToolUse",
-          permissionDecision: "allow",
-          permissionDecisionReason: "WARNING: Written content appears to contain a hardcoded secret or API key. Use environment variables instead."
+          additionalContext: "WARNING: Written content appears to contain a hardcoded secret or API key. Use environment variables instead."
         }
       }'
       exit 0
@@ -74,8 +64,7 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
           jq -n --arg file "$FILE_PATH" --arg repo "$REPO_ROOT" '{
             hookSpecificOutput: {
               hookEventName: "PostToolUse",
-              permissionDecision: "allow",
-              permissionDecisionReason: ("Note: file written outside repository root (" + $repo + "): " + $file)
+              additionalContext: ("Note: file written outside repository root (" + $repo + "): " + $file)
             }
           }'
           exit 0

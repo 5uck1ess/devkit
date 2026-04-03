@@ -2,18 +2,10 @@
 # devkit SubagentStop hook — prevents agents from exiting without running tests
 #
 # Checks the agent's transcript for evidence that a test/metric command was
-# actually executed before allowing the agent to stop. This prevents the
-# common failure mode where an agent claims "done" without verifying.
+# actually executed before allowing the agent to stop.
 #
-# Hook input (JSON on stdin):
-#   .tool_name       = "Stop"
-#   .agent_name      = the sub-agent's name
-#   .agent_output    = the agent's final output text
-#
-# Exit codes:
-#   0 + permissionDecision "allow"  → agent may stop
-#   0 + permissionDecision "block"  → agent must continue (with reason)
-#   1                               → hook error (allow by default)
+# SubagentStop hook schema:
+#   { "decision": "approve" | "block", "reason": "string" }
 
 set -euo pipefail
 
@@ -23,17 +15,13 @@ AGENT_OUTPUT=$(echo "$INPUT" | jq -r '.agent_output // empty')
 # If agent output is empty or very short, block — something went wrong
 if [ ${#AGENT_OUTPUT} -lt 20 ]; then
   jq -n '{
-    hookSpecificOutput: {
-      hookEventName: "SubagentStop",
-      permissionDecision: "block",
-      permissionDecisionReason: "Agent output is suspiciously short. Please verify your work is complete and run any test/metric commands before stopping."
-    }
+    decision: "block",
+    reason: "Agent output is suspiciously short. Please verify your work is complete and run any test/metric commands before stopping."
   }'
   exit 0
 fi
 
 # Check for evidence that tests/metrics were actually run
-# Look for common test runner output patterns
 TEST_EVIDENCE=false
 
 # Go test
@@ -61,23 +49,17 @@ if echo "$AGENT_OUTPUT" | grep -qE '(exit\s+(code\s+)?0|metric.*pass|tests?\s+pa
   TEST_EVIDENCE=true
 fi
 
-# If no test evidence found, block and ask the agent to verify
+# If no test evidence found, block
 if [ "$TEST_EVIDENCE" = "false" ]; then
   jq -n '{
-    hookSpecificOutput: {
-      hookEventName: "SubagentStop",
-      permissionDecision: "block",
-      permissionDecisionReason: "No evidence of test/metric execution found in output. Run the test or metric command to verify your changes before stopping."
-    }
+    decision: "block",
+    reason: "No evidence of test/metric execution found in output. Run the test or metric command to verify your changes before stopping."
   }'
   exit 0
 fi
 
-# All clear — agent ran tests
+# All clear
 jq -n '{
-  hookSpecificOutput: {
-    hookEventName: "SubagentStop",
-    permissionDecision: "allow"
-  }
+  decision: "approve"
 }'
 exit 0
