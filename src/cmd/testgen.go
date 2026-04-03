@@ -6,7 +6,6 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -30,10 +29,10 @@ var testGenCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunTestGen(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.TestGenConfig{

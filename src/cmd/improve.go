@@ -5,14 +5,13 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
 var improveCmd = &cobra.Command{
 	Use:   "improve",
 	Short: "Run a metric-gated improvement loop",
-	Long:  "Spawns Claude per iteration. Each iteration: propose change, run metric, keep if pass, revert if fail.",
+	Long:  "Spawns an AI agent per iteration. Each iteration: propose change, run metric, keep if pass, revert if fail.",
 	Example: `  devkit improve --target src/ --metric "npm test" --objective "0 failing tests" --iterations 20
   devkit improve --metric "go test ./..." --iterations 10 --budget 5.00`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -43,10 +42,10 @@ var improveCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash before running devkit improve")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH — install from https://docs.anthropic.com/en/docs/claude-code")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		git := &lib.Git{Dir: repoRoot}

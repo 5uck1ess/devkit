@@ -6,14 +6,13 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
 var refactorCmd = &cobra.Command{
 	Use:   "refactor [description]",
 	Short: "Full refactor lifecycle: analyze, transform, verify",
-	Long:  "Spawns Claude for each step: analyze code smells → apply transformations → verify tests still pass.",
+	Long:  "Spawns an AI agent for each step: analyze code smells → apply transformations → verify tests still pass.",
 	Example: `  devkit refactor "extract auth middleware into shared package" --target src/
   devkit refactor "flatten nested callbacks to async/await" --test "npm test"`,
 	Args: cobra.MinimumNArgs(1),
@@ -30,10 +29,10 @@ var refactorCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunRefactor(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.RefactorConfig{

@@ -6,14 +6,13 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
 var bugfixCmd = &cobra.Command{
 	Use:   "bugfix [description]",
 	Short: "Full bugfix lifecycle: diagnose, fix, verify",
-	Long:  "Spawns Claude for each step: diagnose root cause → apply fix → run tests to verify.",
+	Long:  "Spawns an AI agent for each step: diagnose root cause → apply fix → run tests to verify.",
 	Example: `  devkit bugfix "login returns 500 when email has a plus sign"
   devkit bugfix "race condition in cache invalidation" --test "go test ./..."`,
 	Args: cobra.MinimumNArgs(1),
@@ -29,10 +28,10 @@ var bugfixCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunBugfix(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.BugfixConfig{

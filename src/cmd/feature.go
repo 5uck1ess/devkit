@@ -6,14 +6,13 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
 var featureCmd = &cobra.Command{
 	Use:   "feature [description]",
 	Short: "Full feature lifecycle: plan, implement, test, lint",
-	Long:  "Spawns Claude for each step: plan → implement → test (loop until green) → lint.",
+	Long:  "Spawns an AI agent for each step: plan → implement → test (loop until green) → lint.",
 	Example: `  devkit feature "add JWT authentication" --target src/auth/
   devkit feature "add search endpoint" --test "npm test" --lint "npm run lint"`,
 	Args: cobra.MinimumNArgs(1),
@@ -31,10 +30,10 @@ var featureCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunFeature(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.FeatureConfig{

@@ -56,6 +56,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 | `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
 | `/devkit:research` | Deep research — clarify, parallel search, analyze sources, synthesize |
 | `/devkit:decompose` | Goal decomposition — break into task DAG, assign agents, execute in dependency order |
+| `/devkit:scrape` | URL-to-Markdown conversion via Jina Reader / Firecrawl / WebFetch |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -268,8 +269,17 @@ devkit/
 │   └── tri-security.yml     # Three-tier security audit
 ├── presets/                  # Reusable prompt templates (planned)
 │   └── .gitkeep
-└── src/
-    └── TODO.md              # Go harness roadmap
+├── .github/workflows/       # CI/CD
+│   ├── ci.yml               # Build + test + vet on push/PR
+│   └── release.yml          # Auto-tag + release on version bump
+└── src/                     # Go CLI harness
+    ├── go.mod
+    ├── main.go
+    ├── Makefile
+    ├── cmd/                 # Cobra commands
+    ├── lib/                 # DB, git, metric, state, report
+    ├── loops/               # Improve, feature, bugfix, refactor, testgen, review, dispatch
+    └── runners/             # Claude, Codex, Gemini runner interfaces
 ```
 
 ---
@@ -288,23 +298,31 @@ Set automatically in each multi-agent command:
 
 ## Go CLI Harness
 
-Deterministic orchestration binary — the machine controls the loop, Claude is the body.
+Deterministic orchestration binary — the machine controls the loop, the agent is the body.
 
 ```bash
-cd src && make build
-./bin/devkit --help
+cd src && make build && make link
+devkit --help
+```
+
+Or install directly:
+
+```bash
+cd src && make install
 ```
 
 ### Commands
 
+All loop commands support `--agent` to choose the AI agent (default: `claude`).
+
 | Command | Description |
 |---|---|
-| `devkit improve` | Metric-gated iteration loop — one Claude invocation per iteration |
+| `devkit improve` | Metric-gated iteration loop — one agent invocation per iteration |
 | `devkit feature` | Plan, implement, test, lint — commits only after tests pass |
 | `devkit bugfix` | Diagnose, fix, verify — reverts if tests break |
 | `devkit refactor` | Analyze, transform, verify — reverts if behavior changes |
 | `devkit test-gen` | Generate tests, run, fix failures — iterates until green |
-| `devkit review` | Parallel multi-agent code review (Claude + Codex + Gemini) |
+| `devkit review` | Parallel multi-agent code review |
 | `devkit dispatch` | Send any task to multiple agents, compare outputs |
 | `devkit status` | Show all sessions, costs, iteration history |
 | `devkit resume` | Pick up a crashed or paused session |
@@ -316,12 +334,16 @@ cd src && make build
 - **Hard budget caps** — stops spawning at your dollar limit
 - **CI/CD integration** — runs headless, no conversation needed
 - **True parallel dispatch** — goroutines, not sequential prompts
+- **Multi-agent support** — `--agent claude`, `--agent codex`, or `--agent gemini`
 
 ### Examples
 
 ```bash
 # Run 50 improvement iterations overnight, stop at $20
 devkit improve --metric "npm test" --iterations 50 --budget 20.00
+
+# Same thing with Codex instead of Claude
+devkit improve --metric "npm test" --iterations 50 --agent codex
 
 # Implement a feature with test verification
 devkit feature "add JWT auth" --target src/auth/ --test "npm test"
@@ -332,12 +354,28 @@ devkit bugfix "login 500 on plus sign emails" --test "go test ./..."
 # Generate tests for a module
 devkit test-gen src/parser/ --test "go test ./..."
 
+# Multi-agent review with all available agents
+devkit review
+
 # Resume a crashed session
 devkit resume abc123def456
 
 # Check what happened
 devkit status
 ```
+
+### Testing
+
+```bash
+cd src && go test ./... -v
+```
+
+76+ tests across 4 packages (lib, runners, loops, cmd). Loop tests use mock runners — no API calls needed.
+
+### CI/CD
+
+- **CI pipeline** (`.github/workflows/ci.yml`): build + vet + test (with `-race`) + gofmt check on every push/PR to main
+- **Auto-release** (`.github/workflows/release.yml`): auto-bumps version, tags, and creates GitHub release on merged PRs
 
 ---
 
@@ -404,7 +442,9 @@ Devkit's `tri:*` commands use `/gemini:rescue --background` for multi-agent disp
 
 See [ROADMAP.md](ROADMAP.md) for full details.
 
-- [ ] Go CLI harness for deterministic loop control, process management, and unattended runs (see `src/TODO.md`)
+- [x] Go CLI harness — 9 commands, SQLite state, crash recovery, budget enforcement, multi-agent support
+- [x] CI/CD pipeline — build, vet, test, auto-release on version bump
+- [x] Branch protection — PRs required for main
 - [ ] Cost event hooks — budget threshold events with auto-downgrade actions
 - [ ] Execution registry — centralized step tracking with timing and token usage
 - [ ] Preset library — curated prompt templates for common review/improvement scenarios
