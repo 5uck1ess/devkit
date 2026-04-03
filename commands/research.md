@@ -63,7 +63,14 @@ All three run in parallel. Collect results before proceeding to analysis.
 ## Step 3: Analyze
 
 ```
-Read the 3-5 most promising URLs in depth using WebFetch.
+Read the 3-5 most promising URLs in depth.
+
+For each URL, fetch clean Markdown using Jina Reader:
+  WebFetch https://r.jina.ai/{url} with header Accept: text/markdown
+
+This strips boilerplate (nav, ads, footers) and returns clean article content.
+If Jina fails for a URL, fall back to raw WebFetch on the original URL.
+
 Extract key findings, compare approaches, note contradictions.
 
 Sources from:
@@ -77,6 +84,7 @@ Sources from:
 ```
 Are there gaps in the research? If the initial sources were weak
 or missing key perspectives, search and read more to fill gaps.
+Use Jina Reader (WebFetch https://r.jina.ai/{url}) for any new sources.
 ```
 
 Loop up to 3 times until research is thorough enough.

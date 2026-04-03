@@ -60,7 +60,10 @@ steps:
       Alternative viewpoints:
       {{search-alternatives}}
 
-      Use web_read on the 3-5 most promising URLs to read them in depth.
+      Read the 3-5 most promising URLs in depth using Jina Reader for clean Markdown:
+        WebFetch https://r.jina.ai/{url} with header Accept: text/markdown
+      This strips boilerplate and returns clean article content.
+      If Jina fails for a URL, fall back to raw WebFetch on the original URL.
       Extract key findings, compare approaches, note contradictions.
 
   - id: follow-up
@@ -72,7 +75,8 @@ steps:
       {{analyze}}
 
       Are there gaps in the research? If the initial sources were weak
-      or missing key perspectives, use web_search and web_read to fill gaps.
+      or missing key perspectives, use web_search and Jina Reader
+      (WebFetch https://r.jina.ai/{url}) to fill gaps.
 
       If the analysis is thorough enough, say "RESEARCH_COMPLETE".
     loop:
