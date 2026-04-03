@@ -9,6 +9,14 @@ Report on devkit installation health and available capabilities.
 
 ## Checks
 
+### Plugins
+
+```bash
+echo "=== Plugin Status ==="
+echo -n "codex plugin: " && (/codex:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
+echo -n "gemini plugin: " && (/gemini:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
+```
+
 ### External CLIs
 
 ```bash
@@ -40,11 +48,17 @@ List all commands, marking which ones need external CLIs:
 ```
 ## Devkit Status
 
-### External CLIs
+### Plugins
+| Plugin | Status | Commands |
+|--------|--------|----------|
+| codex | ✓ installed | /codex:rescue, /codex:review, /codex:result |
+| gemini | ✗ not installed | /gemini:rescue, /gemini:review, /gemini:result |
+
+### External CLIs (fallback if plugins not installed)
 | CLI | Status | Required by |
 |-----|--------|------------|
-| codex | ✓ installed (v1.2.0) | tri:* commands |
-| gemini | ✗ not installed | tri:* commands |
+| codex | ✓ installed (v1.2.0) | tri:* commands (fallback) |
+| gemini | ✗ not installed | tri:* commands (fallback) |
 | gh | ✓ installed (v2.40.0) | devkit:pr-ready |
 | rtk | ✓ installed (v0.34.2) | token optimization (optional) |
 

@@ -20,10 +20,19 @@ git diff main...HEAD > /tmp/tri-security-diff.txt 2>/dev/null
 
 ## Step 2: Detect Available Agents
 
+Check for plugins first (preferred), then fall back to CLI:
+
 ```bash
-HAS_CODEX=$(command -v codex && echo "yes" || echo "no")
-HAS_GEMINI=$(command -v gemini && echo "yes" || echo "no")
+# Plugin detection (preferred — structured job management)
+HAS_CODEX_PLUGIN=$(/codex:status >/dev/null 2>&1 && echo "yes" || echo "no")
+HAS_GEMINI_PLUGIN=$(/gemini:status >/dev/null 2>&1 && echo "yes" || echo "no")
+
+# CLI fallback detection
+HAS_CODEX_CLI=$(command -v codex && echo "yes" || echo "no")
+HAS_GEMINI_CLI=$(command -v gemini && echo "yes" || echo "no")
 ```
+
+Prefer plugin over CLI.
 
 ## Step 3: Build the Prompt
 
@@ -77,8 +86,18 @@ Retrieve result with `/codex:result` when done.
 
 ### Gemini — if available
 
+**Plugin (preferred):**
+
+```
+/gemini:rescue --model gemini-3.1-pro --background "{prompt}"
+```
+
+Retrieve result with `/gemini:result` when done.
+
+**CLI fallback (only if plugin not installed):**
+
 ```bash
-if [ "$HAS_GEMINI" = "yes" ]; then
+if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "{prompt}" -m gemini-3.1-pro -y \
     --output-format text > /tmp/tri-security-gemini.txt 2>/dev/null &
 fi
