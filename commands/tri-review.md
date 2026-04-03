@@ -1,6 +1,6 @@
 ---
 name: tri:review
-description: Triple-agent PR/code review. Claude runs as native background agent (token-efficient), Codex and Gemini via CLI. Consolidates findings.
+description: Triple-agent PR/code review. Claude runs as native background agent (token-efficient), Codex and Gemini via plugin or CLI. Consolidates findings.
 ---
 
 # Triple-Agent Review
@@ -31,12 +31,19 @@ Focus on: bugs, security issues, DRY violations, unnecessary complexity, missing
 
 ## Step 3: Detect Available Agents
 
+Check for plugins first (preferred), then fall back to CLI:
+
 ```bash
-HAS_CODEX=$(command -v codex && echo "yes" || echo "no")
-HAS_GEMINI=$(command -v gemini && echo "yes" || echo "no")
+# Plugin detection (preferred — structured job management)
+HAS_CODEX_PLUGIN=$(/codex:status >/dev/null 2>&1 && echo "yes" || echo "no")
+HAS_GEMINI_PLUGIN=$(/gemini:status >/dev/null 2>&1 && echo "yes" || echo "no")
+
+# CLI fallback detection
+HAS_CODEX_CLI=$(command -v codex && echo "yes" || echo "no")
+HAS_GEMINI_CLI=$(command -v gemini && echo "yes" || echo "no")
 ```
 
-Run with whatever is available. Claude always runs. Codex and Gemini are optional.
+Run with whatever is available. Claude always runs. Codex and Gemini are optional. Prefer plugin over CLI.
 
 ## Concurrency & Budget
 
@@ -69,8 +76,19 @@ Retrieve result with `/codex:result` when done.
 
 ### Gemini — if available
 
+**Plugin (preferred):**
+
+```
+/gemini:rescue --model gemini-3.1-pro --background \
+  "{prompt} $(cat /tmp/tri-review-diff.txt)"
+```
+
+Retrieve result with `/gemini:result` when done.
+
+**CLI fallback (only if plugin not installed):**
+
 ```bash
-if [ "$HAS_GEMINI" = "yes" ]; then
+if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
     -m gemini-3.1-pro -y --output-format text \
     > /tmp/tri-review-gemini.txt 2>/dev/null &
@@ -85,8 +103,8 @@ wait
 | Agent | Method | Flags |
 |---|---|---|
 | Claude | Native background agent | `isolation: worktree`, `background: true` |
-| Codex | Official plugin | `/codex:rescue --background` |
-| Gemini | CLI | `-y` |
+| Codex | Plugin (preferred) / CLI fallback | `/codex:rescue --background` or `codex -q` |
+| Gemini | Plugin (preferred) / CLI fallback | `/gemini:rescue --background` or `-y` |
 
 ## Step 5: Consolidate
 

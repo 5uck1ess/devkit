@@ -187,8 +187,8 @@ None yet — `presets/` is reserved for future use.
 ```
 /tri:review (or any tri:* command)
   ├── Claude  → native background agent (always runs)
-  ├── Codex   → CLI subprocess (if installed)
-  └── Gemini  → CLI subprocess (if installed)
+  ├── Codex   → plugin (preferred) or CLI subprocess (fallback)
+  └── Gemini  → plugin (preferred) or CLI subprocess (fallback)
 
 /self:improve (or any self:* command)
   └── Claude  → improver agent in worktree
@@ -281,8 +281,8 @@ Set automatically in each multi-agent command:
 | Agent | Flags |
 |---|---|
 | Claude | `--dangerously-skip-permissions` |
-| Codex | `/codex:rescue --background` (via [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)) |
-| Gemini | `-y` |
+| Codex | `/codex:rescue --background` (via [codex-plugin-cc](https://github.com/openai/codex-plugin-cc)) or `codex -q` (CLI fallback) |
+| Gemini | `/gemini:rescue --background` (via [gemini-plugin-cc](https://github.com/abiswas97/gemini-plugin-cc)) or `-y` (CLI fallback) |
 
 ---
 
@@ -292,12 +292,18 @@ Set automatically in each multi-agent command:
 
 **Optional** (for multi-agent commands):
 ```bash
-# Codex plugin
+# Codex plugin (preferred for tri:* commands)
 /plugin marketplace add openai/codex-plugin-cc
 /plugin install codex@openai-codex
 
-# Gemini CLI
-brew install gemini-cli
+# Gemini plugin (preferred for tri:* commands)
+/plugin marketplace add abiswas97/gemini-plugin-cc
+/plugin install gemini@abiswas97-gemini
+```
+
+**CLI fallbacks** (used only if plugins are not installed):
+```bash
+brew install codex gemini-cli
 ```
 
 **Optional** (for token optimization):
@@ -322,6 +328,20 @@ Installing [codex-plugin-cc](https://github.com/openai/codex-plugin-cc) gives yo
 **Flags:** `--model gpt-5.4` / `gpt-5.4-mini` / `gpt-5.4-nano`, `--effort high`, `--background`, `--wait`, `--resume`, `--fresh`
 
 Devkit's `tri:*` commands use `/codex:rescue --background` for multi-agent dispatch.
+
+### Gemini Plugin Commands
+
+Installing [gemini-plugin-cc](https://github.com/abiswas97/gemini-plugin-cc) gives you these additional commands:
+
+| Command | Description |
+|---|---|
+| `/gemini:rescue` | Delegate a task to Gemini (investigation, fixes, continuation) |
+| `/gemini:review` | Code review via Gemini |
+| `/gemini:adversarial-review` | Adversarial review — Gemini challenges design decisions |
+| `/gemini:result` | Retrieve results from a background Gemini task |
+| `/gemini:status` | Check status of running Gemini tasks |
+
+Devkit's `tri:*` commands use `/gemini:rescue --background` for multi-agent dispatch.
 
 ---
 
@@ -356,6 +376,7 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 | metaswarm | 18 agents, 13 skills for Claude/Gemini/Codex | [GitHub](https://github.com/dsifry/metaswarm) |
 | skill-codex | Claude Code ↔ Codex bridge | [GitHub](https://github.com/skills-directory/skill-codex) |
 | codex-plugin-cc | Official OpenAI Codex plugin for Claude Code | [GitHub](https://github.com/openai/codex-plugin-cc) |
+| gemini-plugin-cc | Gemini plugin for Claude Code (optional — standalone reviews & task delegation) | [GitHub](https://github.com/abiswas97/gemini-plugin-cc) |
 
 ### Skills & Marketplaces
 
