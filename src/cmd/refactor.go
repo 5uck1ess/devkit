@@ -6,7 +6,6 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -30,10 +29,10 @@ var refactorCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunRefactor(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.RefactorConfig{
@@ -57,6 +56,7 @@ func init() {
 	refactorCmd.Flags().String("target", ".", "Directory or file to refactor")
 	refactorCmd.Flags().String("test", "", "Test command to verify no behavior change")
 	refactorCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
+	refactorCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printRefactorResult(r *loops.RefactorResult) {

@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/5uck1ess/devkit/lib"
+	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -58,6 +60,23 @@ func Execute() error {
 
 	rootCmd.SetContext(ctx)
 	return rootCmd.ExecuteContext(ctx)
+}
+
+func resolveRunner(name string) (runners.Runner, error) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	available := runners.DetectRunners()
+	r := runners.FindRunner(name, available)
+	if r != nil {
+		return r, nil
+	}
+	var names []string
+	for _, a := range available {
+		names = append(names, a.Name())
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("no AI agents found in PATH — install claude, codex, or gemini")
+	}
+	return nil, fmt.Errorf("agent %q not found — available: %s", name, strings.Join(names, ", "))
 }
 
 func findRepoRoot() (string, error) {

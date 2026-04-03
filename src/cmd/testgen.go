@@ -6,7 +6,6 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -30,10 +29,10 @@ var testGenCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunTestGen(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.TestGenConfig{
@@ -63,4 +62,5 @@ func init() {
 	rootCmd.AddCommand(testGenCmd)
 	testGenCmd.Flags().String("test", "", "Test command to run generated tests")
 	testGenCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
+	testGenCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }

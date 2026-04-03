@@ -6,7 +6,6 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -29,10 +28,10 @@ var bugfixCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunBugfix(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.BugfixConfig{
@@ -54,6 +53,7 @@ func init() {
 	rootCmd.AddCommand(bugfixCmd)
 	bugfixCmd.Flags().String("test", "", "Test command to verify the fix")
 	bugfixCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
+	bugfixCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printBugfixResult(r *loops.BugfixResult) {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/5uck1ess/devkit/lib"
 	"github.com/5uck1ess/devkit/loops"
-	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
 
@@ -31,10 +30,10 @@ var featureCmd = &cobra.Command{
 			return fmt.Errorf("working tree has uncommitted changes — commit or stash first")
 		}
 
-		available := runners.DetectRunners()
-		runner := runners.FindRunner("claude", available)
-		if runner == nil {
-			return fmt.Errorf("claude CLI not found in PATH")
+		agentName, _ := cmd.Flags().GetString("agent")
+		runner, err := resolveRunner(agentName)
+		if err != nil {
+			return err
 		}
 
 		result, err := loops.RunFeature(cmd.Context(), db, runner, &lib.Git{Dir: repoRoot}, loops.FeatureConfig{
@@ -60,6 +59,7 @@ func init() {
 	featureCmd.Flags().String("test", "", "Test command (runs after implementation)")
 	featureCmd.Flags().String("lint", "", "Lint command (runs after tests)")
 	featureCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
+	featureCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printFeatureResult(r *loops.FeatureResult) {
