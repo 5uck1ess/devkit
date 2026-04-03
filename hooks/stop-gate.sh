@@ -29,7 +29,7 @@ if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   # Check for merge conflict markers in staged/modified files
   CHANGED_FILES=$(git diff --name-only HEAD 2>/dev/null || true)
   if [ -n "$CHANGED_FILES" ]; then
-    CONFLICTS=$(git diff --name-only -z HEAD 2>/dev/null | xargs -0 grep -l '<<<<<<< ' 2>/dev/null | head -3 || true)
+    CONFLICTS=$(git diff --name-only -z HEAD 2>/dev/null | xargs -0 grep -l -- '<<<<<<< ' 2>/dev/null | head -3 || true)
     if [ -n "$CONFLICTS" ]; then
       WARNINGS="${WARNINGS}Merge conflict markers found in: ${CONFLICTS}. "
     fi

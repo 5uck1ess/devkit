@@ -26,8 +26,9 @@ CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty')
 # --- Bash: check for suppressed errors ---
 if [ "$TOOL_NAME" = "Bash" ]; then
   # Flag common error patterns in output that the agent might miss
-  if echo "$TOOL_OUTPUT" | grep -qiE 'permission denied|no such file or directory|command not found|segmentation fault|killed|out of memory'; then
-    jq -n --arg msg "$(echo "$TOOL_OUTPUT" | grep -iE 'permission denied|no such file or directory|command not found|segmentation fault|killed|out of memory' | head -3)" '{
+  ERROR_MATCHES=$(printf '%s\n' "$TOOL_OUTPUT" | grep -iE 'permission denied|no such file or directory|command not found|segmentation fault|killed|out of memory' | head -3 || true)
+  if [ -n "$ERROR_MATCHES" ]; then
+    jq -n --arg msg "$ERROR_MATCHES" '{
       hookSpecificOutput: {
         hookEventName: "PostToolUse",
         permissionDecision: "allow",
@@ -63,7 +64,8 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   if [ -n "$FILE_PATH" ]; then
     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$REPO_ROOT" ]; then
-      case "$FILE_PATH" in
+      ABS_PATH=$(realpath -m "$FILE_PATH" 2>/dev/null || echo "$FILE_PATH")
+      case "$ABS_PATH" in
         "$REPO_ROOT"/*)
           ;; # within repo, OK
         /tmp/*|/private/tmp/*)
