@@ -36,10 +36,11 @@ var rootCmd = &cobra.Command{
 		}
 		return nil
 	},
-	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 		if db != nil {
-			db.Close()
+			return db.Close()
 		}
+		return nil
 	},
 }
 

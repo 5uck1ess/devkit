@@ -48,3 +48,11 @@ func FindRunner(name string, runners []Runner) Runner {
 	}
 	return nil
 }
+
+// TruncStr truncates a string to n bytes with "..." suffix.
+func TruncStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}

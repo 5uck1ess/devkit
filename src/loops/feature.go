@@ -113,16 +113,11 @@ Write the code. Make all necessary changes. Do not skip any plan items.`, cfg.De
 		return nil, fmt.Errorf("implement step failed: %w", err)
 	}
 	spentUSD += implResult.CostUSD
-	summary, _ := git.DiffStat()
-	git.CommitAll(fmt.Sprintf("feature(%s): implement", session.ID))
-	implStep.Status = "kept"
-	implStep.Kept = true
 	implStep.CostUSD = implResult.CostUSD
-	implStep.ChangeSummary = summary
-	db.UpdateStep(implStep)
 	fmt.Printf("  Implemented ($%.4f)\n\n", implResult.CostUSD)
 
-	// Step 3: Test (if test command provided)
+	// Step 3: Test — verify BEFORE committing
+	testsPass := cfg.TestCmd == ""
 	if cfg.TestCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 3: Test ---")
 		for attempt := 1; attempt <= 3; attempt++ {
@@ -132,6 +127,7 @@ Write the code. Make all necessary changes. Do not skip any plan items.`, cfg.De
 			testMetric := lib.RunMetric(ctx, cfg.TestCmd, cfg.RepoRoot)
 			if testMetric.ExitCode == 0 {
 				fmt.Printf("  Tests passing (attempt %d)\n\n", attempt)
+				testsPass = true
 				break
 			}
 
@@ -162,12 +158,28 @@ Fix the code so tests pass.`, cfg.TestCmd, testMetric.Output), opts)
 		}
 	}
 
+	// Commit implementation only after tests pass (or no test command)
+	if testsPass {
+		summary, _ := git.DiffStat()
+		git.CommitAll(fmt.Sprintf("feature(%s): implement", session.ID))
+		implStep.Status = "kept"
+		implStep.Kept = true
+		implStep.ChangeSummary = summary
+	} else {
+		git.RevertAll()
+		implStep.Status = "reverted"
+		implStep.ChangeSummary = "tests never passed — reverted"
+		fmt.Println("  Tests never passed — implementation reverted")
+	}
+	db.UpdateStep(implStep)
+
 	// Step 4: Lint (if lint command provided)
 	if cfg.LintCmd != "" && !checkBudget() {
 		fmt.Println("--- Step 4: Lint ---")
 		lintMetric := lib.RunMetric(ctx, cfg.LintCmd, cfg.RepoRoot)
 		if lintMetric.ExitCode != 0 {
-			lintStep := &lib.Step{SessionID: session.ID, Iteration: 10, Status: "running", AgentName: runner.Name()}
+			nextIter, _ := db.LastIteration(session.ID)
+			lintStep := &lib.Step{SessionID: session.ID, Iteration: nextIter + 1, Status: "running", AgentName: runner.Name()}
 			db.CreateStep(lintStep)
 
 			lintResult, err := runner.Run(ctx, fmt.Sprintf(

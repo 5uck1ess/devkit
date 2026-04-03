@@ -22,8 +22,11 @@ var resumeCmd = &cobra.Command{
 			return err
 		}
 
-		if session.Status != "paused" && session.Status != "failed" && session.Status != "running" {
-			return fmt.Errorf("session %s has status %q — only paused, failed, or interrupted sessions can be resumed", sessionID, session.Status)
+		if session.Status == "running" {
+			return fmt.Errorf("session %s is still running — if it crashed, set status to paused with: sqlite3 .devkit/devkit.db \"UPDATE sessions SET status='paused' WHERE id='%s'\"", sessionID, sessionID)
+		}
+		if session.Status != "paused" && session.Status != "failed" {
+			return fmt.Errorf("session %s has status %q — only paused or failed sessions can be resumed", sessionID, session.Status)
 		}
 
 		if session.Workflow != "improve" {
@@ -36,8 +39,16 @@ var resumeCmd = &cobra.Command{
 			return fmt.Errorf("claude CLI not found in PATH")
 		}
 
-		// Check we're on the right branch
+		// Require clean worktree before resuming
 		git := &lib.Git{Dir: repoRoot}
+		dirty, err := git.HasUncommittedChanges()
+		if err != nil {
+			return fmt.Errorf("check git status: %w", err)
+		}
+		if dirty {
+			return fmt.Errorf("working tree has uncommitted changes — commit or stash before resuming")
+		}
+
 		branch, err := git.CurrentBranch()
 		if err != nil {
 			return fmt.Errorf("get current branch: %w", err)

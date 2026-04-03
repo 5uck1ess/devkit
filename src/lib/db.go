@@ -50,10 +50,11 @@ func OpenDB(path string) (*DB, error) {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
 
-	conn, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)")
+	conn, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)")
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	conn.SetMaxOpenConns(1)
 
 	db := &DB{conn: conn, path: path}
 	if err := db.migrate(); err != nil {

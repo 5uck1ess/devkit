@@ -137,6 +137,10 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 			MaxTurns:               25,
 		})
 		if err != nil {
+			// Revert any partial changes the agent made before failing
+			if revertErr := git.RevertAll(); revertErr != nil {
+				fmt.Printf("  Warning: revert after agent error failed: %s\n", revertErr)
+			}
 			step.Status = "failed"
 			step.ChangeSummary = err.Error()
 			db.UpdateStep(step)
@@ -164,7 +168,9 @@ func runIterations(ctx context.Context, db *lib.DB, runner runners.Runner, git *
 			consecutiveFailures = 0
 			fmt.Printf("  KEPT (exit 0) — $%.4f\n", result.CostUSD)
 		} else {
-			git.RevertAll()
+			if revertErr := git.RevertAll(); revertErr != nil {
+				fmt.Printf("  Warning: revert failed: %s\n", revertErr)
+			}
 			step.Status = "reverted"
 			step.Kept = false
 			step.ChangeSummary = fmt.Sprintf("metric exit %d", metricResult.ExitCode)

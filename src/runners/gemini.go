@@ -19,7 +19,6 @@ func (r *GeminiRunner) Available() bool {
 func (r *GeminiRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
 	args := []string{
 		"-p", prompt,
-		"-m", "gemini-2.5-pro",
 		"-y",
 		"--output-format", "text",
 	}
@@ -43,8 +42,16 @@ func (r *GeminiRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 		}
 	}
 
-	return RunResult{
+	result := RunResult{
 		Output:   stdout.String(),
 		ExitCode: exitCode,
-	}, nil
+	}
+	if exitCode != 0 {
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = stdout.String()
+		}
+		return result, fmt.Errorf("gemini exited %d: %s", exitCode, TruncStr(errMsg, 200))
+	}
+	return result, nil
 }

@@ -62,7 +62,9 @@ func (g *Git) RevertAll() error {
 }
 
 func (g *Git) DiffStat() (string, error) {
-	return g.run("diff", "--stat")
+	// Stage first so untracked files are included in the stat
+	g.run("add", "-A")
+	return g.run("diff", "--cached", "--stat")
 }
 
 func (g *Git) DiffFromMain() (string, error) {
