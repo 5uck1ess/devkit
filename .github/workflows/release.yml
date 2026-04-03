@@ -1,13 +1,13 @@
 name: Release
 
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [main]
-    paths:
-      - '.claude-plugin/plugin.json'
 
 jobs:
   release:
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -15,40 +15,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check version change
-        id: version
+      - name: Bump patch version
+        id: bump
         run: |
-          NEW_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
-          OLD_VERSION=$(git show HEAD~1:.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
-          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
+          CURRENT=$(jq -r '.version' .claude-plugin/plugin.json)
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT → $NEW_VERSION"
 
-      - name: Check tag exists
-        if: steps.version.outputs.changed == 'true'
-        id: tag
-        run: |
-          TAG="v${{ steps.version.outputs.new }}"
-          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          fi
+          # Update plugin.json
+          jq --arg v "$NEW_VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
 
-      - name: Extract changelog
-        if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
-        id: changelog
+          # Update manifest.json
+          jq --arg v "$NEW_VERSION" '.version = $v' manifest.json > tmp.json && mv tmp.json manifest.json
+
+      - name: Commit version bump
         run: |
-          VERSION="${{ steps.version.outputs.new }}"
-          # Extract the section for this version from CHANGELOG.md
-          NOTES=$(awk "/^## ${VERSION}$/,/^## /{if(/^## ${VERSION}$/)next; if(/^## /)exit; print}" CHANGELOG.md)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .claude-plugin/plugin.json manifest.json
+          git commit -m "bump to v${{ steps.bump.outputs.version }}"
+          git push
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.bump.outputs.version }}"
+          NOTES=$(awk "/^## ${VERSION}$/,/^## /{if(/^## ${VERSION}$/)next; if(/^## /)exit; print}" CHANGELOG.md 2>/dev/null)
           if [ -z "$NOTES" ]; then
-            NOTES="Release v${VERSION}"
+            NOTES="Merged: ${{ github.event.pull_request.title }}"
           fi
           {
             echo "notes<<EOF"
@@ -57,11 +58,10 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Create tag and release
-        if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.version.outputs.new }}"
+          TAG="v${{ steps.bump.outputs.version }}"
           git tag "$TAG"
           git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --notes "${{ steps.changelog.outputs.notes }}"
+          gh release create "$TAG" --title "$TAG" --notes "${{ steps.notes.outputs.notes }}"
