@@ -80,5 +80,4 @@ var resumeCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(resumeCmd)
-	resumeCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }

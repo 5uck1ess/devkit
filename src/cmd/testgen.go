@@ -62,5 +62,4 @@ func init() {
 	rootCmd.AddCommand(testGenCmd)
 	testGenCmd.Flags().String("test", "", "Test command to run generated tests")
 	testGenCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
-	testGenCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }

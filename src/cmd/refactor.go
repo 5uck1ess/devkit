@@ -12,7 +12,7 @@ import (
 var refactorCmd = &cobra.Command{
 	Use:   "refactor [description]",
 	Short: "Full refactor lifecycle: analyze, transform, verify",
-	Long:  "Spawns Claude for each step: analyze code smells → apply transformations → verify tests still pass.",
+	Long:  "Spawns an AI agent for each step: analyze code smells → apply transformations → verify tests still pass.",
 	Example: `  devkit refactor "extract auth middleware into shared package" --target src/
   devkit refactor "flatten nested callbacks to async/await" --test "npm test"`,
 	Args: cobra.MinimumNArgs(1),
@@ -56,7 +56,6 @@ func init() {
 	refactorCmd.Flags().String("target", ".", "Directory or file to refactor")
 	refactorCmd.Flags().String("test", "", "Test command to verify no behavior change")
 	refactorCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
-	refactorCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printRefactorResult(r *loops.RefactorResult) {

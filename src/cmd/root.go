@@ -46,6 +46,10 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+func init() {
+	rootCmd.PersistentFlags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
+}
+
 func Execute() error {
 	rootCmd.Version = Version
 	ctx, cancel := context.WithCancel(context.Background())
@@ -63,8 +67,11 @@ func Execute() error {
 }
 
 func resolveRunner(name string) (runners.Runner, error) {
+	return resolveRunnerFrom(name, runners.DetectRunners())
+}
+
+func resolveRunnerFrom(name string, available []runners.Runner) (runners.Runner, error) {
 	name = strings.ToLower(strings.TrimSpace(name))
-	available := runners.DetectRunners()
 	r := runners.FindRunner(name, available)
 	if r != nil {
 		return r, nil

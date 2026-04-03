@@ -11,7 +11,7 @@ import (
 var improveCmd = &cobra.Command{
 	Use:   "improve",
 	Short: "Run a metric-gated improvement loop",
-	Long:  "Spawns Claude per iteration. Each iteration: propose change, run metric, keep if pass, revert if fail.",
+	Long:  "Spawns an AI agent per iteration. Each iteration: propose change, run metric, keep if pass, revert if fail.",
 	Example: `  devkit improve --target src/ --metric "npm test" --objective "0 failing tests" --iterations 20
   devkit improve --metric "go test ./..." --iterations 10 --budget 5.00`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -76,7 +76,6 @@ func init() {
 	improveCmd.Flags().String("objective", "", "What the improvement should achieve")
 	improveCmd.Flags().Int("iterations", 10, "Maximum number of iterations")
 	improveCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
-	improveCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printImproveResult(r *loops.ImproveResult) {

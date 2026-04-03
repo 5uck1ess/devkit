@@ -12,7 +12,7 @@ import (
 var bugfixCmd = &cobra.Command{
 	Use:   "bugfix [description]",
 	Short: "Full bugfix lifecycle: diagnose, fix, verify",
-	Long:  "Spawns Claude for each step: diagnose root cause → apply fix → run tests to verify.",
+	Long:  "Spawns an AI agent for each step: diagnose root cause → apply fix → run tests to verify.",
 	Example: `  devkit bugfix "login returns 500 when email has a plus sign"
   devkit bugfix "race condition in cache invalidation" --test "go test ./..."`,
 	Args: cobra.MinimumNArgs(1),
@@ -53,7 +53,6 @@ func init() {
 	rootCmd.AddCommand(bugfixCmd)
 	bugfixCmd.Flags().String("test", "", "Test command to verify the fix")
 	bugfixCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
-	bugfixCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printBugfixResult(r *loops.BugfixResult) {

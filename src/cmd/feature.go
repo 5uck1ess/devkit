@@ -12,7 +12,7 @@ import (
 var featureCmd = &cobra.Command{
 	Use:   "feature [description]",
 	Short: "Full feature lifecycle: plan, implement, test, lint",
-	Long:  "Spawns Claude for each step: plan → implement → test (loop until green) → lint.",
+	Long:  "Spawns an AI agent for each step: plan → implement → test (loop until green) → lint.",
 	Example: `  devkit feature "add JWT authentication" --target src/auth/
   devkit feature "add search endpoint" --test "npm test" --lint "npm run lint"`,
 	Args: cobra.MinimumNArgs(1),
@@ -59,7 +59,6 @@ func init() {
 	featureCmd.Flags().String("test", "", "Test command (runs after implementation)")
 	featureCmd.Flags().String("lint", "", "Lint command (runs after tests)")
 	featureCmd.Flags().Float64("budget", 0, "Maximum spend in USD (0 = unlimited)")
-	featureCmd.Flags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
 }
 
 func printFeatureResult(r *loops.FeatureResult) {
