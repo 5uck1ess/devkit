@@ -292,8 +292,12 @@ Set automatically in each multi-agent command:
 
 **Optional** (for multi-agent commands):
 ```bash
-brew install codex gemini-cli
-/plugin install github.com/openai/codex-plugin-cc
+# Codex plugin
+/plugin marketplace add openai/codex-plugin-cc
+/plugin install codex@openai-codex
+
+# Gemini CLI
+brew install gemini-cli
 ```
 
 **Optional** (for token optimization):
