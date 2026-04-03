@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude-plugin/plugin.json'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check version change
+        id: version
+        run: |
+          NEW_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
+          OLD_VERSION=$(git show HEAD~1:.claude-plugin/plugin.json 2>/dev/null | jq -r '.version' 2>/dev/null || echo "")
+          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check tag exists
+        if: steps.version.outputs.changed == 'true'
+        id: tag
+        run: |
+          TAG="v${{ steps.version.outputs.new }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Extract changelog
+        if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
+        id: changelog
+        run: |
+          VERSION="${{ steps.version.outputs.new }}"
+          # Extract the section for this version from CHANGELOG.md
+          NOTES=$(awk "/^## ${VERSION}$/,/^## /{if(/^## ${VERSION}$/)next; if(/^## /)exit; print}" CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="Release v${VERSION}"
+          fi
+          {
+            echo "notes<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create tag and release
+        if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ steps.version.outputs.new }}"
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "$TAG" --notes "${{ steps.changelog.outputs.notes }}"
