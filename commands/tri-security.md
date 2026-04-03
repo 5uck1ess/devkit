@@ -7,6 +7,18 @@ description: Multi-agent security audit — independent security reviews from av
 
 Independent security reviews from all available agents, consolidated into a severity-ranked report.
 
+## Step 0: Harness Detection
+
+```bash
+if command -v devkit >/dev/null 2>&1; then
+  echo "Go harness detected — delegating to devkit review --security for full output capture."
+  devkit review --security {prompt or default}
+  exit 0
+fi
+```
+
+If the `devkit` binary is in PATH, delegate entirely to it. Only fall through to plugin-based steps if the harness is not installed.
+
 ## Step 1: Gather Scope
 
 Determine what to audit:

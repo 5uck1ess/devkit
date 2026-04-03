@@ -7,6 +7,18 @@ description: Multi-agent debugging — send a bug report to available agents (Cl
 
 Send a bug description to all available agents in parallel, get independent root-cause analyses, and consolidate into a recommended fix.
 
+## Step 0: Harness Detection
+
+```bash
+if command -v devkit >/dev/null 2>&1; then
+  echo "Go harness detected — delegating to devkit dispatch for full output capture."
+  devkit dispatch {prompt with bug context}
+  exit 0
+fi
+```
+
+If the `devkit` binary is in PATH, delegate entirely to it. Only fall through to plugin-based steps if the harness is not installed.
+
 ## Step 1: Gather Context
 
 Collect from the user:

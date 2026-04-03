@@ -7,6 +7,18 @@ description: Dispatch a task to all three agents (Claude, Codex, Gemini) in para
 
 Send the same task to Claude, Codex, and Gemini in parallel. Compare outputs.
 
+## Step 0: Harness Detection
+
+```bash
+if command -v devkit >/dev/null 2>&1; then
+  echo "Go harness detected — delegating to devkit dispatch for full output capture."
+  devkit dispatch {prompt}
+  exit 0
+fi
+```
+
+If the `devkit` binary is in PATH, delegate entirely to it. Only fall through to plugin-based steps if the harness is not installed.
+
 ## When to use
 
 - Comparing approaches to a problem

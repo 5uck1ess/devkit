@@ -3,7 +3,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GOFLAGS := -trimpath
 
-.PHONY: build install clean test vet fmt check all
+.PHONY: build install link clean test vet fmt check all
 
 all: check build
 
@@ -12,6 +12,12 @@ build:
 
 install:
 	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' .
+	@echo "Installed to $$(go env GOPATH)/bin/$(BINARY)"
+	@echo "Ensure $$(go env GOPATH)/bin is in your PATH"
+
+link: build
+	ln -sf $(CURDIR)/bin/$(BINARY) /usr/local/bin/$(BINARY)
+	@echo "Linked bin/$(BINARY) → /usr/local/bin/$(BINARY)"
 
 clean:
 	rm -rf bin/
