@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/5uck1ess/devkit/engine"
@@ -29,6 +30,11 @@ var workflowCmd = &cobra.Command{
 
 		if len(args) < 2 {
 			return fmt.Errorf("usage: devkit workflow <name> <description>")
+		}
+
+		// Validate workflow name to prevent path traversal
+		if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(name) {
+			return fmt.Errorf("invalid workflow name %q — use only letters, numbers, hyphens, underscores", name)
 		}
 
 		dirty, err := (&lib.Git{Dir: repoRoot}).HasUncommittedChanges()
