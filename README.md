@@ -288,7 +288,7 @@ devkit/
 ├── manifest.json            # Plugin manifest
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── skills/                  # 34 skills (invocable + context-activated)
+├── skills/                  # Invocable + context-activated skills
 │   ├── tri-*.md             # Multi-agent skills (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -315,21 +315,6 @@ devkit/
 │   ├── test-writer.md       # Sonnet, worktree isolation
 │   ├── documenter.md        # Haiku, worktree isolation
 │   └── security-auditor.md  # Opus, worktree isolation
-├── skills/                  # 14 skills (6 context-activated workflows + 8 principles/tools)
-│   ├── test-gen.md          # Auto: "write tests for X"
-│   ├── doc-gen.md           # Auto: "document this module"
-│   ├── changelog.md         # Auto: "generate a changelog"
-│   ├── onboard.md           # Auto: "explain this codebase"
-│   ├── research.md          # Auto: "research X"
-│   ├── scrape.md            # Auto: "scrape this URL"
-│   ├── executing.md         # Principle: methodical execution
-│   ├── clean-code.md        # Principle: readability
-│   ├── dry.md               # Principle: don't repeat yourself
-│   ├── yagni.md             # Principle: no speculative features
-│   ├── dont-reinvent.md     # Principle: use existing solutions
-│   ├── stuck.md             # Principle: loop recovery
-│   ├── gcli.md              # Tool: Google Workspace CLI
-│   └── creating-workflows.md # Tool: YAML workflow authoring
 ├── hooks/                   # 8 hooks
 │   ├── hooks.json           # Hook config (auto-loaded)
 │   ├── safety-check.sh      # Dangerous operation blocker

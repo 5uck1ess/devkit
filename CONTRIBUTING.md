@@ -12,7 +12,7 @@
    Body content (keep under 100 lines).
    ```
 2. Add `"skills/my-skill.md"` to `manifest.json`
-3. See the `skill-authoring` skill for full guidance
+3. See the "Adding an Invocable Skill" section below for full guidance
 
 ## Adding an Invocable Skill (formerly "command")
 
