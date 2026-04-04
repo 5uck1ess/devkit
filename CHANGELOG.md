@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.4.0
+
+- Add `devkit:audit` command — unified project health audit (deps, vulnerabilities, outdated packages, licenses, lint, security) with scored report
+- Add audit trail hook — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
+
 ## 1.3.0
 
 - Add Go CLI harness: deterministic loop control, multi-agent dispatch, SQLite state

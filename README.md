@@ -57,6 +57,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 | `/devkit:research` | Deep research — clarify, parallel search, analyze sources, synthesize |
 | `/devkit:decompose` | Goal decomposition — break into task DAG, assign agents, execute in dependency order |
 | `/devkit:scrape` | URL-to-Markdown conversion via Jina Reader / Firecrawl / WebFetch |
+| `/devkit:audit` | Full project health audit — deps, vulnerabilities, licenses, lint, security |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -140,7 +141,11 @@ Verify with `/devkit:status` — RTK will show as installed with version.
 
 ## Safety Hooks
 
-Devkit includes a `PreToolUse` hook that automatically protects against dangerous operations. Installed with the plugin — no setup required.
+Devkit includes `PreToolUse` hooks that automatically protect against dangerous operations and log all commands. Installed with the plugin — no setup required.
+
+### Audit Trail
+
+Every Bash command is logged to `.devkit/audit.log` with UTC timestamps. The log auto-rotates at 10k lines. This file is gitignored — it stays local only.
 
 ### Blocked (hard stop)
 
