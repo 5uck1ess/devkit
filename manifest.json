@@ -1,6 +1,6 @@
 {
   "name": "devkit",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Guardrails and consistency for Claude Code — deterministic workflows, metric-gated improvement loops, and multi-agent consensus",
   "commands": [
     "skills/tri-review.md",
