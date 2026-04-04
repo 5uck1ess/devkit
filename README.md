@@ -1,12 +1,12 @@
 # Devkit
 
-Guardrails and consistency for Claude Code.
+A deterministic development harness for AI agents.
 
-AI agents are powerful but unpredictable — they skip steps, jump to conclusions, and refactor things you didn't ask them to touch. Devkit enforces deterministic, step-by-step workflows that keep Claude on track: propose one change, measure it, keep or revert, repeat. No freestyling.
+AI agents write code fast but cut corners — they skip error handling, introduce race conditions, ignore edge cases, and refactor things you didn't ask them to touch. Devkit is the infrastructure layer between you and the agents. A Go engine executes workflows deterministically — branching, loops, budget enforcement, and parallel dispatch all happen in compiled code, not LLM reasoning. 14 hooks enforce quality at every stage of the lifecycle, many learned directly from bugs found in previous review cycles. The system gets better every time it catches something new.
 
-Every command follows a defined sequence. Self-improvement loops gate each change behind a metric. Multi-agent commands dispatch the same task to multiple models and consolidate consensus. The result is reproducible, auditable work — not whatever Claude felt like doing.
+Define your workflow in YAML. The engine handles orchestration. The agent handles creativity. Every change is measured, gated, and auditable.
 
-Works with just Claude. Optionally adds Codex and Gemini for multi-perspective analysis.
+Works with just Claude. Optionally adds Codex and Gemini for multi-agent consensus.
 
 ## Install
 
