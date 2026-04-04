@@ -58,7 +58,9 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 
 	// Ensure scratchpad directory exists
 	scratchDir := filepath.Join(e.RepoRoot, ".devkit", "scratchpads")
-	os.MkdirAll(scratchDir, 0o755)
+	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create scratchpad dir: %w", err)
+	}
 
 	outputs := make(map[string]string)
 	stepIndex := buildStepIndex(wf.Steps)
@@ -74,6 +76,8 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	overBudget := func() bool {
 		return cfg.BudgetUSD > 0 && totalUSD >= cfg.BudgetUSD
 	}
+	// addCost updates the running total (used by loops to keep overBudget accurate)
+	addCost := func(c float64) { totalUSD += c }
 
 	// Build set of step IDs that are dispatched by parallel steps,
 	// so we skip them during sequential walk (they run inside runParallel).
@@ -129,14 +133,15 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		}
 
 		if step.Loop != nil {
-			cost, err := e.runLoop(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
+			// Note: addCost updates totalUSD live for budget checks inside the loop,
+			// so we don't add the returned cost again here.
+			_, err := e.runLoop(ctx, step, session, cfg.Input, outputs, opts, &iterNum, overBudget, addCost)
 			if err != nil {
 				e.DB.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
 			}
-			totalUSD += cost
 
 			// Evaluate branch after loop (fix #10: branches on loop steps)
 			if len(step.Branch) > 0 {
@@ -173,6 +178,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 					if branchCount > maxBranches {
 						fmt.Println("  → branch limit reached, stopping")
 						failed = true
+						stepErr = fmt.Errorf("branch limit exceeded (%d jumps)", maxBranches)
 						break
 					}
 					fmt.Printf("  → branching to %s\n\n", target)
@@ -185,8 +191,8 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		i++
 	}
 
-	// Clean up scratchpad
-	os.Remove(filepath.Join(scratchDir, "current.md"))
+	// Clean up scratchpad (best-effort)
+	_ = os.Remove(filepath.Join(scratchDir, "current.md"))
 
 	// Only mark done on clean exit (fix #3: don't overwrite "failed")
 	if !failed && ctx.Err() == nil {
@@ -248,8 +254,8 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 }
 
 // runLoop executes a step repeatedly until the until-string is found or max iterations reached.
-// Returns an error if all iterations fail or the until condition is never met.
-func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, error) {
+// Returns an error if all iterations fail. Respects budget via overBudget, reports cost via addCost.
+func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int, overBudget func() bool, addCost func(float64)) (float64, error) {
 	var totalCost float64
 	maxIter := step.Loop.Max
 	if maxIter <= 0 {
@@ -262,6 +268,10 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 	for attempt := 1; attempt <= maxIter; attempt++ {
 		if ctx.Err() != nil {
 			return totalCost, ctx.Err()
+		}
+		if overBudget != nil && overBudget() {
+			fmt.Printf("  → budget exhausted, stopping loop\n")
+			break
 		}
 
 		*iterNum++
@@ -289,6 +299,9 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		consecutiveFailures = 0
 		succeeded = true
 		totalCost += result.CostUSD
+		if addCost != nil {
+			addCost(result.CostUSD)
+		}
 		dbStep.Status = "kept"
 		dbStep.Kept = true
 		dbStep.CostUSD = result.CostUSD

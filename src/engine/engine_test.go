@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/5uck1ess/devkit/lib"
@@ -65,6 +66,7 @@ type mockRunner struct {
 	errors    []error
 	callIdx   int
 	prompts   []string
+	mu        sync.Mutex
 }
 
 func newMockRunner(responses []runners.RunResult, errs []error) *mockRunner {
@@ -75,6 +77,8 @@ func (m *mockRunner) Name() string    { return m.name }
 func (m *mockRunner) Available() bool { return true }
 
 func (m *mockRunner) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.prompts = append(m.prompts, prompt)
 	idx := m.callIdx
 	m.callIdx++
@@ -593,6 +597,122 @@ func TestRunWorkflowBranchCycleLimit(t *testing.T) {
 	// Should have stopped at maxBranches (100), not run forever
 	if runner.callIdx > 101 {
 		t.Errorf("runner called %d times, expected <= 101 (branch limit)", runner.callIdx)
+	}
+}
+
+func TestRunWorkflowStepFailure(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner(
+		[]runners.RunResult{result("plan done")},
+		[]error{nil, fmt.Errorf("implement failed")},
+	)
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "plan", Model: "smart", Prompt: "Plan"},
+			{ID: "impl", Model: "smart", Prompt: "Implement"},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err == nil {
+		t.Fatal("expected error when step fails")
+	}
+	if !strings.Contains(err.Error(), "impl failed") {
+		t.Errorf("error should reference step: %v", err)
+	}
+}
+
+func TestRunWorkflowParallelPartialFailure(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// One succeeds, one fails — order depends on goroutine scheduling
+	runner := newMockRunner(
+		[]runners.RunResult{result("review ok")},
+		[]error{nil, fmt.Errorf("review crashed")},
+	)
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "ra", Model: "smart", Prompt: "Review A"},
+			{ID: "rb", Model: "fast", Prompt: "Review B"},
+			{ID: "dispatch", Parallel: []string{"ra", "rb"}},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "review"})
+	if err != nil {
+		t.Fatalf("partial failure should not error: %v", err)
+	}
+	// At least one step should have output (we don't know which got the success)
+	hasOutput := len(res.Outputs["ra"]) > 0 || len(res.Outputs["rb"]) > 0
+	if !hasOutput {
+		t.Error("expected at least one parallel step to have output")
+	}
+}
+
+func TestRunWorkflowParallelAllFail(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner(nil, []error{
+		fmt.Errorf("review A failed"),
+		fmt.Errorf("review B failed"),
+	})
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "ra", Model: "smart", Prompt: "Review A"},
+			{ID: "rb", Model: "fast", Prompt: "Review B"},
+			{ID: "dispatch", Parallel: []string{"ra", "rb"}},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "review"})
+	if err == nil {
+		t.Fatal("expected error when all parallel steps fail")
+	}
+	if !strings.Contains(err.Error(), "all parallel steps failed") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunWorkflowBudgetInLoop(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// Each iteration costs 0.50, budget is 1.00 — should stop after 2
+	responses := make([]runners.RunResult, 10)
+	for i := range responses {
+		responses[i] = runners.RunResult{Output: "still broken", CostUSD: 0.50}
+	}
+	runner := newMockRunner(responses, nil)
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{Max: 10, Until: "DONE"}},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "fix", BudgetUSD: 1.00})
+	_ = err
+	// At $0.50/iter with $1.00 budget: 2 iterations run ($1.00), iteration 3 blocked
+	if runner.callIdx > 3 {
+		t.Errorf("runner called %d times, expected <= 3 (budget should stop loop)", runner.callIdx)
+	}
+	if res.TotalUSD > 1.50 {
+		t.Errorf("total cost $%.2f, expected <= $1.50", res.TotalUSD)
 	}
 }
 
