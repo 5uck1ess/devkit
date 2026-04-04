@@ -109,7 +109,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-review.sh",
-            "if": "Edit(*.go) || Write(*.go)",
             "statusMessage": "Go quality check...",
             "timeout": 5
           }

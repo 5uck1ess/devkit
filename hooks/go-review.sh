@@ -35,10 +35,10 @@ fi
 WARNINGS=""
 
 # Pattern 1: Accessing result after error check
-# Detects: if err != nil { ... } followed by result.Something on the same or next few lines
-if echo "$CONTENT" | grep -qE 'if err != nil' && echo "$CONTENT" | grep -qP 'err != nil[\s\S]{0,200}(result\.|res\.)'; then
-  # More specific: check if result is accessed INSIDE the error block
-  if echo "$CONTENT" | grep -qP 'if err != nil \{[^}]*(result\.|res\.)[^}]*\}'; then
+# Detects: if err != nil { ... result. or res. ... } on nearby lines
+# Uses awk instead of grep -P to stay macOS-compatible
+if echo "$CONTENT" | grep -qE 'if err != nil'; then
+  if echo "$CONTENT" | awk '/if err != nil \{/{found=1; buf=""} found{buf=buf $0 "\n"; if(/\}/){if(buf ~ /result\.|res\./){exit 0} found=0}} END{exit 1}'; then
     WARNINGS="$WARNINGS\n- Possible result field access inside error path (result may be zero-value when err != nil)"
   fi
 fi
