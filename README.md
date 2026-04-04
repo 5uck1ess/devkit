@@ -535,6 +535,8 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 - [x] Iteration scratchpads — persistent memory across loop iterations to prevent repeated failures
 - [x] Cross-domain dirty-bit enforcement — blocks completion without test evidence per domain
 - [x] Go code quality hooks — error-path access, nil-return, race detection, portability
+- [ ] **Language-universal hooks** — consolidate Go-specific hooks (go-review, go-nil-return, go-vet-stop) into a single `lang-review.sh` that detects language from file extension and runs the right checks. Extend to TypeScript (eslint, tsc --noEmit, empty catch blocks), Rust (clippy, unwrap-after-error, `let _ =` discard), and Python (mypy/ruff, bare except, pass-in-catch)
+- [ ] **Hook consolidation** — merge per-event hooks into fewer scripts to reduce shell process overhead (currently 7 processes per Edit/Write). Add `if` filters to skip non-matching file types without spawning
 - [ ] Stop hook redesign — opt-in or session-end only, not every turn
 - [ ] Cost event hooks — budget threshold events with auto-downgrade actions
 - [ ] Execution registry — centralized step tracking with timing and token usage
