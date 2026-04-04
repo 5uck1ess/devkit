@@ -120,6 +120,28 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	branchCount := 0
 	const maxBranches = 100
 
+	// evalBranch checks branch conditions and returns the next step index, or -1 for fall-through.
+	evalBranch := func(step *WfStep) (int, error) {
+		if len(step.Branch) == 0 {
+			return -1, nil
+		}
+		output, ok := outputs[step.ID]
+		if !ok {
+			return -1, nil
+		}
+		target := EvalBranch(output, step.Branch)
+		if target == "" {
+			return -1, nil
+		}
+		branchCount++
+		if branchCount > maxBranches {
+			fmt.Println("  → branch limit reached, stopping")
+			return -1, fmt.Errorf("branch limit exceeded (%d jumps)", maxBranches)
+		}
+		fmt.Printf("  → branching to %s\n\n", target)
+		return stepIndex[target], nil
+	}
+
 	i := 0
 	for i < len(wf.Steps) {
 		if ctx.Err() != nil {
@@ -168,24 +190,6 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 				stepErr = err
 				break
 			}
-
-			// Evaluate branch after loop (fix #10: branches on loop steps)
-			if len(step.Branch) > 0 {
-				if output, ok := outputs[step.ID]; ok {
-					if target := EvalBranch(output, step.Branch); target != "" {
-						branchCount++
-						if branchCount > maxBranches {
-							fmt.Println("  → branch limit reached, stopping")
-							failed = true
-							stepErr = fmt.Errorf("branch limit exceeded (%d jumps)", maxBranches)
-							break
-						}
-						fmt.Printf("  → branching to %s\n\n", target)
-						i = stepIndex[target]
-						continue
-					}
-				}
-			}
 		} else {
 			cost, output, err := e.runStep(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
@@ -196,22 +200,18 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			}
 			totalUSD += cost
 			outputs[step.ID] = output
+		}
 
-			// Evaluate branch
-			if len(step.Branch) > 0 {
-				if target := EvalBranch(output, step.Branch); target != "" {
-					branchCount++
-					if branchCount > maxBranches {
-						fmt.Println("  → branch limit reached, stopping")
-						failed = true
-						stepErr = fmt.Errorf("branch limit exceeded (%d jumps)", maxBranches)
-						break
-					}
-					fmt.Printf("  → branching to %s\n\n", target)
-					i = stepIndex[target]
-					continue
-				}
-			}
+		// Evaluate branch (applies to both loop and regular steps)
+		jump, err := evalBranch(step)
+		if err != nil {
+			failed = true
+			stepErr = err
+			break
+		}
+		if jump >= 0 {
+			i = jump
+			continue
 		}
 
 		i++
