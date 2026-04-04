@@ -16,6 +16,10 @@ You are stuck if any of these are true:
 
 ## Recovery Protocol
 
+### 0. Check the Scratchpad
+
+Read `.devkit/scratchpads/current.md` first. It records what was already tried and why it failed. If the scratchpad shows 3+ failed iterations, skip straight to **Step 5: Escalate** — the pattern of failures is the diagnosis.
+
 ### 1. Stop and Diagnose
 
 Don't retry the same approach. Read the error carefully:

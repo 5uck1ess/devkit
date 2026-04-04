@@ -1,11 +1,32 @@
 name: Feature
-description: Full lifecycle — brainstorm, plan, implement, test, lint, review
+description: Full lifecycle — triage, brainstorm, plan, implement, test, lint, review (with fast path for small changes)
 
 budget:
   limit: 500000
   downgrade: fast
 
 steps:
+  - id: triage
+    model: fast
+    prompt: |
+      Classify this feature request by scope. Be honest — most changes are smaller than they seem.
+
+      {{input}}
+
+      Categories:
+      - TINY: Typo fix, comment change, single-line config tweak, rename. No new logic.
+      - SMALL: Single function or file change. Clear, contained, no design decisions needed.
+      - MEDIUM: Multiple files, new component or endpoint, moderate complexity.
+      - LARGE: New subsystem, cross-cutting change, architectural work.
+
+      Output the category name (TINY, SMALL, MEDIUM, or LARGE) on the first line,
+      followed by a one-sentence justification.
+    branch:
+      - when: "TINY"
+        goto: quick-fix
+      - when: "SMALL"
+        goto: plan
+
   - id: brainstorm
     model: smart
     prompt: |
@@ -22,9 +43,10 @@ steps:
   - id: plan
     model: smart
     prompt: |
-      Based on this design:
+      Based on this context:
 
-      {{brainstorm}}
+      Feature request: {{input}}
+      Design (if available): {{brainstorm}}
 
       Create an implementation plan as a numbered todo list.
       Each item should be a single, testable change.
@@ -38,8 +60,14 @@ steps:
 
       {{plan}}
 
+      Check .devkit/scratchpads/current.md for notes from previous iterations (if it exists).
+
       Execute the next incomplete todo. Write the code, verify it works,
       then mark it done. Keep changes small and focused.
+
+      After each attempt, append to .devkit/scratchpads/current.md:
+      - What you tried
+      - Whether it worked or failed (and why)
 
       If all todos are complete, say "ALL_DONE".
     loop:
@@ -76,8 +104,12 @@ steps:
 
       {{run-tests}}
 
+      Check .devkit/scratchpads/current.md for what was already tried.
+
       Fix any failing tests. Determine if the bug is in the test
       or the implementation and fix accordingly.
+
+      Append your fix attempt and result to .devkit/scratchpads/current.md.
 
       Run tests again. If all pass, say "ALL_PASSING".
     loop:
@@ -151,3 +183,17 @@ steps:
 
       ## Status
       Ready to commit, or list remaining issues.
+
+      Clean up .devkit/scratchpads/current.md if it exists.
+
+  - id: quick-fix
+    model: smart
+    prompt: |
+      This is a tiny change — no design or planning needed.
+
+      Task: {{input}}
+
+      1. Make the change directly. Keep it minimal.
+      2. Run the linter on changed files.
+      3. Run the test suite to verify nothing broke.
+      4. Produce a one-paragraph summary of what you changed and why.

@@ -117,6 +117,18 @@
         ]
       }
     ],
-    "Stop": []
+    "Stop": [
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dirty-bit.sh",
+            "statusMessage": "Checking cross-domain coverage...",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }
