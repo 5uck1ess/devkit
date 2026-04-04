@@ -2,7 +2,7 @@
   "name": "devkit",
   "version": "2.0.1",
   "description": "Guardrails and consistency for Claude Code — deterministic workflows, metric-gated improvement loops, and multi-agent consensus",
-  "skills": [
+  "commands": [
     "skills/tri-review.md",
     "skills/tri-dispatch.md",
     "skills/tri-debug.md",
@@ -14,6 +14,7 @@
     "skills/self-perf.md",
     "skills/self-migrate.md",
     "skills/pr-ready.md",
+    "skills/pr-monitor.md",
     "skills/workflow.md",
     "skills/status.md",
     "skills/bugfix.md",
@@ -21,8 +22,9 @@
     "skills/refactor.md",
     "skills/decompose.md",
     "skills/audit.md",
-    "skills/pr-monitor.md",
-    "skills/repo-map.md",
+    "skills/repo-map.md"
+  ],
+  "skills": [
     "skills/executing.md",
     "skills/clean-code.md",
     "skills/dry.md",

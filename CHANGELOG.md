@@ -4,7 +4,7 @@
 
 ### Fixed
 - Migrate all 20 command files from `commands/` into `skills/` — completes the command-to-skill conversion started in v2.0.0
-- Remove `"commands"` key from `manifest.json` — all entries now under `"skills"`
+- Restore `"commands"` key in manifest for 20 deterministic workflows (tab-completable), keep `"skills"` for 14 context-activated entries — both point to `skills/` directory
 - Fix `manifest.json` version (was stuck at `1.3.5` while `plugin.json` was at `2.0.0`)
 - Remove duplicate `skills/` block in README repository structure
 - Fix orphaned `skill-authoring` reference in CONTRIBUTING.md
