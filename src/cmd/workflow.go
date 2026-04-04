@@ -57,6 +57,11 @@ var workflowCmd = &cobra.Command{
 		}
 
 		budget, _ := cmd.Flags().GetFloat64("budget")
+		// CLI flag overrides YAML budget; fall back to YAML if flag not set
+		if budget == 0 && wf.Budget.Limit > 0 {
+			// Convert token budget to rough USD estimate ($0.01 per 1K tokens)
+			budget = float64(wf.Budget.Limit) / 1000.0 * 0.01
+		}
 
 		eng := &engine.Engine{
 			DB:       db,

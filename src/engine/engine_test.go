@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,14 +78,14 @@ func (m *mockRunner) Run(ctx context.Context, prompt string, opts runners.RunOpt
 	m.prompts = append(m.prompts, prompt)
 	idx := m.callIdx
 	m.callIdx++
-	if idx >= len(m.responses) {
-		return runners.RunResult{Output: "mock exhausted"}, nil
+	// Check errors first — if error is set, return zero result + error
+	if idx < len(m.errors) && m.errors[idx] != nil {
+		return runners.RunResult{}, m.errors[idx]
 	}
-	var err error
-	if idx < len(m.errors) {
-		err = m.errors[idx]
+	if idx < len(m.responses) {
+		return m.responses[idx], nil
 	}
-	return m.responses[idx], err
+	return runners.RunResult{Output: "mock exhausted"}, nil
 }
 
 func result(output string) runners.RunResult {
@@ -536,6 +537,62 @@ func TestRunWorkflowContextCancelled(t *testing.T) {
 	}
 	if runner.callIdx != 0 {
 		t.Errorf("runner called %d times, want 0 (cancelled)", runner.callIdx)
+	}
+}
+
+func TestRunWorkflowLoopAllFail(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner(nil, []error{
+		fmt.Errorf("runner error 1"),
+		fmt.Errorf("runner error 2"),
+	})
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{Max: 2, Until: "DONE"}},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "fix"})
+	if err == nil {
+		t.Fatal("expected error when all loop iterations fail")
+	}
+	if !strings.Contains(err.Error(), "all 2 iterations failed") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestRunWorkflowBranchCycleLimit(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// Every step output contains "LOOP" which branches back to itself
+	responses := make([]runners.RunResult, 150)
+	for i := range responses {
+		responses[i] = result("LOOP back")
+	}
+	runner := newMockRunner(responses, nil)
+
+	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "start", Model: "fast", Prompt: "Do", Branch: []Branch{
+				{When: "LOOP", Goto: "start"},
+			}},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	// Engine should complete (possibly with failed status) but not hang
+	_ = err
+	// Should have stopped at maxBranches (100), not run forever
+	if runner.callIdx > 101 {
+		t.Errorf("runner called %d times, expected <= 101 (branch limit)", runner.callIdx)
 	}
 }
 

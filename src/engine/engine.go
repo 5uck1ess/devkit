@@ -75,7 +75,21 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		return cfg.BudgetUSD > 0 && totalUSD >= cfg.BudgetUSD
 	}
 
+	// Build set of step IDs that are dispatched by parallel steps,
+	// so we skip them during sequential walk (they run inside runParallel).
+	parallelChildren := make(map[string]bool)
+	for _, s := range wf.Steps {
+		for _, pid := range s.Parallel {
+			parallelChildren[pid] = true
+		}
+	}
+
 	// Walk steps sequentially, with branch jumps
+	failed := false
+	var stepErr error
+	branchCount := 0
+	const maxBranches = 100
+
 	i := 0
 	for i < len(wf.Steps) {
 		if ctx.Err() != nil {
@@ -88,12 +102,19 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 
 		step := &wf.Steps[i]
 
-		// Skip steps that are only referenced by parallel dispatchers
-		// (they're executed inline when the parallel step runs)
+		// Skip steps that are dispatched by a parallel step
+		if parallelChildren[step.ID] {
+			i++
+			continue
+		}
+
+		// Parallel dispatcher step
 		if step.Prompt == "" && len(step.Parallel) > 0 {
 			cost, err := e.runParallel(ctx, step, wf.Steps, stepIndex, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
 				e.DB.UpdateSessionStatus(session.ID, "failed")
+				failed = true
+				stepErr = err
 				break
 			}
 			totalUSD += cost
@@ -101,7 +122,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			continue
 		}
 
-		// Regular step
+		// Skip empty steps
 		if step.Prompt == "" {
 			i++
 			continue
@@ -111,13 +132,35 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			cost, err := e.runLoop(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
 				e.DB.UpdateSessionStatus(session.ID, "failed")
+				failed = true
+				stepErr = err
 				break
 			}
 			totalUSD += cost
+
+			// Evaluate branch after loop (fix #10: branches on loop steps)
+			if len(step.Branch) > 0 {
+				if output, ok := outputs[step.ID]; ok {
+					if target := EvalBranch(output, step.Branch); target != "" {
+						branchCount++
+						if branchCount > maxBranches {
+							fmt.Println("  → branch limit reached, stopping")
+							failed = true
+							stepErr = fmt.Errorf("branch limit exceeded (%d jumps)", maxBranches)
+							break
+						}
+						fmt.Printf("  → branching to %s\n\n", target)
+						i = stepIndex[target]
+						continue
+					}
+				}
+			}
 		} else {
 			cost, output, err := e.runStep(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
 				e.DB.UpdateSessionStatus(session.ID, "failed")
+				failed = true
+				stepErr = err
 				break
 			}
 			totalUSD += cost
@@ -126,11 +169,15 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			// Evaluate branch
 			if len(step.Branch) > 0 {
 				if target := EvalBranch(output, step.Branch); target != "" {
-					if idx, ok := stepIndex[target]; ok {
-						fmt.Printf("  → branching to %s\n\n", target)
-						i = idx
-						continue
+					branchCount++
+					if branchCount > maxBranches {
+						fmt.Println("  → branch limit reached, stopping")
+						failed = true
+						break
 					}
+					fmt.Printf("  → branching to %s\n\n", target)
+					i = stepIndex[target]
+					continue
 				}
 			}
 		}
@@ -141,19 +188,31 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	// Clean up scratchpad
 	os.Remove(filepath.Join(scratchDir, "current.md"))
 
-	// Commit any remaining changes
-	e.Git.CommitAll(fmt.Sprintf("%s(%s): complete", session.Workflow, session.ID))
+	// Only mark done on clean exit (fix #3: don't overwrite "failed")
+	if !failed && ctx.Err() == nil {
+		e.Git.CommitAll(fmt.Sprintf("%s(%s): complete", session.Workflow, session.ID))
+		e.DB.UpdateSessionStatus(session.ID, "done")
+	} else if !failed {
+		e.DB.UpdateSessionStatus(session.ID, "cancelled")
+	}
 
-	e.DB.UpdateSessionStatus(session.ID, "done")
 	allSteps, _ := e.DB.GetSteps(session.ID)
-	lib.WriteReport(e.RepoRoot, session, allSteps, "completed")
+	stopReason := "completed"
+	if failed {
+		stopReason = "failed"
+	} else if ctx.Err() != nil {
+		stopReason = "cancelled"
+	} else if overBudget() {
+		stopReason = "budget_exhausted"
+	}
+	lib.WriteReport(e.RepoRoot, session, allSteps, stopReason)
 
 	return &Result{
 		Session:  session,
 		Steps:    allSteps,
 		Outputs:  outputs,
 		TotalUSD: totalUSD,
-	}, nil
+	}, stepErr
 }
 
 // runStep executes a single step and records it in the database.
@@ -189,12 +248,16 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 }
 
 // runLoop executes a step repeatedly until the until-string is found or max iterations reached.
+// Returns an error if all iterations fail or the until condition is never met.
 func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, error) {
 	var totalCost float64
 	maxIter := step.Loop.Max
 	if maxIter <= 0 {
 		maxIter = 1
 	}
+
+	succeeded := false
+	consecutiveFailures := 0
 
 	for attempt := 1; attempt <= maxIter; attempt++ {
 		if ctx.Err() != nil {
@@ -218,12 +281,13 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			dbStep.Status = "failed"
 			dbStep.ChangeSummary = err.Error()
 			e.DB.UpdateStep(dbStep)
-			// Loop continues on failure — try again
-			totalCost += result.CostUSD
+			consecutiveFailures++
 			fmt.Printf("  failed, retrying\n\n")
 			continue
 		}
 
+		consecutiveFailures = 0
+		succeeded = true
 		totalCost += result.CostUSD
 		dbStep.Status = "kept"
 		dbStep.Kept = true
@@ -240,14 +304,19 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		// Check until condition
 		if step.Loop.Until != "" && strings.Contains(strings.ToUpper(result.Output), strings.ToUpper(step.Loop.Until)) {
 			fmt.Printf("  → loop complete (%s found)\n\n", step.Loop.Until)
-			break
+			return totalCost, nil
 		}
+	}
+
+	if !succeeded {
+		return totalCost, fmt.Errorf("loop %s: all %d iterations failed", step.ID, maxIter)
 	}
 
 	return totalCost, nil
 }
 
 // runParallel dispatches multiple steps concurrently.
+// Returns an error if ALL parallel steps fail. Partial failures are logged but not fatal.
 func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps []WfStep, stepIndex map[string]int, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, error) {
 	fmt.Printf("--- %s (parallel: %s) ---\n\n", dispatcher.ID, strings.Join(dispatcher.Parallel, ", "))
 
@@ -256,6 +325,12 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 		output string
 		cost   float64
 		err    error
+	}
+
+	// Snapshot outputs before launching goroutines to avoid data race
+	outputSnap := make(map[string]string, len(outputs))
+	for k, v := range outputs {
+		outputSnap[k] = v
 	}
 
 	var mu sync.Mutex
@@ -278,7 +353,8 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			myIter := *iterNum
 			mu.Unlock()
 
-			prompt := Interpolate(step.Prompt, input, outputs)
+			// Use snapshot for interpolation — safe for concurrent reads
+			prompt := Interpolate(step.Prompt, input, outputSnap)
 			dbStep := &lib.Step{
 				SessionID: session.ID,
 				Iteration: myIter,
@@ -316,9 +392,15 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 	wg.Wait()
 
 	var totalCost float64
+	var failCount int
+	var firstErr error
 	for _, r := range results {
 		if r.err != nil {
 			fmt.Printf("  %s: failed (%v)\n", r.id, r.err)
+			failCount++
+			if firstErr == nil {
+				firstErr = r.err
+			}
 			continue
 		}
 		outputs[r.id] = r.output
@@ -326,6 +408,11 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 		fmt.Printf("  %s: done ($%.4f)\n", r.id, r.cost)
 	}
 	fmt.Println()
+
+	// Fail only if ALL parallel steps failed
+	if failCount == len(results) {
+		return totalCost, fmt.Errorf("all parallel steps failed, first: %w", firstErr)
+	}
 
 	return totalCost, nil
 }
