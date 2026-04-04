@@ -310,7 +310,7 @@ func TestEvalBranch(t *testing.T) {
 		want   string
 	}{
 		{"TINY: just a typo fix", "quick"},
-		{"tiny change", "quick"},      // case insensitive
+		{"tiny change", "quick"}, // case insensitive
 		{"SMALL: one function", "plan"},
 		{"MEDIUM: multiple files", ""}, // no match
 		{"LARGE: new subsystem", ""},
@@ -420,8 +420,8 @@ func TestRunWorkflowBranch(t *testing.T) {
 	dir, git := initGitRepo(t)
 
 	runner := newMockRunner([]runners.RunResult{
-		result("TINY: just a typo"),  // triage output
-		result("fixed the typo"),     // quick-fix output
+		result("TINY: just a typo"), // triage output
+		result("fixed the typo"),    // quick-fix output
 	}, nil)
 
 	eng := mustEngine(t, db, git, runner, dir)
