@@ -2,9 +2,11 @@ package lib
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -45,10 +47,34 @@ type DB struct {
 	path string
 }
 
+// ensureGitignore adds ".devkit/" to the repo's .gitignore if not already present.
+func ensureGitignore(devkitDir string) {
+	repoRoot := filepath.Dir(devkitDir)
+	gitignorePath := filepath.Join(repoRoot, ".gitignore")
+
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return // don't risk overwriting a file we couldn't read
+	}
+
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.TrimSpace(line) == ".devkit" || strings.TrimSpace(line) == ".devkit/" {
+			return
+		}
+	}
+
+	prefix := ""
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		prefix = "\n"
+	}
+	os.WriteFile(gitignorePath, append(content, []byte(prefix+".devkit/\n")...), 0o644)
+}
+
 func OpenDB(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
+	ensureGitignore(filepath.Dir(path))
 
 	conn, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)")
 	if err != nil {

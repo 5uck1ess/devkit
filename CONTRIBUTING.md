@@ -4,39 +4,39 @@
 
 Slash commands appear in tab-completion and run step-by-step workflows.
 
-1. Create `skills/my-command.md` with YAML frontmatter:
+1. Create `commands/my-command.md` with YAML frontmatter:
    ```markdown
    ---
-   name: devkit:my-command
    description: What this command does.
    ---
    # Command Title
    Step-by-step workflow with numbered steps.
    ```
-2. Add `"skills/my-command.md"` to the `"commands"` array in `manifest.json`
-3. Include Budget & Early Exit section if the command loops
-4. Include `[PARALLEL]` markers if steps run concurrently
+2. Include Budget & Early Exit section if the command loops
+3. Include `[PARALLEL]` markers if steps run concurrently
+
+The command name is derived from the filename: `commands/my-command.md` becomes `/devkit:my-command`.
 
 ## Adding a Context-Activated Skill
 
 Skills activate automatically based on natural language — no slash command needed.
 
-1. Create `skills/my-skill.md` with YAML frontmatter:
+1. Create `skills/my-skill/SKILL.md` with YAML frontmatter:
    ```markdown
    ---
-   name: devkit:my-skill
+   name: my-skill
    description: Triggers on "natural language pattern".
    ---
    # Skill Title
    Guidelines or workflow (keep under 100 lines).
    ```
-2. Add `"skills/my-skill.md"` to the `"skills"` array in `manifest.json`
+
+The skill will be auto-discovered as `devkit:my-skill`.
 
 ## Adding an Agent
 
-1. Create `agents/my-agent.md` with YAML frontmatter specifying model, tools, isolation, and maxTurns
-2. Add `"agents/my-agent.md"` to `manifest.json`
-3. Scope tools to only what the agent needs
+1. Create `agents/my-agent.md` with YAML frontmatter specifying name, description, model, effort, maxTurns, and disallowedTools
+2. Scope tools to only what the agent needs
 
 ## Adding a Workflow
 
