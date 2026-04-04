@@ -102,6 +102,18 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-review.sh",
+            "if": "Edit(*.go) || Write(*.go)",
+            "statusMessage": "Go quality check...",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [

@@ -39,6 +39,11 @@ if echo "$AGENT_OUTPUT" | grep -qE '(passed|failed|error).*(pytest|test)|pytest\
   TEST_EVIDENCE=true
 fi
 
+# Go vet (race detector evidence)
+if echo "$AGENT_OUTPUT" | grep -qE '(go vet|go test.*-race|-vet=|vet: )'; then
+  TEST_EVIDENCE=true
+fi
+
 # Generic pass/fail signals
 if echo "$AGENT_OUTPUT" | grep -qE '(ALL_PASSING|ALL_DONE|ALL_TESTS_PASSING|BUILD_SUCCESS|LINT_CLEAN|RESEARCH_COMPLETE)'; then
   TEST_EVIDENCE=true

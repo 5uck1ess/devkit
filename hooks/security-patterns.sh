@@ -71,6 +71,7 @@ if echo "$FILE_PATH" | grep -qE '\.go$'; then
   check_pattern 'exec\.Command\s*\(\s*"(sh|bash)"' "Security: shell execution via exec.Command — pass arguments directly, avoid sh -c"
   check_pattern 'md5\.New\s*\(' "Security: MD5 is cryptographically broken — use SHA-256 or better"
   check_pattern 'sha1\.New\s*\(' "Security: SHA-1 is deprecated — use SHA-256 or better"
+  check_pattern 'filepath\.(Join|Clean)\s*\([^)]*\b(name|input|arg|param)\b' "Security: filepath with user input — validate against path traversal (e.g., ^[a-zA-Z0-9_-]+$)"
 fi
 
 # --- SQL patterns (any file) ---
