@@ -95,6 +95,10 @@ Input: {prompt}
 
 <!-- The orchestrator MUST inline the diff content here from /tmp/tri-review-diff.txt. The agent runs in a worktree and cannot fetch it. -->
 
+**IMPORTANT instruction to include in the Claude agent prompt:**
+
+> The diff above is the ONLY source of truth. Do NOT read files from the worktree to verify whether changes were applied — the worktree is based on main, not the PR branch, so files will appear unchanged. Review the diff as provided. If you need to check for stale references or orphan files, grep the worktree but understand that the diff's changes are NOT reflected there.
+
 ### Codex — if available
 
 **Plugin (preferred):**
