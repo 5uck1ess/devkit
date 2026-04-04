@@ -9,8 +9,13 @@ Single binary for Gmail, Calendar, and Drive. Always use `--for-ai` for structur
 
 ## Prerequisites
 
-- `gcli` installed and on PATH
-- Authenticated: `gcli login`
+Before using any gcli command, verify it is installed and authenticated:
+
+```bash
+command -v gcli >/dev/null 2>&1 && gcli mail list 1 --for-ai >/dev/null 2>&1 && echo "gcli: ready" || echo "gcli: not installed or not authenticated — install from https://github.com/AryaLabsHQ/gcli and run 'gcli login'"
+```
+
+If gcli is not installed, tell the user and stop. Do not attempt gcli commands without this check.
 
 ## Gmail
 
