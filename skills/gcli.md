@@ -7,12 +7,16 @@ description: Google Workspace CLI (Gmail, Calendar, Drive) via gcli — use --fo
 
 Single binary for Gmail, Calendar, and Drive. Always use `--for-ai` for structured, token-efficient output.
 
+## Confirmation Required
+
+**NEVER** send, reply, forward, or delete email/calendar events without explicit user confirmation of the recipient(s), subject, and body. Always show the user what will be sent and wait for approval before executing. The same applies to `cal create`, `cal edit`, `cal delete`, and `drive upload`.
+
 ## Prerequisites
 
-Before using any gcli command, verify it is installed and authenticated:
+Before using any gcli command, verify it is installed:
 
 ```bash
-command -v gcli >/dev/null 2>&1 && gcli mail list 1 --for-ai >/dev/null 2>&1 && echo "gcli: ready" || echo "gcli: not installed or not authenticated — install from https://github.com/AryaLabsHQ/gcli and run 'gcli login'"
+command -v gcli >/dev/null 2>&1 && echo "gcli: installed" || echo "gcli: not installed — install from https://github.com/AryaLabsHQ/gcli and run 'gcli login'"
 ```
 
 If gcli is not installed, tell the user and stop. Do not attempt gcli commands without this check.
@@ -93,9 +97,10 @@ gcli drive permissions "path/to/file" --for-ai
 ## Composing Emails
 
 When writing email body:
-1. Write content to a temp file
-2. Use `--body-file` to send — avoids shell escaping issues
-3. For replies, `--for-ai` reads stdin as body
+1. Create a temp file: `tmp=$(mktemp)`
+2. Write content to it
+3. Use `--body-file "$tmp"` to send — avoids shell escaping issues
+4. Clean up: `rm -f "$tmp"`
 
 ## Tips
 

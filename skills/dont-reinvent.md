@@ -11,7 +11,7 @@ Before writing any non-trivial utility, helper, or tool — check if it already 
 
 1. **Language stdlib / builtins** — `path.join()`, `os.path`, `filepath.Join()` exist. Don't write your own.
 2. **Framework built-ins** — most frameworks have solutions for routing, validation, auth, caching. Use them.
-3. **Established packages** — if there's a well-maintained package with >1k stars and recent commits, use it over writing custom code.
+3. **Established packages** — if there's a well-maintained package with meaningful adoption and recent commits, prefer it over custom code.
 4. **Existing tools / plugins / MCP servers** — before building a new CLI wrapper or integration, check if one exists. Run a quick search.
 5. **Internal codebase** — search the project for existing utilities before creating new ones. Someone may have already solved this.
 
