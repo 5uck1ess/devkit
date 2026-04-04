@@ -1,7 +1,6 @@
 package lib
 
 import (
-	"bufio"
 	"database/sql"
 	"fmt"
 	"os"
@@ -52,34 +51,20 @@ func ensureGitignore(devkitDir string) {
 	repoRoot := filepath.Dir(devkitDir)
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 
-	// Check if .devkit/ is already ignored
-	if f, err := os.Open(gitignorePath); err == nil {
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == ".devkit" || line == ".devkit/" {
-				f.Close()
-				return
-			}
-		}
-		f.Close()
-	}
+	content, _ := os.ReadFile(gitignorePath) // nil content if file doesn't exist
 
-	// Append .devkit/ to .gitignore (create if needed)
-	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	if err != nil {
-		return // best-effort; don't fail the whole operation
-	}
-	defer f.Close()
-
-	// If file exists and doesn't end with newline, add one first
-	if info, err := os.Stat(gitignorePath); err == nil && info.Size() > 0 {
-		content, err := os.ReadFile(gitignorePath)
-		if err == nil && len(content) > 0 && content[len(content)-1] != '\n' {
-			f.Write([]byte("\n"))
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.TrimSpace(line) == ".devkit" || strings.TrimSpace(line) == ".devkit/" {
+			return
 		}
 	}
-	f.Write([]byte(".devkit/\n"))
+
+	prefix := ""
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		prefix = "\n"
+	}
+	// best-effort; don't fail the whole operation
+	os.WriteFile(gitignorePath, append(content, []byte(prefix+".devkit/\n")...), 0o644)
 }
 
 func OpenDB(path string) (*DB, error) {
