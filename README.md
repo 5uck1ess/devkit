@@ -288,26 +288,35 @@ devkit/
 ├── manifest.json            # Plugin manifest
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── skills/                  # Invocable + context-activated skills
-│   ├── tri-*.md             # Multi-agent skills (5)
+├── skills/                  # All skill files (commands + skills)
+│   │                        # — 20 slash commands (tab-completable) —
+│   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
 │   ├── pr-monitor.md        # Post-PR review monitor
-│   ├── repo-map.md          # AST-based symbol index
-│   ├── audit.md             # Project health audit
-│   ├── workflow.md          # YAML workflow runner
-│   ├── feature.md           # Feature lifecycle
 │   ├── bugfix.md            # Bug fix lifecycle
+│   ├── feature.md           # Feature lifecycle
 │   ├── refactor.md          # Refactor lifecycle
 │   ├── decompose.md         # Goal decomposition
+│   ├── workflow.md          # YAML workflow runner
+│   ├── audit.md             # Project health audit
+│   ├── repo-map.md          # AST-based symbol index
 │   ├── status.md            # Health check
-│   ├── changelog.md         # Changelog generation
-│   ├── doc-gen.md           # Documentation generation
-│   ├── test-gen.md          # Test generation
-│   ├── research.md          # Deep research
-│   ├── scrape.md            # URL scraping
-│   ├── onboard.md           # Codebase onboarding
-│   └── ...                  # + context-activated skills
+│   │                        # — 14 context-activated skills —
+│   ├── executing.md         # Principle: methodical execution
+│   ├── clean-code.md        # Principle: readability
+│   ├── dry.md               # Principle: don't repeat yourself
+│   ├── yagni.md             # Principle: no speculative features
+│   ├── dont-reinvent.md     # Principle: use existing solutions
+│   ├── stuck.md             # Principle: loop recovery
+│   ├── creating-workflows.md # Tool: YAML workflow authoring
+│   ├── gcli.md              # Tool: Google Workspace CLI
+│   ├── changelog.md         # Auto: "generate a changelog"
+│   ├── doc-gen.md           # Auto: "document this module"
+│   ├── test-gen.md          # Auto: "write tests for X"
+│   ├── onboard.md           # Auto: "explain this codebase"
+│   ├── research.md          # Auto: "research X"
+│   └── scrape.md            # Auto: "scrape this URL"
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
 │   ├── researcher.md        # Sonnet, worktree isolation
