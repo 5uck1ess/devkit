@@ -67,6 +67,17 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/shell-compat.sh",
+            "statusMessage": "Shell portability check...",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -102,6 +113,28 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-review.sh",
+            "statusMessage": "Go quality check...",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-nil-return.sh",
+            "statusMessage": "Nil-error check...",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [
@@ -117,6 +150,29 @@
         ]
       }
     ],
-    "Stop": []
+    "Stop": [
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dirty-bit.sh",
+            "statusMessage": "Checking cross-domain coverage...",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-vet-stop.sh",
+            "statusMessage": "Running go vet + race check...",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
   }
 }

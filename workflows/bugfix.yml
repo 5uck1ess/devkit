@@ -1,11 +1,29 @@
 name: Bug Fix
-description: Full lifecycle bug fix — reproduce, diagnose, fix, test, review
+description: Full lifecycle bug fix — triage, reproduce, diagnose, fix, test, review (with fast path for trivial fixes)
 
 budget:
   limit: 300000
   downgrade: fast
 
 steps:
+  - id: triage
+    model: fast
+    prompt: |
+      Classify this bug report by complexity:
+
+      {{input}}
+
+      Categories:
+      - TRIVIAL: Typo, off-by-one, missing import, wrong variable name, obvious one-liner.
+      - NORMAL: Requires investigation but likely a single root cause in one area.
+      - COMPLEX: Multiple possible causes, cross-cutting, or involves concurrency/state.
+
+      Output the category name (TRIVIAL, NORMAL, or COMPLEX) on the first line,
+      followed by a one-sentence justification.
+    branch:
+      - when: "TRIVIAL"
+        goto: quick-fix
+
   - id: reproduce
     model: smart
     prompt: |
@@ -24,11 +42,15 @@ steps:
 
       {{reproduce}}
 
+      Check .devkit/scratchpads/current.md for notes from previous attempts (if it exists).
+
       Trace the root cause. Read the code path, check assumptions,
       examine edge cases. Determine exactly WHY this happens,
       not just WHERE.
 
       Propose a specific fix with reasoning.
+
+      Append your diagnosis to .devkit/scratchpads/current.md.
 
   - id: fix
     model: smart
@@ -68,8 +90,12 @@ steps:
 
       {{run-tests}}
 
+      Check .devkit/scratchpads/current.md for what was already tried.
+
       Fix any failures. The fix may have caused side effects —
       determine if the test or the code is wrong.
+
+      Append your fix attempt and result to .devkit/scratchpads/current.md.
 
       Run tests again. If all pass, say "ALL_PASSING".
     loop:
@@ -95,3 +121,17 @@ steps:
 
       ## Status
       Test suite status. Ready to commit or remaining concerns.
+
+      Clean up .devkit/scratchpads/current.md if it exists.
+
+  - id: quick-fix
+    model: smart
+    prompt: |
+      This is a trivial bug — no deep investigation needed.
+
+      Bug report: {{input}}
+
+      1. Find the bug and fix it directly.
+      2. Write a regression test that would have caught it.
+      3. Run the full test suite.
+      4. Produce a brief summary: what was wrong, what you changed, what test you added.
