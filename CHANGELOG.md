@@ -11,6 +11,7 @@
 - Add `security-patterns` — PreToolUse on Edit/Write catches eval, XSS, shell injection, weak hashes, hardcoded secrets across JS/TS/Python/Go
 - Add `audit-trail` — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
 - Add `slop-detect` — PostToolUse on Edit/Write catches excessive docs, restating comments, JSDoc overuse
+- Add `pr-gate` — prompts to run pr-ready pipeline before `gh pr create`, 10-minute cooldown
 
 ### Upgraded
 - Upgrade `self:perf` to hypothesis-driven investigation — evidence gathering, ranked hypotheses, one-at-a-time testing with 3x benchmark runs
@@ -21,9 +22,12 @@
 - Fix superpowers install: use `@claude-plugins-official`, not separate marketplace
 
 ### Skills
+- Convert 6 commands to context-activated skills (no slash command needed): test-gen, doc-gen, changelog, onboard, research, scrape
+- Add `dont-reinvent` skill — prefer existing solutions over custom code, reduce maintenance burden
+- Add `gcli` skill — Google Workspace CLI reference with safety confirmation gate
 - Remove 5 skills that overlap with superpowers: brainstorming, planning, writing-tests, skill-authoring, verify
-- Keep 6 unique skills: executing, clean-code, dry, yagni, creating-workflows, stuck
 - Evaluated `code-simplifier` as replacement — rejected (thin, React-specific, no test verification)
+- Commands reduced from 26 to 20, skills increased from 6 to 14
 
 ### Fixes
 - Fix stop-gate: disabled — fires every turn, not just session end. Needs architectural redesign.

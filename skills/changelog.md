@@ -1,6 +1,6 @@
 ---
 name: devkit:changelog
-description: Generate a structured changelog from git history. Categorizes commits and formats for release notes.
+description: Generate a structured changelog from git history — use when asked to create a changelog, release notes, or summarize what changed between versions/tags/branches.
 ---
 
 # Changelog Generation

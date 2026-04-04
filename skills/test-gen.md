@@ -1,6 +1,6 @@
 ---
 name: devkit:test-gen
-description: Generate a comprehensive test suite for target files. Detects framework, writes tests, runs them, fixes failures — iterates until green.
+description: Generate tests for code — use when asked to write tests, create a test suite, add test coverage, or generate unit/integration tests for a file or module.
 ---
 
 # Test Generation

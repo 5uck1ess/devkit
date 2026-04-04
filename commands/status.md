@@ -25,6 +25,8 @@ echo -n "codex: " && (command -v codex && codex --version 2>/dev/null || echo "n
 echo -n "gemini: " && (command -v gemini && gemini --version 2>/dev/null || echo "not installed")
 echo -n "gh: " && (command -v gh && gh --version 2>/dev/null | head -1 || echo "not installed")
 echo -n "rtk: " && (command -v rtk && rtk --version 2>/dev/null || echo "not installed (optional — 60-90% token savings)")
+echo -n "gcli: " && (command -v gcli >/dev/null 2>&1 && echo "installed" || echo "not installed (optional — Google Workspace: Gmail, Calendar, Drive)")
+echo -n "sg: " && (command -v sg >/dev/null 2>&1 && (sg --version 2>/dev/null || echo "installed") || echo "not installed (optional — AST-based repo mapping)")
 echo ""
 echo "=== RTK Status ==="
 if command -v rtk >/dev/null 2>&1; then

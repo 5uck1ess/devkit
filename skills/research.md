@@ -1,6 +1,6 @@
 ---
 name: devkit:research
-description: Deep research workflow — clarify question, parallel web search, analyze sources, synthesize findings.
+description: Deep research workflow — use when asked to research a topic, do a deep dive, investigate options, compare approaches, or find the best solution to a technical question.
 ---
 
 # Research Workflow

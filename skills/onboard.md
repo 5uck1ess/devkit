@@ -1,6 +1,6 @@
 ---
 name: devkit:onboard
-description: Generate a codebase onboarding guide. Analyzes architecture, key files, patterns, and gotchas to help new contributors get up to speed.
+description: Generate a codebase onboarding guide — use when asked to explain this codebase, help understand the architecture, give a tour of the repo, or onboard a new contributor.
 ---
 
 # Codebase Onboarding

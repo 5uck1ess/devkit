@@ -97,12 +97,24 @@ Input: {prompt}
 
 ### Codex — if available
 
+**Plugin (preferred):**
+
 ```
 /codex:rescue --effort high --background \
   "{prompt} $(cat /tmp/tri-review-diff.txt)"
 ```
 
 Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
+
+**CLI fallback (only if plugin not installed):**
+
+```bash
+if [ "$HAS_CODEX_CLI" = "yes" ]; then
+  codex exec --full-auto "{prompt} $(cat /tmp/tri-review-diff.txt)" \
+    > /tmp/tri-review-codex.txt 2>/dev/null &
+  CODEX_PID=$!
+fi
+```
 
 ### Gemini — if available
 
@@ -135,7 +147,7 @@ Note: Gemini CLI defaults to the best available model. Don't hardcode a model na
 | Agent | Method | Flags |
 |---|---|---|
 | Claude | Native background agent | `isolation: worktree`, `background: true` |
-| Codex | Plugin (preferred) / CLI fallback | `/codex:rescue --background` or `codex -q` |
+| Codex | Plugin (preferred) / CLI fallback | `/codex:rescue --background` or `codex exec --full-auto` |
 | Gemini | Plugin (preferred) / CLI fallback | `/gemini:rescue --background` or `-y` |
 
 ## Step 5: Consolidate
