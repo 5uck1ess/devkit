@@ -15,6 +15,15 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 /plugin install devkit@5uck1ess-plugins
 ```
 
+### Recommended: Add Superpowers
+
+Devkit handles enforcement and orchestration. [Superpowers](https://github.com/obra/superpowers) handles methodology — brainstorming, planning, TDD, verification, debugging. They're complementary with no overlap.
+
+```bash
+/plugin marketplace add https://github.com/obra/superpowers-marketplace
+/plugin install superpowers
+```
+
 ---
 
 ## Quick Start
