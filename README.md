@@ -288,8 +288,8 @@ devkit/
 ├── manifest.json            # Plugin manifest
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 20 slash commands
-│   ├── tri-*.md             # Multi-agent commands (5)
+├── skills/                  # 34 skills (invocable + context-activated)
+│   ├── tri-*.md             # Multi-agent skills (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
 │   ├── pr-monitor.md        # Post-PR review monitor
@@ -300,7 +300,14 @@ devkit/
 │   ├── bugfix.md            # Bug fix lifecycle
 │   ├── refactor.md          # Refactor lifecycle
 │   ├── decompose.md         # Goal decomposition
-│   └── status.md            # Health check
+│   ├── status.md            # Health check
+│   ├── changelog.md         # Changelog generation
+│   ├── doc-gen.md           # Documentation generation
+│   ├── test-gen.md          # Test generation
+│   ├── research.md          # Deep research
+│   ├── scrape.md            # URL scraping
+│   ├── onboard.md           # Codebase onboarding
+│   └── ...                  # + context-activated skills
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
 │   ├── researcher.md        # Sonnet, worktree isolation

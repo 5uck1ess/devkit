@@ -14,19 +14,19 @@
 2. Add `"skills/my-skill.md"` to `manifest.json`
 3. See the `skill-authoring` skill for full guidance
 
-## Adding a Command
+## Adding an Invocable Skill (formerly "command")
 
-1. Create `commands/my-command.md` with YAML frontmatter:
+1. Create `skills/my-skill.md` with YAML frontmatter:
    ```markdown
    ---
-   name: devkit:my-command
-   description: What this command does.
+   name: devkit:my-skill
+   description: What this skill does.
    ---
-   # Command Title
+   # Skill Title
    Step-by-step workflow.
    ```
-2. Add `"commands/my-command.md"` to `manifest.json`
-3. Include Budget & Early Exit section if the command loops
+2. Add `"skills/my-skill.md"` to `manifest.json`
+3. Include Budget & Early Exit section if the skill loops
 4. Include `[PARALLEL]` markers if steps run concurrently
 
 ## Adding an Agent
