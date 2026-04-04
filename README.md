@@ -101,21 +101,16 @@ These run with whatever agents are available. Claude always runs. Codex and Gemi
 
 ## Skills
 
-Coding methodology guides that enforce consistent practices. These are loaded as reference material when relevant commands run.
+Coding methodology guides that enforce consistent practices. These are loaded as reference material when relevant commands run. For brainstorming, planning, TDD, verification, and skill authoring — use [superpowers](https://github.com/obra/superpowers) (complementary plugin).
 
 | Skill | Description |
 |---|---|
-| `devkit:planning` | Write implementation plans — small testable steps, dependency ordering, risk identification |
 | `devkit:executing` | Execute plans methodically — understand, implement, verify, commit |
-| `devkit:writing-tests` | Arrange-act-assert, one behavior per test, test contracts not implementation |
 | `devkit:clean-code` | Meaningful names, small functions, single responsibility, flat nesting |
 | `devkit:dry` | Rule of Three, when duplication is fine, extracting the right abstraction |
 | `devkit:yagni` | Build only what's needed, no speculative features or premature abstractions |
-| `devkit:brainstorming` | Diverge/converge ideation, evaluating ideas, avoiding premature commitment |
-| `devkit:skill-authoring` | How to write new skills — format, frontmatter, progressive disclosure |
 | `devkit:creating-workflows` | How to create workflow YAML files — schema, step types, interpolation |
 | `devkit:stuck` | Detect agent looping/failing, structured recovery — backtrack, simplify, escalate |
-| `devkit:verify` | Output validation checklist before proceeding or reporting completion |
 
 ---
 

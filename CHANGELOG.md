@@ -4,6 +4,9 @@
 
 - Add `devkit:audit` command — unified project health audit (deps, vulnerabilities, outdated packages, licenses, lint, security) with scored report
 - Add audit trail hook — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
+- Remove 5 skills that overlap with superpowers plugin: brainstorming, planning, writing-tests, skill-authoring, verify
+- Keep 6 skills that are unique to devkit: executing, clean-code, dry, yagni, creating-workflows, stuck
+- Add superpowers reference in README as complementary methodology plugin
 
 ## 1.3.0
 
