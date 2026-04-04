@@ -1,33 +1,36 @@
 # Contributing to Devkit
 
-## Adding a Skill
+## Adding a Slash Command (deterministic workflow)
 
-1. Create `skills/my-skill.md` with YAML frontmatter:
+Slash commands appear in tab-completion and run step-by-step workflows.
+
+1. Create `skills/my-command.md` with YAML frontmatter:
    ```markdown
    ---
-   name: devkit:my-skill
-   description: One-line description.
+   name: devkit:my-command
+   description: What this command does.
    ---
-   # Skill Title
-   Body content (keep under 100 lines).
+   # Command Title
+   Step-by-step workflow with numbered steps.
    ```
-2. Add `"skills/my-skill.md"` to `manifest.json`
-3. See the "Adding an Invocable Skill" section below for full guidance
-
-## Adding an Invocable Skill (formerly "command")
-
-1. Create `skills/my-skill.md` with YAML frontmatter:
-   ```markdown
-   ---
-   name: devkit:my-skill
-   description: What this skill does.
-   ---
-   # Skill Title
-   Step-by-step workflow.
-   ```
-2. Add `"skills/my-skill.md"` to `manifest.json`
-3. Include Budget & Early Exit section if the skill loops
+2. Add `"skills/my-command.md"` to the `"commands"` array in `manifest.json`
+3. Include Budget & Early Exit section if the command loops
 4. Include `[PARALLEL]` markers if steps run concurrently
+
+## Adding a Context-Activated Skill
+
+Skills activate automatically based on natural language — no slash command needed.
+
+1. Create `skills/my-skill.md` with YAML frontmatter:
+   ```markdown
+   ---
+   name: devkit:my-skill
+   description: Triggers on "natural language pattern".
+   ---
+   # Skill Title
+   Guidelines or workflow (keep under 100 lines).
+   ```
+2. Add `"skills/my-skill.md"` to the `"skills"` array in `manifest.json`
 
 ## Adding an Agent
 
