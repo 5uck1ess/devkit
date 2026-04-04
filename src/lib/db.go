@@ -2,6 +2,7 @@ package lib
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,7 +52,10 @@ func ensureGitignore(devkitDir string) {
 	repoRoot := filepath.Dir(devkitDir)
 	gitignorePath := filepath.Join(repoRoot, ".gitignore")
 
-	content, _ := os.ReadFile(gitignorePath) // nil content if file doesn't exist
+	content, err := os.ReadFile(gitignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return // don't risk overwriting a file we couldn't read
+	}
 
 	for _, line := range strings.Split(string(content), "\n") {
 		if strings.TrimSpace(line) == ".devkit" || strings.TrimSpace(line) == ".devkit/" {
@@ -63,7 +67,6 @@ func ensureGitignore(devkitDir string) {
 	if len(content) > 0 && content[len(content)-1] != '\n' {
 		prefix = "\n"
 	}
-	// best-effort; don't fail the whole operation
 	os.WriteFile(gitignorePath, append(content, []byte(prefix+".devkit/\n")...), 0o644)
 }
 
