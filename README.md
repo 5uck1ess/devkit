@@ -63,16 +63,18 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 │ers:      │ feature  │ pr-ready │ self-improve/test/   │
 │ brain-   │ bugfix   │ pr-moni- │ lint/perf/migrate   │
 │ storm    │ refactor │ tor      │                     │
-│ plan     │ test-gen │          │ tri-review/debug/   │
-│ TDD      │ decompose│ commit-  │ security/test-gen   │
-│ debug    │          │ commands │                     │
-│          │feature-  │          │ pr-review-toolkit   │
-│          │dev:      │          │                     │
-│          │ explore  │          │ audit               │
-│          │ design   │          │ repo-map            │
+│ plan     │ decompose│          │ tri-review/debug/   │
+│ TDD      │          │ commit-  │ security/test-gen   │
+│ debug    │feature-  │ commands │                     │
+│          │dev:      │          │ pr-review-toolkit   │
+│          │ explore  │          │                     │
+│          │ design   │          │ audit, repo-map     │
 ├──────────┴──────────┴──────────┴─────────────────────┤
+│ Auto skills: test-gen, doc-gen, changelog, onboard,  │
+│ research, scrape (no slash command needed)            │
+├──────────────────────────────────────────────────────┤
 │ Always active: devkit hooks (safety, security,       │
-│ audit trail, slop detection, post-validation)        │
+│ audit trail, slop detection, pr-gate, post-validate) │
 ├──────────────────────────────────────────────────────┤
 │ Meta: hookify (create hooks), skill-creator (skills) │
 │       context-mode (token management)                │
@@ -87,18 +89,17 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 # Check what's available
 /devkit:status
 
-# Generate tests for your code
-/devkit:test-gen src/parser.ts
+# These activate automatically — just ask naturally:
+# "write tests for src/parser.ts"
+# "generate a changelog"
+# "help me understand this codebase"
+# "research the best auth library for Node"
+# "scrape this URL: https://example.com"
 
-# Fix all lint errors automatically
+# Slash commands for complex workflows:
 /self:lint --lint "npm run lint" --target src/
-
-# Full PR preparation pipeline
 /devkit:pr-ready
-
-# Multi-agent code review (uses whatever CLIs you have)
 /tri:review
-
 ```
 
 ---
@@ -109,20 +110,14 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 
 | Command | Description |
 |---|---|
-| `/devkit:test-gen` | Generate test suite — writes tests, runs them, fixes failures |
-| `/devkit:doc-gen` | Generate documentation from code analysis |
 | `/devkit:pr-ready` | Full PR pipeline — lint, test, security, changelog, create PR |
 | `/devkit:pr-monitor` | Post-PR review monitor — watches CI, resolves reviewer comments iteratively |
 | `/devkit:repo-map` | AST-based symbol index — exports, classes, imports, dependency graph, cached |
-| `/devkit:onboard` | Generate codebase onboarding guide for new contributors |
-| `/devkit:changelog` | Generate structured changelog from git history |
 | `/devkit:workflow` | Run user-defined YAML workflows from `workflows/` |
 | `/devkit:bugfix` | Full bug fix lifecycle — reproduce, diagnose, fix, regression test, verify |
 | `/devkit:feature` | Full feature lifecycle — brainstorm, plan, implement, test, lint, review |
 | `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
-| `/devkit:research` | Deep research — clarify, parallel search, analyze sources, synthesize |
 | `/devkit:decompose` | Goal decomposition — break into task DAG, assign agents, execute in dependency order |
-| `/devkit:scrape` | URL-to-Markdown conversion via Jina Reader / Firecrawl / WebFetch |
 | `/devkit:audit` | Full project health audit — deps, vulnerabilities, licenses, lint, security |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
@@ -167,7 +162,24 @@ These run with whatever agents are available. Claude always runs. Codex and Gemi
 
 ## Skills
 
-Coding methodology guides loaded as reference material when relevant commands run.
+Skills activate automatically based on context — no slash command needed. Just ask naturally.
+
+### Context-Activated Workflows
+
+These replace slash commands. Ask naturally and the skill fires:
+
+| Skill | Triggers on |
+|---|---|
+| `devkit:test-gen` | "write tests for X", "add test coverage", "generate tests" |
+| `devkit:doc-gen` | "document this module", "generate API docs", "write docs for" |
+| `devkit:changelog` | "generate a changelog", "release notes", "what changed since" |
+| `devkit:onboard` | "explain this codebase", "help me understand the architecture", "onboard" |
+| `devkit:research` | "research X", "deep dive on", "compare approaches for" |
+| `devkit:scrape` | "scrape this URL", "fetch content from", "extract from this page" |
+
+### Coding Principles
+
+Loaded as reference material when relevant:
 
 | Skill | Description |
 |---|---|
@@ -175,8 +187,15 @@ Coding methodology guides loaded as reference material when relevant commands ru
 | `devkit:clean-code` | Meaningful names, small functions, single responsibility, flat nesting |
 | `devkit:dry` | Rule of Three, when duplication is fine, extracting the right abstraction |
 | `devkit:yagni` | Build only what's needed, no speculative features or premature abstractions |
-| `devkit:creating-workflows` | How to create workflow YAML files — schema, step types, interpolation |
+| `devkit:dont-reinvent` | Use existing libraries, tools, and stdlib before building custom solutions |
 | `devkit:stuck` | Detect agent looping/failing, structured recovery — backtrack, simplify, escalate |
+
+### Tools
+
+| Skill | Description |
+|---|---|
+| `devkit:gcli` | Google Workspace CLI (Gmail, Calendar, Drive) via gcli with `--for-ai` |
+| `devkit:creating-workflows` | How to create workflow YAML files — schema, step types, interpolation |
 
 For brainstorming, planning, TDD, verification, and skill authoring — install [superpowers](https://github.com/obra/superpowers).
 
@@ -184,7 +203,7 @@ For brainstorming, planning, TDD, verification, and skill authoring — install 
 
 ## Hooks
 
-Devkit ships 7 hooks across 4 lifecycle events. All are installed automatically with the plugin — no setup required.
+Devkit ships 8 hooks across 3 lifecycle events. All are installed automatically with the plugin — no setup required.
 
 ### PreToolUse
 
@@ -193,6 +212,7 @@ Devkit ships 7 hooks across 4 lifecycle events. All are installed automatically 
 | **safety-check** | Bash, Edit, Write | Blocks destructive commands (`rm -rf /`, `DROP TABLE`, private key writes). Prompts on risky operations (force push, `git reset --hard`, editing secrets). |
 | **security-patterns** | Edit, Write | Catches vulnerability patterns at creation time — `eval()`, XSS, shell injection, weak hashes, hardcoded secrets. Language-aware (JS/TS/Python/Go). |
 | **audit-trail** | Bash | Logs every command to `.devkit/audit.log` with UTC timestamps. Auto-rotates at 10k lines. |
+| **pr-gate** | Bash | Detects `gh pr create` and prompts to run `/devkit:pr-ready` first. 10-minute cooldown. |
 | **rtk-rewrite** | Bash | Rewrites commands through [RTK](https://github.com/rtk-ai/rtk) for 60-90% token savings. No-op if RTK not installed. |
 
 ### PostToolUse
@@ -268,24 +288,18 @@ devkit/
 ├── manifest.json            # Plugin manifest
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 26 commands
+├── commands/                # 20 slash commands
 │   ├── tri-*.md             # Multi-agent commands (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
 │   ├── pr-monitor.md        # Post-PR review monitor
 │   ├── repo-map.md          # AST-based symbol index
 │   ├── audit.md             # Project health audit
-│   ├── test-gen.md          # Test generation
-│   ├── doc-gen.md           # Documentation generation
-│   ├── onboard.md           # Codebase onboarding
-│   ├── changelog.md         # Changelog generation
 │   ├── workflow.md          # YAML workflow runner
 │   ├── feature.md           # Feature lifecycle
 │   ├── bugfix.md            # Bug fix lifecycle
 │   ├── refactor.md          # Refactor lifecycle
-│   ├── research.md          # Deep research
 │   ├── decompose.md         # Goal decomposition
-│   ├── scrape.md            # URL-to-Markdown
 │   └── status.md            # Health check
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
@@ -294,14 +308,22 @@ devkit/
 │   ├── test-writer.md       # Sonnet, worktree isolation
 │   ├── documenter.md        # Haiku, worktree isolation
 │   └── security-auditor.md  # Opus, worktree isolation
-├── skills/                  # 6 skills
-│   ├── executing.md
-│   ├── clean-code.md
-│   ├── dry.md
-│   ├── yagni.md
-│   ├── creating-workflows.md
-│   └── stuck.md
-├── hooks/                   # 7 hooks
+├── skills/                  # 14 skills (6 context-activated workflows + 8 principles/tools)
+│   ├── test-gen.md          # Auto: "write tests for X"
+│   ├── doc-gen.md           # Auto: "document this module"
+│   ├── changelog.md         # Auto: "generate a changelog"
+│   ├── onboard.md           # Auto: "explain this codebase"
+│   ├── research.md          # Auto: "research X"
+│   ├── scrape.md            # Auto: "scrape this URL"
+│   ├── executing.md         # Principle: methodical execution
+│   ├── clean-code.md        # Principle: readability
+│   ├── dry.md               # Principle: don't repeat yourself
+│   ├── yagni.md             # Principle: no speculative features
+│   ├── dont-reinvent.md     # Principle: use existing solutions
+│   ├── stuck.md             # Principle: loop recovery
+│   ├── gcli.md              # Tool: Google Workspace CLI
+│   └── creating-workflows.md # Tool: YAML workflow authoring
+├── hooks/                   # 8 hooks
 │   ├── hooks.json           # Hook config (auto-loaded)
 │   ├── safety-check.sh      # Dangerous operation blocker
 │   ├── security-patterns.sh # Edit-time vulnerability detection
@@ -309,6 +331,7 @@ devkit/
 │   ├── rtk-rewrite.sh       # Token optimization
 │   ├── post-validate.sh     # Output validation
 │   ├── slop-detect.sh       # AI pattern detection
+│   ├── pr-gate.sh           # PR pipeline prompt
 │   ├── subagent-stop.sh     # Subagent work verification
 │   └── stop-gate.sh         # Quality gate (disabled — needs redesign)
 ├── workflows/               # 12 YAML workflow definitions
