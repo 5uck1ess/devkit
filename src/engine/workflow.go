@@ -77,6 +77,11 @@ func validate(wf *Workflow) error {
 		return fmt.Errorf("workflow %q has no steps", wf.Name)
 	}
 
+	// Validate budget
+	if wf.Budget.Limit < 0 {
+		return fmt.Errorf("workflow %q has negative budget limit", wf.Name)
+	}
+
 	ids := make(map[string]bool)
 	for _, s := range wf.Steps {
 		if s.ID == "" {
@@ -86,6 +91,14 @@ func validate(wf *Workflow) error {
 			return fmt.Errorf("duplicate step id %q in workflow %q", s.ID, wf.Name)
 		}
 		ids[s.ID] = true
+
+		// Validate step mode mutual exclusion
+		if len(s.Parallel) > 0 && s.Prompt != "" {
+			return fmt.Errorf("step %q has both parallel and prompt — these are mutually exclusive", s.ID)
+		}
+		if len(s.Parallel) > 0 && s.Loop != nil {
+			return fmt.Errorf("step %q has both parallel and loop — these are mutually exclusive", s.ID)
+		}
 	}
 
 	// Validate branch targets exist
@@ -104,6 +117,12 @@ func validate(wf *Workflow) error {
 	}
 
 	return nil
+}
+
+// Validate re-validates a workflow that may have been constructed directly
+// (not via Parse). Call this at the engine boundary for safety.
+func (wf *Workflow) Validate() error {
+	return validate(wf)
 }
 
 // Interpolate replaces {{step-id}} and {{input}} placeholders in a prompt.

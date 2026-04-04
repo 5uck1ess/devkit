@@ -96,6 +96,15 @@ func result(output string) runners.RunResult {
 	return runners.RunResult{Output: output, CostUSD: 0.01}
 }
 
+func mustEngine(t *testing.T, db *lib.DB, git *lib.Git, runner runners.Runner, repoRoot string) *Engine {
+	t.Helper()
+	eng, err := NewEngine(db, git, runner, repoRoot)
+	if err != nil {
+		t.Fatalf("NewEngine: %v", err)
+	}
+	return eng
+}
+
 // ---------------------------------------------------------------------------
 // Parse tests
 // ---------------------------------------------------------------------------
@@ -200,6 +209,23 @@ steps:
   - id: a
     prompt: x
     branch: [{when: "x", goto: missing}]`, "branch target"},
+		{"negative budget", `name: T
+budget: {limit: -100}
+steps: [{id: a, prompt: x}]`, "negative budget"},
+		{"parallel with prompt", `name: T
+steps:
+  - id: a
+    prompt: "do something"
+    parallel: [b]
+  - id: b
+    prompt: "other"`, "mutually exclusive"},
+		{"parallel with loop", `name: T
+steps:
+  - id: a
+    parallel: [b]
+    loop: {max: 3, until: DONE}
+  - id: b
+    prompt: "other"`, "mutually exclusive"},
 	}
 
 	for _, tt := range tests {
@@ -313,6 +339,44 @@ func TestEvalBranchFirstMatchWins(t *testing.T) {
 // Engine execution tests
 // ---------------------------------------------------------------------------
 
+func TestNewEngineValidation(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+
+	if _, err := NewEngine(nil, git, runner, dir); err == nil {
+		t.Error("expected error for nil db")
+	}
+	if _, err := NewEngine(db, nil, runner, dir); err == nil {
+		t.Error("expected error for nil git")
+	}
+	if _, err := NewEngine(db, git, nil, dir); err == nil {
+		t.Error("expected error for nil runner")
+	}
+	if _, err := NewEngine(db, git, runner, ""); err == nil {
+		t.Error("expected error for empty repoRoot")
+	}
+	if _, err := NewEngine(db, git, runner, dir); err != nil {
+		t.Errorf("valid args should succeed: %v", err)
+	}
+}
+
+func TestRunWorkflowNegativeBudget(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner([]runners.RunResult{result("ok")}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{Name: "test", Steps: []WfStep{{ID: "s1", Prompt: "Do"}}}
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test", BudgetUSD: -1.0})
+	if err == nil {
+		t.Fatal("expected error for negative budget")
+	}
+	if !strings.Contains(err.Error(), "invalid budget") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestRunWorkflowSimple(t *testing.T) {
 	db := tempDB(t)
 	dir, git := initGitRepo(t)
@@ -322,7 +386,7 @@ func TestRunWorkflowSimple(t *testing.T) {
 		result("implemented A and B"),
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -360,7 +424,7 @@ func TestRunWorkflowBranch(t *testing.T) {
 		result("fixed the typo"),     // quick-fix output
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -400,7 +464,7 @@ func TestRunWorkflowLoop(t *testing.T) {
 		result("attempt 2: ALL_PASSING"),
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -432,7 +496,7 @@ func TestRunWorkflowLoopMaxIterations(t *testing.T) {
 		result("still broken"),
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -460,7 +524,7 @@ func TestRunWorkflowBudget(t *testing.T) {
 		{Output: "step 3", CostUSD: 0.50}, // should not be reached
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -493,7 +557,7 @@ func TestRunWorkflowParallel(t *testing.T) {
 		result("review B findings"),
 	}, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -527,7 +591,7 @@ func TestRunWorkflowContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -553,7 +617,7 @@ func TestRunWorkflowLoopAllFail(t *testing.T) {
 		fmt.Errorf("runner error 2"),
 	})
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -581,7 +645,7 @@ func TestRunWorkflowBranchCycleLimit(t *testing.T) {
 	}
 	runner := newMockRunner(responses, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -609,7 +673,7 @@ func TestRunWorkflowStepFailure(t *testing.T) {
 		[]error{nil, fmt.Errorf("implement failed")},
 	)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -637,7 +701,7 @@ func TestRunWorkflowParallelPartialFailure(t *testing.T) {
 		[]error{nil, fmt.Errorf("review crashed")},
 	)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -667,7 +731,7 @@ func TestRunWorkflowParallelAllFail(t *testing.T) {
 		fmt.Errorf("review B failed"),
 	})
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{
@@ -697,7 +761,7 @@ func TestRunWorkflowBudgetInLoop(t *testing.T) {
 	}
 	runner := newMockRunner(responses, nil)
 
-	eng := &Engine{DB: db, Git: git, Runner: runner, RepoRoot: dir}
+	eng := mustEngine(t, db, git, runner, dir)
 	wf := &Workflow{
 		Name: "test",
 		Steps: []WfStep{

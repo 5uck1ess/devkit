@@ -14,13 +14,31 @@ import (
 
 // Engine executes parsed workflows using a runner and database.
 type Engine struct {
-	DB       *lib.DB
-	Git      *lib.Git
-	Runner   runners.Runner
-	RepoRoot string
+	db       *lib.DB
+	git      *lib.Git
+	runner   runners.Runner
+	repoRoot string
+}
+
+// NewEngine creates a validated Engine. All fields are required.
+func NewEngine(db *lib.DB, git *lib.Git, runner runners.Runner, repoRoot string) (*Engine, error) {
+	if db == nil {
+		return nil, fmt.Errorf("engine: db is required")
+	}
+	if git == nil {
+		return nil, fmt.Errorf("engine: git is required")
+	}
+	if runner == nil {
+		return nil, fmt.Errorf("engine: runner is required")
+	}
+	if repoRoot == "" {
+		return nil, fmt.Errorf("engine: repoRoot is required")
+	}
+	return &Engine{db: db, git: git, runner: runner, repoRoot: repoRoot}, nil
 }
 
 // RunConfig holds per-invocation settings.
+// BudgetUSD of 0 means unlimited. Negative values are rejected.
 type RunConfig struct {
 	Input     string
 	BudgetUSD float64
@@ -36,6 +54,14 @@ type Result struct {
 
 // RunWorkflow executes a parsed workflow end-to-end.
 func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (*Result, error) {
+	// Validate inputs at the engine boundary
+	if err := wf.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid workflow: %w", err)
+	}
+	if cfg.BudgetUSD < 0 {
+		return nil, fmt.Errorf("invalid budget: %.2f (must be >= 0)", cfg.BudgetUSD)
+	}
+
 	session := &lib.Session{
 		ID:        lib.NewSessionID(),
 		Workflow:  strings.ToLower(wf.Name),
@@ -43,21 +69,21 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		Status:    "running",
 		BudgetUSD: cfg.BudgetUSD,
 	}
-	if err := e.DB.CreateSession(session); err != nil {
+	if err := e.db.CreateSession(session); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
-	if err := lib.EnsureSessionDir(e.RepoRoot, session.ID); err != nil {
+	if err := lib.EnsureSessionDir(e.repoRoot, session.ID); err != nil {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
 
 	branchName := fmt.Sprintf("%s/%s", session.Workflow, session.ID)
-	if err := e.Git.CreateBranch(branchName); err != nil {
+	if err := e.git.CreateBranch(branchName); err != nil {
 		return nil, fmt.Errorf("create branch: %w", err)
 	}
 	fmt.Printf("%s session %s on branch %s\n\n", wf.Name, session.ID, branchName)
 
 	// Ensure scratchpad directory exists
-	scratchDir := filepath.Join(e.RepoRoot, ".devkit", "scratchpads")
+	scratchDir := filepath.Join(e.repoRoot, ".devkit", "scratchpads")
 	if err := os.MkdirAll(scratchDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create scratchpad dir: %w", err)
 	}
@@ -68,7 +94,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	var iterNum int
 
 	opts := runners.RunOpts{
-		WorkDir:      e.RepoRoot,
+		WorkDir:      e.repoRoot,
 		AllowedTools: "Bash,Read,Edit,Write,Grep,Glob",
 		MaxTurns:     30,
 	}
@@ -116,7 +142,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		if step.Prompt == "" && len(step.Parallel) > 0 {
 			cost, err := e.runParallel(ctx, step, wf.Steps, stepIndex, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
-				e.DB.UpdateSessionStatus(session.ID, "failed")
+				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
@@ -137,7 +163,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			// so we don't add the returned cost again here.
 			_, err := e.runLoop(ctx, step, session, cfg.Input, outputs, opts, &iterNum, overBudget, addCost)
 			if err != nil {
-				e.DB.UpdateSessionStatus(session.ID, "failed")
+				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
@@ -163,7 +189,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		} else {
 			cost, output, err := e.runStep(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
-				e.DB.UpdateSessionStatus(session.ID, "failed")
+				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
@@ -196,13 +222,13 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 
 	// Only mark done on clean exit (fix #3: don't overwrite "failed")
 	if !failed && ctx.Err() == nil {
-		e.Git.CommitAll(fmt.Sprintf("%s(%s): complete", session.Workflow, session.ID))
-		e.DB.UpdateSessionStatus(session.ID, "done")
+		e.git.CommitAll(fmt.Sprintf("%s(%s): complete", session.Workflow, session.ID))
+		e.db.UpdateSessionStatus(session.ID, "done")
 	} else if !failed {
-		e.DB.UpdateSessionStatus(session.ID, "cancelled")
+		e.db.UpdateSessionStatus(session.ID, "cancelled")
 	}
 
-	allSteps, _ := e.DB.GetSteps(session.ID)
+	allSteps, _ := e.db.GetSteps(session.ID)
 	stopReason := "completed"
 	if failed {
 		stopReason = "failed"
@@ -211,7 +237,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	} else if overBudget() {
 		stopReason = "budget_exhausted"
 	}
-	lib.WriteReport(e.RepoRoot, session, allSteps, stopReason)
+	lib.WriteReport(e.repoRoot, session, allSteps, stopReason)
 
 	return &Result{
 		Session:  session,
@@ -231,15 +257,15 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 		SessionID: session.ID,
 		Iteration: *iterNum,
 		Status:    "running",
-		AgentName: e.Runner.Name(),
+		AgentName: e.runner.Name(),
 	}
-	e.DB.CreateStep(dbStep)
+	e.db.CreateStep(dbStep)
 
-	result, err := e.Runner.Run(ctx, prompt, opts)
+	result, err := e.runner.Run(ctx, prompt, opts)
 	if err != nil {
 		dbStep.Status = "failed"
 		dbStep.ChangeSummary = err.Error()
-		e.DB.UpdateStep(dbStep)
+		e.db.UpdateStep(dbStep)
 		return 0, "", fmt.Errorf("step %s failed: %w", step.ID, err)
 	}
 
@@ -247,7 +273,7 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 	dbStep.Kept = true
 	dbStep.CostUSD = result.CostUSD
 	dbStep.ChangeSummary = runners.TruncStr(result.Output, 200)
-	e.DB.UpdateStep(dbStep)
+	e.db.UpdateStep(dbStep)
 	fmt.Printf("  done ($%.4f)\n\n", result.CostUSD)
 
 	return result.CostUSD, result.Output, nil
@@ -282,15 +308,15 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			SessionID: session.ID,
 			Iteration: *iterNum,
 			Status:    "running",
-			AgentName: e.Runner.Name(),
+			AgentName: e.runner.Name(),
 		}
-		e.DB.CreateStep(dbStep)
+		e.db.CreateStep(dbStep)
 
-		result, err := e.Runner.Run(ctx, prompt, opts)
+		result, err := e.runner.Run(ctx, prompt, opts)
 		if err != nil {
 			dbStep.Status = "failed"
 			dbStep.ChangeSummary = err.Error()
-			e.DB.UpdateStep(dbStep)
+			e.db.UpdateStep(dbStep)
 			consecutiveFailures++
 			fmt.Printf("  failed, retrying\n\n")
 			continue
@@ -306,13 +332,13 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		dbStep.Kept = true
 		dbStep.CostUSD = result.CostUSD
 		dbStep.ChangeSummary = runners.TruncStr(result.Output, 200)
-		e.DB.UpdateStep(dbStep)
+		e.db.UpdateStep(dbStep)
 
 		outputs[step.ID] = result.Output
 		fmt.Printf("  done ($%.4f)\n\n", result.CostUSD)
 
 		// Commit after each loop iteration
-		e.Git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt))
+		e.git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt))
 
 		// Check until condition
 		if step.Loop.Until != "" && strings.Contains(strings.ToUpper(result.Output), strings.ToUpper(step.Loop.Until)) {
@@ -372,14 +398,14 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 				SessionID: session.ID,
 				Iteration: myIter,
 				Status:    "running",
-				AgentName: e.Runner.Name(),
+				AgentName: e.runner.Name(),
 			}
 
 			mu.Lock()
-			e.DB.CreateStep(dbStep)
+			e.db.CreateStep(dbStep)
 			mu.Unlock()
 
-			result, err := e.Runner.Run(ctx, prompt, opts)
+			result, err := e.runner.Run(ctx, prompt, opts)
 
 			mu.Lock()
 			defer mu.Unlock()
@@ -387,7 +413,7 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			if err != nil {
 				dbStep.Status = "failed"
 				dbStep.ChangeSummary = err.Error()
-				e.DB.UpdateStep(dbStep)
+				e.db.UpdateStep(dbStep)
 				results[j] = parallelResult{id: pid, err: err}
 				return
 			}
@@ -396,7 +422,7 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			dbStep.Kept = true
 			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = runners.TruncStr(result.Output, 200)
-			e.DB.UpdateStep(dbStep)
+			e.db.UpdateStep(dbStep)
 
 			results[j] = parallelResult{id: pid, output: result.Output, cost: result.CostUSD}
 		}(j, step, pid)

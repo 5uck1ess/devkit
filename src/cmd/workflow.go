@@ -69,11 +69,9 @@ var workflowCmd = &cobra.Command{
 			budget = float64(wf.Budget.Limit) / 1000.0 * 0.01
 		}
 
-		eng := &engine.Engine{
-			DB:       db,
-			Git:      &lib.Git{Dir: repoRoot},
-			Runner:   runner,
-			RepoRoot: repoRoot,
+		eng, err := engine.NewEngine(db, &lib.Git{Dir: repoRoot}, runner, repoRoot)
+		if err != nil {
+			return err
 		}
 
 		description := strings.Join(args[1:], " ")
