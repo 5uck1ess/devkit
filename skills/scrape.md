@@ -1,6 +1,6 @@
 ---
 name: devkit:scrape
-description: Scrape a URL and return clean Markdown (or Markdown-in-JSON). Uses Jina Reader, Firecrawl, or raw WebFetch.
+description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Firecrawl, or WebFetch.
 ---
 
 # Web Scrape to Markdown
