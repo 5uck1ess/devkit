@@ -21,30 +21,28 @@ jobs:
       - name: Determine version
         id: version
         run: |
-          MANIFEST_VERSION=$(jq -r '.version' manifest.json)
           PLUGIN_VERSION=$(jq -r '.version' .claude-plugin/plugin.json)
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "0.0.0")
 
-          echo "manifest=$MANIFEST_VERSION plugin=$PLUGIN_VERSION latest_tag=$LATEST_TAG"
+          echo "plugin=$PLUGIN_VERSION latest_tag=$LATEST_TAG"
 
-          # If manifest version is ahead of the latest tag, use it (manual bump)
-          if [ "$MANIFEST_VERSION" != "$LATEST_TAG" ] && [ "$MANIFEST_VERSION" != "$PLUGIN_VERSION" ] || [ "$MANIFEST_VERSION" != "$LATEST_TAG" ]; then
-            # Check if manifest version is actually newer
-            MANIFEST_MAJOR=$(echo "$MANIFEST_VERSION" | cut -d. -f1)
-            MANIFEST_MINOR=$(echo "$MANIFEST_VERSION" | cut -d. -f2)
-            MANIFEST_PATCH=$(echo "$MANIFEST_VERSION" | cut -d. -f3)
+          # If plugin.json version is ahead of the latest tag, use it (manual bump)
+          if [ "$PLUGIN_VERSION" != "$LATEST_TAG" ]; then
+            P_MAJOR=$(echo "$PLUGIN_VERSION" | cut -d. -f1)
+            P_MINOR=$(echo "$PLUGIN_VERSION" | cut -d. -f2)
+            P_PATCH=$(echo "$PLUGIN_VERSION" | cut -d. -f3)
             TAG_MAJOR=$(echo "$LATEST_TAG" | cut -d. -f1)
             TAG_MINOR=$(echo "$LATEST_TAG" | cut -d. -f2)
             TAG_PATCH=$(echo "$LATEST_TAG" | cut -d. -f3)
 
-            if [ "$MANIFEST_MAJOR" -gt "$TAG_MAJOR" ] 2>/dev/null || \
-               ([ "$MANIFEST_MAJOR" -eq "$TAG_MAJOR" ] && [ "$MANIFEST_MINOR" -gt "$TAG_MINOR" ]) 2>/dev/null || \
-               ([ "$MANIFEST_MAJOR" -eq "$TAG_MAJOR" ] && [ "$MANIFEST_MINOR" -eq "$TAG_MINOR" ] && [ "$MANIFEST_PATCH" -gt "$TAG_PATCH" ]) 2>/dev/null; then
-              echo "Manual version bump detected: $LATEST_TAG → $MANIFEST_VERSION"
-              echo "version=$MANIFEST_VERSION" >> "$GITHUB_OUTPUT"
+            if [ "$P_MAJOR" -gt "$TAG_MAJOR" ] 2>/dev/null || \
+               ([ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -gt "$TAG_MINOR" ]) 2>/dev/null || \
+               ([ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -eq "$TAG_MINOR" ] && [ "$P_PATCH" -gt "$TAG_PATCH" ]) 2>/dev/null; then
+              echo "Manual version bump detected: $LATEST_TAG → $PLUGIN_VERSION"
+              echo "version=$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
               echo "bumped=manual" >> "$GITHUB_OUTPUT"
             else
-              echo "Manifest version $MANIFEST_VERSION is not ahead of tag $LATEST_TAG — auto-bumping patch"
+              echo "plugin.json version $PLUGIN_VERSION is not ahead of tag $LATEST_TAG — auto-bumping patch"
               echo "bumped=auto" >> "$GITHUB_OUTPUT"
             fi
           else
@@ -67,14 +65,13 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
-          jq --arg v "$VERSION" '.version = $v' manifest.json > tmp.json && mv tmp.json manifest.json
 
       - name: Commit version bump
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/plugin.json manifest.json
+          git add .claude-plugin/plugin.json
           # Only commit if there are changes
           if git diff --cached --quiet; then
             echo "Version files already at $VERSION — no commit needed"

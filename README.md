@@ -285,11 +285,11 @@ None yet — `presets/` is reserved for future use.
 
 ```
 devkit/
-├── manifest.json            # Plugin manifest
+├── .claude-plugin/
+│   └── plugin.json          # Plugin metadata (name, version, author)
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── skills/                  # All skill files (commands + skills)
-│   │                        # — 20 slash commands (tab-completable) —
+├── commands/                # 20 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -301,22 +301,22 @@ devkit/
 │   ├── workflow.md          # YAML workflow runner
 │   ├── audit.md             # Project health audit
 │   ├── repo-map.md          # AST-based symbol index
-│   ├── status.md            # Health check
-│   │                        # — 14 context-activated skills —
-│   ├── executing.md         # Principle: methodical execution
-│   ├── clean-code.md        # Principle: readability
-│   ├── dry.md               # Principle: don't repeat yourself
-│   ├── yagni.md             # Principle: no speculative features
-│   ├── dont-reinvent.md     # Principle: use existing solutions
-│   ├── stuck.md             # Principle: loop recovery
-│   ├── creating-workflows.md # Tool: YAML workflow authoring
-│   ├── gcli.md              # Tool: Google Workspace CLI
-│   ├── changelog.md         # Auto: "generate a changelog"
-│   ├── doc-gen.md           # Auto: "document this module"
-│   ├── test-gen.md          # Auto: "write tests for X"
-│   ├── onboard.md           # Auto: "explain this codebase"
-│   ├── research.md          # Auto: "research X"
-│   └── scrape.md            # Auto: "scrape this URL"
+│   └── status.md            # Health check
+├── skills/                  # 14 context-activated skills
+│   ├── executing/SKILL.md   # Principle: methodical execution
+│   ├── clean-code/SKILL.md  # Principle: readability
+│   ├── dry/SKILL.md         # Principle: don't repeat yourself
+│   ├── yagni/SKILL.md       # Principle: no speculative features
+│   ├── dont-reinvent/SKILL.md # Principle: use existing solutions
+│   ├── stuck/SKILL.md       # Principle: loop recovery
+│   ├── creating-workflows/SKILL.md # Tool: YAML workflow authoring
+│   ├── gcli/SKILL.md        # Tool: Google Workspace CLI
+│   ├── changelog/SKILL.md   # Auto: "generate a changelog"
+│   ├── doc-gen/SKILL.md     # Auto: "document this module"
+│   ├── test-gen/SKILL.md    # Auto: "write tests for X"
+│   ├── onboard/SKILL.md     # Auto: "explain this codebase"
+│   ├── research/SKILL.md    # Auto: "research X"
+│   └── scrape/SKILL.md      # Auto: "scrape this URL"
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
 │   ├── researcher.md        # Sonnet, worktree isolation
