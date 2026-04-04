@@ -1,5 +1,5 @@
 ---
-name: devkit:research
+name: research
 description: Deep research workflow — use when asked to research a topic, do a deep dive, investigate options, compare approaches, or find the best solution to a technical question.
 ---
 

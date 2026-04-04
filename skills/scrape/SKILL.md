@@ -1,5 +1,5 @@
 ---
-name: devkit:scrape
+name: scrape
 description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Firecrawl, or WebFetch.
 ---
 

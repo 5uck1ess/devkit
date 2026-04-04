@@ -1,5 +1,5 @@
 ---
-name: devkit:clean-code
+name: clean-code
 description: Clean code principles — meaningful names, small functions, single responsibility, stepdown rule, flat nesting.
 ---
 

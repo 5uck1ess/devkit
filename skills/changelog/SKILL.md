@@ -1,5 +1,5 @@
 ---
-name: devkit:changelog
+name: changelog
 description: Generate a structured changelog from git history — use when asked to create a changelog, release notes, or summarize what changed between versions/tags/branches.
 ---
 

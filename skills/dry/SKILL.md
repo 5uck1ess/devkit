@@ -1,5 +1,5 @@
 ---
-name: devkit:dry
+name: dry
 description: Don't Repeat Yourself — Rule of Three, when duplication is fine, extracting the right abstraction.
 ---
 

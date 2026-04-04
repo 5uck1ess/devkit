@@ -1,5 +1,5 @@
 ---
-name: devkit:gcli
+name: gcli
 description: Google Workspace CLI (Gmail, Calendar, Drive) via gcli — use --for-ai flag for token-efficient structured output.
 ---
 

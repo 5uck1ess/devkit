@@ -1,5 +1,5 @@
 ---
-name: devkit:doc-gen
+name: doc-gen
 description: Generate documentation for code — use when asked to document a module, generate API docs, create a README for code, or write reference documentation.
 ---
 

@@ -1,5 +1,5 @@
 ---
-name: devkit:onboard
+name: onboard
 description: Generate a codebase onboarding guide — use when asked to explain this codebase, help understand the architecture, give a tour of the repo, or onboard a new contributor.
 ---
 

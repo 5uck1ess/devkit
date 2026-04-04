@@ -1,5 +1,5 @@
 ---
-name: devkit:stuck
+name: stuck
 description: Detect when an agent is looping or failing repeatedly, and trigger structured recovery — backtrack, simplify, or escalate.
 ---
 

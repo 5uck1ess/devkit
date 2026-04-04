@@ -1,5 +1,5 @@
 ---
-name: devkit:executing
+name: executing
 description: Execute implementation plans — work through steps methodically, verify each one, keep changes small and reviewable.
 ---
 

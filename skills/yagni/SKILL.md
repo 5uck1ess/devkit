@@ -1,5 +1,5 @@
 ---
-name: devkit:yagni
+name: yagni
 description: You Aren't Gonna Need It — build only what's needed now, no speculative features or premature abstractions.
 ---
 

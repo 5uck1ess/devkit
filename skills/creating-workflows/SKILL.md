@@ -1,5 +1,5 @@
 ---
-name: devkit:creating-workflows
+name: creating-workflows
 description: How to create devkit workflow YAML files — schema reference, step types, variable interpolation, and examples.
 ---
 

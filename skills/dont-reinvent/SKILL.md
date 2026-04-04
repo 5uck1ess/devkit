@@ -1,5 +1,5 @@
 ---
-name: devkit:dont-reinvent
+name: dont-reinvent
 description: Don't reinvent the wheel — use existing libraries, tools, and stdlib before building custom solutions. Every custom solution is maintenance burden.
 ---
 

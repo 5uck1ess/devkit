@@ -1,5 +1,5 @@
 ---
-name: devkit:test-gen
+name: test-gen
 description: Generate tests for code — use when asked to write tests, create a test suite, add test coverage, or generate unit/integration tests for a file or module.
 ---
 
