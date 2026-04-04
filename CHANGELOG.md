@@ -9,6 +9,13 @@
 - Add superpowers and context-mode as recommended companion plugins in README
 - Add edit-time security pattern hook — catches eval, XSS, shell injection, weak hashes, hardcoded secrets on Write/Edit
 - Fix stop-gate cooldown — removed set -euo pipefail that was killing the script before writing cooldown file
+- Add `devkit:pr-monitor` command — post-PR review monitor that watches CI and iteratively resolves reviewer comments
+- Add `devkit:repo-map` command — AST-based symbol index with dependency graph, cached to .devkit/repo-map.json
+- Add slop detection hook — PostToolUse on Edit/Write catches excessive docs, restating comments, JSDoc overuse
+- Add `devkit:pr-monitor` command — post-PR review monitor that watches CI and iteratively resolves reviewer comments
+- Add `devkit:repo-map` command — AST-based symbol index with dependency graph, cached for fast agent navigation
+- Upgrade `self:perf` to hypothesis-driven investigation — evidence gathering, ranked hypotheses, one-at-a-time testing
+- Disable Stop hook — fires every turn, not just session end; needs architectural redesign
 
 ## 1.3.0
 

@@ -80,6 +80,17 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/slop-detect.sh",
+            "statusMessage": "Slop check...",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "SubagentStop": [
@@ -95,18 +106,6 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "matcher": "Stop",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-gate.sh",
-            "statusMessage": "Quality gate...",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
+    "Stop": []
   }
 }

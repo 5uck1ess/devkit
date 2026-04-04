@@ -26,7 +26,9 @@
     "commands/research.md",
     "commands/scrape.md",
     "commands/decompose.md",
-    "commands/audit.md"
+    "commands/audit.md",
+    "commands/pr-monitor.md",
+    "commands/repo-map.md"
   ],
   "skills": [
     "skills/executing.md",

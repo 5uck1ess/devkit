@@ -65,6 +65,8 @@ Devkit handles enforcement and orchestration. These plugins handle complementary
 | `/devkit:test-gen` | Generate test suite — writes tests, runs them, fixes failures |
 | `/devkit:doc-gen` | Generate documentation from code analysis |
 | `/devkit:pr-ready` | Full PR pipeline — lint, test, security, changelog, create PR |
+| `/devkit:pr-monitor` | Post-PR review monitor — watches CI, resolves reviewer comments iteratively |
+| `/devkit:repo-map` | AST-based symbol index — exports, classes, imports, dependency graph, cached |
 | `/devkit:onboard` | Generate codebase onboarding guide for new contributors |
 | `/devkit:changelog` | Generate structured changelog from git history |
 | `/devkit:workflow` | Run user-defined YAML workflows from `workflows/` |
@@ -86,7 +88,7 @@ Automated propose → measure → keep/discard → repeat cycles.
 | `/self:improve` | General-purpose improvement loop with custom metric gate |
 | `/self:test` | Iteratively generate tests until coverage target is hit |
 | `/self:lint` | Iteratively fix lint/type errors until zero remain |
-| `/self:perf` | Iteratively optimize with benchmark as the gate |
+| `/self:perf` | Hypothesis-driven performance investigation — evidence, hypotheses, one-at-a-time testing |
 | `/self:migrate` | Incremental migration (JS→TS, class→hooks, etc.) with test gate |
 
 ### Multi-Agent Commands (Claude + optional Codex/Gemini)
@@ -192,6 +194,14 @@ A `PreToolUse` hook on Edit/Write that catches known vulnerability patterns at t
 | Python | `eval()`, `exec()`, `pickle.load`, `os.system`, `subprocess(shell=True)`, `yaml.load`, `__import__`, weak hashes |
 | Go | Shell exec via `sh -c`, weak hashes, string concat in SQL |
 | Any | SQL injection via string concatenation, hardcoded secrets |
+
+### Slop Detection
+
+A `PostToolUse` hook on Edit/Write that catches AI-generated code patterns:
+
+- **Doc/code ratio** — warns when documentation lines outweigh code lines
+- **Restating comments** — detects comments that just repeat the next line of code
+- **Excessive JSDoc types in .js** — suggests using TypeScript instead of JSDoc annotations
 
 ---
 
