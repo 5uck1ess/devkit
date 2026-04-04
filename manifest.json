@@ -36,7 +36,8 @@
     "skills/dry.md",
     "skills/yagni.md",
     "skills/creating-workflows.md",
-    "skills/stuck.md"
+    "skills/stuck.md",
+    "skills/gcli.md"
   ],
   "agents": [
     "agents/reviewer.md",
