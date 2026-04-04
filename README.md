@@ -22,8 +22,7 @@ Devkit handles enforcement and orchestration. These plugins handle complementary
 **[Superpowers](https://github.com/obra/superpowers)** — Methodology: brainstorming, planning, TDD, verification, debugging.
 
 ```bash
-/plugin marketplace add https://github.com/obra/superpowers-marketplace
-/plugin install superpowers
+/plugin install superpowers@claude-plugins-official
 ```
 
 **[Context Mode](https://github.com/mksglu/context-mode)** — Context window management: sandboxes large outputs, session continuity via SQLite, 98% context savings.
