@@ -1,21 +1,38 @@
 # Changelog
 
-## 1.4.0
+## 2.0.0
 
-- Add `devkit:audit` command — unified project health audit (deps, vulnerabilities, outdated packages, licenses, lint, security) with scored report
-- Add audit trail hook — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
-- Remove 5 skills that overlap with superpowers plugin: brainstorming, planning, writing-tests, skill-authoring, verify
-- Keep 6 skills that are unique to devkit: executing, clean-code, dry, yagni, creating-workflows, stuck
-- Add superpowers and context-mode as recommended companion plugins in README
-- Add edit-time security pattern hook — catches eval, XSS, shell injection, weak hashes, hardcoded secrets on Write/Edit
-- Fix stop-gate cooldown — removed set -euo pipefail that was killing the script before writing cooldown file
-- Add `devkit:pr-monitor` command — post-PR review monitor that watches CI and iteratively resolves reviewer comments
-- Add `devkit:repo-map` command — AST-based symbol index with dependency graph, cached to .devkit/repo-map.json
-- Add slop detection hook — PostToolUse on Edit/Write catches excessive docs, restating comments, JSDoc overuse
-- Add `devkit:pr-monitor` command — post-PR review monitor that watches CI and iteratively resolves reviewer comments
-- Add `devkit:repo-map` command — AST-based symbol index with dependency graph, cached for fast agent navigation
-- Upgrade `self:perf` to hypothesis-driven investigation — evidence gathering, ranked hypotheses, one-at-a-time testing
-- Disable Stop hook — fires every turn, not just session end; needs architectural redesign
+### New Commands
+- Add `devkit:audit` — unified project health audit (deps, vulnerabilities, outdated packages, licenses, lint, security) with scored report
+- Add `devkit:pr-monitor` — post-PR review monitor that watches CI and iteratively resolves reviewer comments
+- Add `devkit:repo-map` — AST-based symbol index with dependency graph, cached to .devkit/repo-map.json
+
+### New Hooks
+- Add `security-patterns` — PreToolUse on Edit/Write catches eval, XSS, shell injection, weak hashes, hardcoded secrets across JS/TS/Python/Go
+- Add `audit-trail` — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
+- Add `slop-detect` — PostToolUse on Edit/Write catches excessive docs, restating comments, JSDoc overuse
+
+### Upgraded
+- Upgrade `self:perf` to hypothesis-driven investigation — evidence gathering, ranked hypotheses, one-at-a-time testing with 3x benchmark runs
+
+### Companion Ecosystem
+- Define holistic setup: devkit + superpowers + feature-dev + pr-review-toolkit + commit-commands + hookify + skill-creator + context-mode
+- Evaluated all official marketplace plugins — documented which to install, which to skip, and why
+- Fix superpowers install: use `@claude-plugins-official`, not separate marketplace
+
+### Skills
+- Remove 5 skills that overlap with superpowers: brainstorming, planning, writing-tests, skill-authoring, verify
+- Keep 6 unique skills: executing, clean-code, dry, yagni, creating-workflows, stuck
+- Evaluated `code-simplifier` as replacement — rejected (thin, React-specific, no test verification)
+
+### Fixes
+- Fix stop-gate: disabled — fires every turn, not just session end. Needs architectural redesign.
+- Fix stop-gate conflict marker false positive — grep pattern was matching its own source code
+
+### Docs
+- Complete README overhaul with companion ecosystem diagram and holistic setup guide
+- Added "why these and not others" section explaining plugin selection rationale
+- Updated roadmap with completed and planned items
 
 ## 1.3.0
 
