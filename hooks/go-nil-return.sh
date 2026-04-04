@@ -34,11 +34,16 @@ WARNINGS=$(echo "$CONTENT" | awk '
     fname = $0
     sub(/\{.*/, "", fname)
     in_func = 1
-    brace_depth = 1
+    brace_depth = 0
     has_return = 0
     has_non_nil_err = 0
-    # Count opening brace
-    gsub(/[^{]/, "", $0); gsub(/[^}]/, "", tmp=$0)
+    # Count all braces on the declaration line itself
+    line = $0
+    for (j = 1; j <= length(line); j++) {
+      c = substr(line, j, 1)
+      if (c == "{") brace_depth++
+      if (c == "}") brace_depth--
+    }
     next
   }
 

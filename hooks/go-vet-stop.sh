@@ -62,7 +62,8 @@ done <<< "$GO_CHANGES"
 PACKAGES=$(echo "$PACKAGES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 
 if [ -n "$PACKAGES" ]; then
-  RACE_OUTPUT=$(cd "$GO_MOD_DIR" && timeout 60 go test -race -count=1 $PACKAGES 2>&1) || RACE_EXIT=$?
+  # Use perl alarm for POSIX-compatible timeout (macOS has no `timeout` command)
+  RACE_OUTPUT=$(cd "$GO_MOD_DIR" && perl -e 'alarm 60; exec @ARGV' -- go test -race -count=1 $PACKAGES 2>&1) || RACE_EXIT=$?
   if [ "${RACE_EXIT:-0}" -ne 0 ]; then
     # Check if it's specifically a race condition
     if echo "$RACE_OUTPUT" | grep -qE 'DATA RACE|race detected'; then

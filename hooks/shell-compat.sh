@@ -32,8 +32,8 @@ fi
 
 [ -z "$CONTENT" ] && exit 0
 
-# Session dedup
-SEEN_FILE="/tmp/devkit-shellcompat-seen-$$"
+# Session dedup — use PPID (stable across hook invocations within one Claude session)
+SEEN_FILE="/tmp/devkit-shellcompat-seen-${PPID:-0}"
 
 check_compat() {
   local pattern="$1"
