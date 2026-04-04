@@ -1,5 +1,4 @@
 ---
-name: devkit:pr-ready
 description: Full PR preparation pipeline — necessity check, DRY review, lint, test, security, changelog, and create PR.
 ---
 

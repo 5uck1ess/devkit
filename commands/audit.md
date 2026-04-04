@@ -1,5 +1,4 @@
 ---
-name: devkit:audit
 description: Unified project health audit — dependencies, vulnerabilities, outdated packages, licenses, lint, and security in one report.
 ---
 

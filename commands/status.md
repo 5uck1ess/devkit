@@ -1,5 +1,4 @@
 ---
-name: devkit:status
 description: Check devkit health — which external CLIs are installed, which agents are available, and which commands are ready to use.
 ---
 

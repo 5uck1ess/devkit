@@ -1,5 +1,4 @@
 ---
-name: self:lint
 description: Self-improvement loop targeting lint and type errors. Iteratively fixes issues until zero remain or iterations exhausted.
 ---
 

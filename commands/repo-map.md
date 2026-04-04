@@ -1,5 +1,4 @@
 ---
-name: devkit:repo-map
 description: Build an AST-based symbol index of the repository — exports, functions, classes, imports — cached for fast agent navigation.
 ---
 

@@ -1,5 +1,4 @@
 ---
-name: tri:review
 description: Triple-agent PR/code review. Claude runs as native background agent (token-efficient), Codex and Gemini via plugin or CLI. Consolidates findings.
 ---
 

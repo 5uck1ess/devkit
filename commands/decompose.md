@@ -1,5 +1,4 @@
 ---
-name: devkit:decompose
 description: Decompose a high-level goal into a task DAG — break down, assign to agents, resolve dependencies, execute in order.
 ---
 

@@ -1,5 +1,4 @@
 ---
-name: self:migrate
 description: Self-improvement loop for incremental codebase migrations. Iteratively migrates code with tests as the safety gate.
 ---
 

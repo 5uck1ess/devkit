@@ -1,5 +1,4 @@
 ---
-name: tri:test-gen
 description: Multi-agent test generation — each available agent generates tests independently, then merge for maximum coverage.
 ---
 

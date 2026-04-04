@@ -1,5 +1,4 @@
 ---
-name: tri:debug
 description: Multi-agent debugging — send a bug report to available agents (Claude + Codex + Gemini) via plugin or CLI, get independent root-cause hypotheses, and a consensus fix.
 ---
 

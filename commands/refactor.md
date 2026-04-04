@@ -1,5 +1,4 @@
 ---
-name: devkit:refactor
 description: Full lifecycle refactor — analyze code smells, plan transformations, restructure, verify nothing broke.
 ---
 

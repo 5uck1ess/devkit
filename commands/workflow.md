@@ -1,5 +1,4 @@
 ---
-name: devkit:workflow
 description: Run a user-defined YAML workflow. Multi-step pipelines with loops, approval gates, and branching.
 ---
 
@@ -19,7 +18,6 @@ Execute a YAML-defined workflow from the `workflows/` directory.
 Read `workflows/{name}.yml` and parse:
 
 ```yaml
-name: workflow-name
 description: What this workflow does
 
 steps:

@@ -1,5 +1,4 @@
 ---
-name: tri:dispatch
 description: Dispatch a task to all three agents (Claude, Codex, Gemini) in parallel and compare results. Claude uses native background agent, others via plugin or CLI.
 ---
 

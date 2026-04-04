@@ -1,5 +1,4 @@
 ---
-name: devkit:bugfix
 description: Full lifecycle bug fix — reproduce, diagnose, fix, regression test, verify.
 ---
 

@@ -1,5 +1,4 @@
 ---
-name: self:improve
 description: Self-recursive improvement loop — automated refactoring with test gate. Uses native improver agent in worktree isolation. Propose → measure → keep/discard → repeat.
 ---
 

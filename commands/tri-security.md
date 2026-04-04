@@ -1,5 +1,4 @@
 ---
-name: tri:security
 description: Multi-agent security audit — independent security reviews from available agents, consolidated with severity-ranked findings.
 ---
 

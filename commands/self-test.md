@@ -1,5 +1,4 @@
 ---
-name: self:test
 description: Self-improvement loop targeting test coverage. Iteratively generates and improves tests until a coverage target is met or iterations exhausted.
 ---
 

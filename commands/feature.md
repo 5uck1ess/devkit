@@ -1,5 +1,4 @@
 ---
-name: devkit:feature
 description: Full lifecycle feature development — brainstorm, plan, implement, test, lint, review.
 ---
 

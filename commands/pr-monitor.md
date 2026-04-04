@@ -1,5 +1,4 @@
 ---
-name: devkit:pr-monitor
 description: Post-PR review monitor — watches CI, fetches reviewer comments, iteratively resolves them, and pushes fixes.
 ---
 

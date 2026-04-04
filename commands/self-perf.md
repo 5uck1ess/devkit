@@ -1,5 +1,4 @@
 ---
-name: self:perf
 description: Hypothesis-driven performance investigation — analyze, hypothesize, test one theory at a time, measure against baseline.
 ---
 
