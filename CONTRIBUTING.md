@@ -15,7 +15,7 @@ Slash commands appear in tab-completion and run step-by-step workflows.
 2. Include Budget & Early Exit section if the command loops
 3. Include `[PARALLEL]` markers if steps run concurrently
 
-The command will be auto-discovered as `/devkit:my-command`.
+The command name is derived from the filename: `commands/my-command.md` becomes `/devkit:my-command`.
 
 ## Adding a Context-Activated Skill
 
