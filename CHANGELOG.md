@@ -6,7 +6,9 @@
 - Add audit trail hook — logs all Bash commands to `.devkit/audit.log` with UTC timestamps, auto-rotates at 10k lines
 - Remove 5 skills that overlap with superpowers plugin: brainstorming, planning, writing-tests, skill-authoring, verify
 - Keep 6 skills that are unique to devkit: executing, clean-code, dry, yagni, creating-workflows, stuck
-- Add superpowers reference in README as complementary methodology plugin
+- Add superpowers and context-mode as recommended companion plugins in README
+- Add edit-time security pattern hook — catches eval, XSS, shell injection, weak hashes, hardcoded secrets on Write/Edit
+- Fix stop-gate cooldown — removed set -euo pipefail that was killing the script before writing cooldown file
 
 ## 1.3.0
 

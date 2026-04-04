@@ -15,13 +15,21 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-perspective a
 /plugin install devkit@5uck1ess-plugins
 ```
 
-### Recommended: Add Superpowers
+### Recommended Companions
 
-Devkit handles enforcement and orchestration. [Superpowers](https://github.com/obra/superpowers) handles methodology — brainstorming, planning, TDD, verification, debugging. They're complementary with no overlap.
+Devkit handles enforcement and orchestration. These plugins handle complementary concerns with no overlap.
+
+**[Superpowers](https://github.com/obra/superpowers)** — Methodology: brainstorming, planning, TDD, verification, debugging.
 
 ```bash
 /plugin marketplace add https://github.com/obra/superpowers-marketplace
 /plugin install superpowers
+```
+
+**[Context Mode](https://github.com/mksglu/context-mode)** — Context window management: sandboxes large outputs, session continuity via SQLite, 98% context savings.
+
+```bash
+# See repo for install instructions — runs as an MCP server
 ```
 
 ---
@@ -173,6 +181,17 @@ Every Bash command is logged to `.devkit/audit.log` with UTC timestamps. The log
 | `chmod -R 777` | World-writable permissions |
 | `sudo rm` | Elevated privilege deletion |
 | Editing `.env`, credentials, secrets, tokens | May contain sensitive data |
+
+### Edit-Time Security Patterns
+
+A `PreToolUse` hook on Edit/Write that catches known vulnerability patterns at the moment of creation. Warns once per file+pattern per session.
+
+| Language | Patterns detected |
+|---|---|
+| JS/TS | `eval()`, `new Function()`, `dangerouslySetInnerHTML`, `.innerHTML =`, `document.write`, `child_process.exec()`, weak hashes (MD5/SHA-1), `Math.random` for security |
+| Python | `eval()`, `exec()`, `pickle.load`, `os.system`, `subprocess(shell=True)`, `yaml.load`, `__import__`, weak hashes |
+| Go | Shell exec via `sh -c`, weak hashes, string concat in SQL |
+| Any | SQL injection via string concatenation, hardcoded secrets |
 
 ---
 

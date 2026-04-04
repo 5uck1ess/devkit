@@ -1,5 +1,5 @@
 {
-  "description": "Multi-layer enforcement stack: PreToolUse safety + RTK optimization, PostToolUse validation, SubagentStop verification, Stop quality gate",
+  "description": "Multi-layer enforcement stack: PreToolUse safety + security patterns + RTK optimization, PostToolUse validation, SubagentStop verification, Stop quality gate",
   "hooks": {
     "PreToolUse": [
       {
@@ -43,6 +43,17 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/safety-check.sh",
             "statusMessage": "Checking file safety...",
             "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/security-patterns.sh",
+            "statusMessage": "Security pattern check...",
+            "timeout": 5
           }
         ]
       }
