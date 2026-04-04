@@ -1,10 +1,12 @@
 package lib
 
 import (
+	"bufio"
 	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -45,10 +47,46 @@ type DB struct {
 	path string
 }
 
+// ensureGitignore adds ".devkit/" to the repo's .gitignore if not already present.
+func ensureGitignore(devkitDir string) {
+	repoRoot := filepath.Dir(devkitDir)
+	gitignorePath := filepath.Join(repoRoot, ".gitignore")
+
+	// Check if .devkit/ is already ignored
+	if f, err := os.Open(gitignorePath); err == nil {
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == ".devkit" || line == ".devkit/" {
+				f.Close()
+				return
+			}
+		}
+		f.Close()
+	}
+
+	// Append .devkit/ to .gitignore (create if needed)
+	f, err := os.OpenFile(gitignorePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return // best-effort; don't fail the whole operation
+	}
+	defer f.Close()
+
+	// If file exists and doesn't end with newline, add one first
+	if info, err := os.Stat(gitignorePath); err == nil && info.Size() > 0 {
+		content, err := os.ReadFile(gitignorePath)
+		if err == nil && len(content) > 0 && content[len(content)-1] != '\n' {
+			f.Write([]byte("\n"))
+		}
+	}
+	f.Write([]byte(".devkit/\n"))
+}
+
 func OpenDB(path string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("create db directory: %w", err)
 	}
+	ensureGitignore(filepath.Dir(path))
 
 	conn, err := sql.Open("sqlite", path+"?_pragma=journal_mode(wal)&_pragma=busy_timeout(5000)")
 	if err != nil {
