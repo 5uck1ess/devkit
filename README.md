@@ -27,7 +27,22 @@ Devkit focuses on enforcement, orchestration, and multi-agent workflows. For a c
 | **[commit-commands](https://github.com/anthropics/claude-plugins-official)** | Quick commits — auto-message `/commit`, one-shot `/commit-push-pr`, stale branch cleanup `/clean_gone` | `/plugin install commit-commands@claude-plugins-official` |
 | **[hookify](https://github.com/anthropics/claude-plugins-official)** | Hook creation — markdown-based rules, hot reload, conversation analysis for auto-detection | `/plugin install hookify@claude-plugins-official` |
 | **[skill-creator](https://github.com/anthropics/claude-plugins-official)** | Skill development — eval/benchmark framework, blind A/B comparison, iterative improvement | `/plugin install skill-creator@claude-plugins-official` |
-| **[context-mode](https://github.com/mksglu/context-mode)** | Context window management — sandboxes large outputs, session continuity via SQLite, 98% savings | See repo for MCP server install |
+| **[context-mode](https://github.com/mksglu/context-mode)** | Context window management — sandboxes large outputs, session continuity via SQLite, 98% savings | See below |
+
+#### Context Mode Install
+
+Plugin install (recommended — includes hooks + slash commands):
+```bash
+/plugin marketplace add mksglu/context-mode
+/plugin install context-mode@context-mode
+```
+
+MCP-only install (lighter — sandbox tools only, no auto-routing):
+```bash
+claude mcp add context-mode -- npx -y context-mode
+```
+
+Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are available (MCP install).
 
 **Why these and not others?** We evaluated every plugin in the official marketplace. These are the ones that add unique value without duplicating what devkit already does. Notably:
 
