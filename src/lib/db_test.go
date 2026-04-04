@@ -259,6 +259,60 @@ func TestEnsureGitignore_WithoutSlash(t *testing.T) {
 	}
 }
 
+func TestEnsureGitignore_Idempotent(t *testing.T) {
+	dir := t.TempDir()
+	devkitDir := filepath.Join(dir, ".devkit")
+	os.MkdirAll(devkitDir, 0o700)
+
+	ensureGitignore(devkitDir)
+	ensureGitignore(devkitDir)
+	ensureGitignore(devkitDir)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(content) != ".devkit/\n" {
+		t.Errorf("content = %q, want single .devkit/ entry (no duplicates)", string(content))
+	}
+}
+
+func TestEnsureGitignore_WhitespacePadded(t *testing.T) {
+	dir := t.TempDir()
+	devkitDir := filepath.Join(dir, ".devkit")
+	os.MkdirAll(devkitDir, 0o700)
+	original := "node_modules/\n  .devkit/  \n"
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(original), 0o644)
+
+	ensureGitignore(devkitDir)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(content) != original {
+		t.Errorf("content = %q, want %q (should match whitespace-padded entry)", string(content), original)
+	}
+}
+
+func TestEnsureGitignore_EntryMidFile(t *testing.T) {
+	dir := t.TempDir()
+	devkitDir := filepath.Join(dir, ".devkit")
+	os.MkdirAll(devkitDir, 0o700)
+	original := "node_modules/\n.devkit/\ndist/\n"
+	os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(original), 0o644)
+
+	ensureGitignore(devkitDir)
+
+	content, err := os.ReadFile(filepath.Join(dir, ".gitignore"))
+	if err != nil {
+		t.Fatalf("read .gitignore: %v", err)
+	}
+	if string(content) != original {
+		t.Errorf("content = %q, want %q (should find entry in middle of file)", string(content), original)
+	}
+}
+
 func TestDBDirectoryPermissions(t *testing.T) {
 	dir := t.TempDir()
 	dbDir := filepath.Join(dir, ".devkit")
