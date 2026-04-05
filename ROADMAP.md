@@ -3,9 +3,9 @@
 ## Implemented
 
 - **20 slash commands** — Lifecycle workflows, self-improvement loops, multi-agent dispatch, project health audit, post-PR monitoring, AST repo mapping
-- **14 context-activated skills** — 6 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, scrape) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows)
+- **15 context-activated skills** — 6 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, scrape) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad)
 - **6 agents** — Scoped tool access, worktree isolation, model assignment
-- **9 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression)
+- **10 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression)
 - **Graceful degradation** — tri:* commands work with 1-3 agents depending on installed CLIs
 - **Goal decomposition** — Task DAG with dependency ordering and parallel execution
 - **Concurrency limits** — Max 3 parallel agents in multi-agent commands
@@ -31,9 +31,9 @@ Items below were on the roadmap but determined to be unnecessary — either alre
 
 | Item | Why removed |
 |------|-------------|
-| Stop hook redesign | Already solved — stop-gate.sh exits early with `approve` when no files are changed, making it near-instant on clean trees |
+| Stop hook redesign | Still fires every turn, but exits early with `approve` when no files are changed — near-instant on clean trees, so the performance concern is moot. Revisit only if it causes measurable latency. |
 | Cost event hooks | Budget enforcement already exists in the Go engine via `overBudget()` + `addCost()` callbacks with hard limits |
 | Execution registry | Step tracking already handled by SQLite via `lib.DB` with status, cost, and timing per step |
-| Preset library | The 12 YAML workflows and 14 skills already serve this purpose |
+| Preset library | The 12 YAML workflows and 15 skills already serve this purpose |
 | Framework-specific review checklists | `lang-review.sh` covers language-level patterns; framework-specific rules are better added per-project via hookify |
 | Conditional hook firing | Hooks already self-filter internally (extension checks, changed-file checks); a generic condition system adds complexity for no current need |
