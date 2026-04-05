@@ -37,9 +37,23 @@ add_warning() {
 # Go (.go)
 # ---------------------------------------------------------------------------
 check_go() {
-  # Error-path result access
+  # Error-path result access — simplified: check if any line between
+  # "if err != nil {" and its closing "}" references result./res.
   if echo "$CONTENT" | grep -qE 'if err != nil'; then
-    if echo "$CONTENT" | awk '/if err != nil \{/{found=1; buf=""} found{buf=buf $0 "\n"; if(/\}/){if(buf ~ /result\.|res\./){exit 0} found=0}} END{exit 1}'; then
+    MATCH=$(echo "$CONTENT" | awk '
+      /if err != nil[[:space:]]*\{/ { in_err = 1; depth = 0 }
+      in_err {
+        for (i = 1; i <= length($0); i++) {
+          c = substr($0, i, 1)
+          if (c == "{") depth++
+          if (c == "}") depth--
+        }
+        if (/result\.|res\./ && depth > 0) { matched = 1 }
+        if (depth <= 0) { in_err = 0 }
+      }
+      END { exit matched ? 0 : 1 }
+    ')
+    if [ $? -eq 0 ]; then
       add_warning "Go: possible result field access inside error path (result may be zero-value when err != nil)"
     fi
   fi
@@ -60,7 +74,7 @@ check_go() {
 
   # Nil-error return detection (functions that always return nil error)
   NIL_FUNCS=$(echo "$CONTENT" | awk '
-    /^func .*\)\s*(\(.*error\)|error)\s*\{/ {
+    /^func .*\)[[:space:]]*(\(.*error\)|error)[[:space:]]*\{/ {
       fname = $0; sub(/\{.*/, "", fname)
       in_func = 1; brace_depth = 0; has_return = 0; has_non_nil_err = 0
       line = $0
@@ -80,7 +94,7 @@ check_go() {
       }
       if ($0 ~ /return /) {
         has_return = 1
-        if ($0 !~ /,\s*nil\s*$/ && $0 !~ /return nil\s*$/ && $0 !~ /,\s*nil\s*\)/) {
+        if ($0 !~ /,[[:space:]]*nil[[:space:]]*$/ && $0 !~ /return nil[[:space:]]*$/ && $0 !~ /,[[:space:]]*nil[[:space:]]*\)/) {
           has_non_nil_err = 1
         }
       }

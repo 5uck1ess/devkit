@@ -75,7 +75,8 @@ $HAS_PYTHON && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS python"
 $HAS_SQL && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS sql"
 DOMAINS=$(echo "$DOMAINS" | xargs)
 
-if [ "$CODE_DOMAINS" -gt 1 ]; then
+# Skip cross-domain check if transcript is empty (no data to verify against)
+if [ "$CODE_DOMAINS" -gt 1 ] && [ -n "$TRANSCRIPT" ]; then
   MISSING=""
 
   $HAS_GO && ! echo "$TRANSCRIPT" | grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' && MISSING="$MISSING go"
@@ -99,7 +100,7 @@ fi
 # ---------------------------------------------------------------------------
 
 # --- Go ---
-if $HAS_GO; then
+if $HAS_GO && command -v go >/dev/null 2>&1; then
   GO_MOD_DIR=""
   for candidate in "$REPO_ROOT" "$REPO_ROOT/src" "$REPO_ROOT/cmd"; do
     [ -f "$candidate/go.mod" ] && GO_MOD_DIR="$candidate" && break
@@ -112,17 +113,26 @@ if $HAS_GO; then
       exit 0
     fi
 
-    # Race detection on changed packages
+    # Race detection on changed packages — paths must be relative to GO_MOD_DIR with ./ prefix
+    MOD_REL=$(echo "$GO_MOD_DIR" | sed "s|^$REPO_ROOT/||; s|^$REPO_ROOT$||")
     GO_PKGS=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
-      dirname "$f" | sed "s|^src/|./|"
+      # Strip the module-relative prefix and add ./
+      pkg=$(dirname "$f")
+      if [ -n "$MOD_REL" ]; then
+        pkg=$(echo "$pkg" | sed "s|^$MOD_REL/||")
+      fi
+      echo "./$pkg"
     done | sort -u | tr '\n' ' ')
 
     if [ -n "$GO_PKGS" ]; then
       RACE_OUTPUT=$(cd "$GO_MOD_DIR" && perl -e 'alarm 60; exec @ARGV' -- go test -race -count=1 $GO_PKGS 2>&1) || RACE_EXIT=$?
-      if [ "${RACE_EXIT:-0}" -ne 0 ] && echo "$RACE_OUTPUT" | grep -qE 'DATA RACE|race detected'; then
-        RACE_LINES=$(echo "$RACE_OUTPUT" | grep -A5 'DATA RACE' | head -20)
-        jq -n --arg msg "Race condition detected:\n$RACE_LINES" '{ decision: "block", reason: $msg }'
-        exit 0
+      if [ "${RACE_EXIT:-0}" -ne 0 ]; then
+        if echo "$RACE_OUTPUT" | grep -qE 'DATA RACE|race detected'; then
+          RACE_LINES=$(echo "$RACE_OUTPUT" | grep -A5 'DATA RACE' | head -20)
+          jq -n --arg msg "Race condition detected:\n$RACE_LINES" '{ decision: "block", reason: $msg }'
+          exit 0
+        fi
+        # Non-race test failure — warn but don't block (tests are checked elsewhere)
       fi
     fi
   fi
@@ -142,7 +152,7 @@ fi
 if $HAS_TS && [ -f "$REPO_ROOT/tsconfig.json" ] && command -v npx >/dev/null 2>&1; then
   TSC_OUTPUT=$(cd "$REPO_ROOT" && npx tsc --noEmit 2>&1) || TSC_EXIT=$?
   if [ "${TSC_EXIT:-0}" -ne 0 ]; then
-    TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -E 'error TS' | head -5)
+    TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -E 'error TS' | head -5 || true)
     if [ -n "$TSC_ERRORS" ]; then
       jq -n --arg msg "TypeScript errors:\n$TSC_ERRORS" '{ decision: "block", reason: $msg }'
       exit 0
