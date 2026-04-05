@@ -1,0 +1,234 @@
+name: Deep Research
+description: ACH-enhanced deep research — perspective discovery, competing hypotheses, directed disconfirmation, evidence matrix
+
+budget:
+  limit: 400000
+  downgrade: fast
+
+steps:
+  - id: clarify
+    model: smart
+    prompt: |
+      The user wants to deep-research: {{input}}
+
+      Use ask_user to clarify:
+      - What specifically are we trying to learn?
+      - What constraints matter (language, framework, scale)?
+      - What would a wrong answer cost?
+      - Any sources they already know about?
+
+      Restate the research question precisely.
+
+  - id: perspectives
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Before generating search queries, survey the landscape.
+      Search for 2-3 overview/survey articles on this topic.
+      Fetch with Jina Reader: WebFetch https://r.jina.ai/{url}
+
+      Extract and summarize immediately:
+      - Major schools of thought or approaches
+      - Key voices (companies, researchers, communities)
+      - Known debates or controversies
+      - Underrepresented perspectives
+
+      Do NOT carry raw content forward — summarize only.
+
+  - id: decompose
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Perspectives discovered: {{perspectives}}
+
+      Break the question into 5-8 sub-questions with explicit retrieval goals.
+
+      Format:
+      - Query: <search query>
+        Goal: <what this search should find>
+        Perspective: <which viewpoint this represents>
+
+      Rules:
+      - At least one query per major perspective
+      - At least 2 queries seeking DISCONFIRMING evidence
+        (e.g., "problems with X", "X failures", "why X doesn't work")
+      - Include at least one query targeting recent sources (last 12 months)
+      - No two queries should return the same results
+
+  - id: search-1
+    model: general
+    prompt: |
+      Execute web search for sub-questions 1-2 from this decomposition:
+      {{decompose}}
+
+      Collect titles, URLs, key snippets, publication dates.
+
+  - id: search-2
+    model: general
+    prompt: |
+      Execute web search for sub-questions 3-4 from this decomposition:
+      {{decompose}}
+
+      Collect titles, URLs, key snippets, publication dates.
+
+  - id: search-3
+    model: general
+    prompt: |
+      Execute web search for sub-questions 5+ from this decomposition:
+      {{decompose}}
+
+      Prioritize the disconfirming-evidence queries.
+      Collect titles, URLs, key snippets, publication dates.
+
+  - id: dispatch-searches
+    parallel: [search-1, search-2, search-3]
+
+  - id: extract-claims
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Search results:
+      {{search-1}}
+      {{search-2}}
+      {{search-3}}
+
+      For the 5-8 most promising URLs, fetch clean content:
+        WebFetch https://r.jina.ai/{url} with header Accept: text/markdown
+
+      Extract ATOMIC CLAIMS — individual factual assertions:
+      - Claim: <specific assertion>
+        Source: <URL>
+        Recency: <publication date or "unknown">
+
+      CRITICAL: Summarize each page into atomic claims immediately.
+      Do NOT carry raw page content forward.
+      Aim for 3-8 claims per source.
+
+  - id: hypotheses
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Extracted claims: {{extract-claims}}
+
+      Generate 2-4 COMPETING HYPOTHESES that answer the research question.
+
+      Rules:
+      - Hypotheses must be mutually exclusive or meaningfully different
+      - Include at least one "contrarian" hypothesis challenging the obvious answer
+      - Each must be a clear, testable statement
+      - Don't include hypotheses with zero supporting evidence
+
+      Format:
+      - H1: <statement>
+      - H2: <statement>
+      - H3: <statement>
+
+  - id: disconfirm
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Hypotheses: {{hypotheses}}
+      Existing claims: {{extract-claims}}
+
+      DIRECTED DISCONFIRMATION — the critical ACH step.
+
+      For EACH hypothesis, search specifically for evidence that would DISPROVE it.
+      You are NOT looking for confirmation. You are trying to KILL each hypothesis.
+
+      For each hypothesis:
+      1. Search: "<hypothesis> wrong", "problems with <approach>", "<alternative> better"
+      2. Fetch and summarize the most relevant disconfirming source via Jina Reader
+      3. Extract new claims that contradict the hypothesis
+
+      If you cannot find disconfirming evidence after genuine effort, note that —
+      it's a signal of strength, not a gap.
+
+  - id: evidence-matrix
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Hypotheses: {{hypotheses}}
+      Supporting claims: {{extract-claims}}
+      Disconfirming claims: {{disconfirm}}
+
+      Build an EVIDENCE MATRIX.
+      Rows = all claims (supporting + disconfirming). Columns = hypotheses.
+
+      For each cell, mark:
+      - CC (Strongly Consistent) — directly supports
+      - C  (Consistent) — compatible
+      - N  (Neutral) — irrelevant
+      - I  (Inconsistent) — contradicts
+      - II (Strongly Inconsistent) — directly disproves
+
+      | Evidence | H1 | H2 | H3 |
+      |----------|----|----|-----|
+
+      Score each hypothesis by FEWEST inconsistencies (I + II).
+      The surviving hypothesis has the fewest inconsistencies, NOT the most consistencies.
+
+      Then perform SENSITIVITY CHECK:
+      1. Which single claim, if wrong, would change the conclusion?
+      2. Are there linchpin claims from only one source?
+      3. What new evidence would flip the answer?
+
+  - id: self-critique
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Evidence matrix and sensitivity: {{evidence-matrix}}
+
+      Self-critique your analysis:
+      1. Did you genuinely try to disprove each hypothesis, or softball it?
+      2. Are there perspectives you missed entirely?
+      3. Are you over-weighting any single source?
+      4. Would someone with the opposite view find this analysis fair?
+      5. Are there claims treated as confirmed that are actually uncorroborated?
+
+      If you find gaps, do ONE targeted search to fill them and report findings.
+      If the analysis is solid, say "CRITIQUE_COMPLETE" and summarize any minor adjustments.
+    loop:
+      max: 2
+      until: CRITIQUE_COMPLETE
+
+  - id: synthesize
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+      Evidence matrix: {{evidence-matrix}}
+      Self-critique: {{self-critique}}
+
+      Write the final deep research synthesis:
+
+      ## Deep Research: {question}
+
+      ### Direct Answer
+      {answer with confidence: HIGH / MEDIUM / LOW}
+
+      ### Competing Hypotheses Evaluated
+      For each hypothesis:
+      - Statement
+      - Status: REJECTED / SURVIVING / INCONCLUSIVE
+      - Supporting evidence with sources
+      - Disconfirming evidence with sources
+      - Inconsistency count
+
+      ### Evidence Matrix Summary
+      {the matrix or prose summary}
+
+      ### Key Findings
+      - CONFIRMED: {claim} — [source1], [source2]
+      - CONTESTED: {claim} — [source1] says X, [source2] says Y
+      - UNCORROBORATED: {claim} — [source]
+
+      ### Sensitivity Analysis
+      - Linchpin evidence: {what changes the answer if wrong}
+      - Confidence fragility: HIGH (robust) / LOW (depends on 1-2 sources)
+
+      ### What Would Change This Conclusion
+      {specific evidence or events that would flip the answer}
+
+      ### Recommendation
+      {what to do and why, with calibrated confidence}
