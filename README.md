@@ -204,7 +204,7 @@ For brainstorming, planning, TDD, verification, and skill authoring — install 
 
 ## Hooks
 
-Devkit ships 9 hooks across 4 lifecycle events. All are installed automatically with the plugin — no setup required.
+Devkit ships 10 hooks across 4 lifecycle events. All are installed automatically with the plugin — no setup required.
 
 ### PreToolUse
 
@@ -344,7 +344,7 @@ devkit/
 │   ├── test-writer.md       # Sonnet, worktree isolation
 │   ├── documenter.md        # Haiku, worktree isolation
 │   └── security-auditor.md  # Opus, worktree isolation
-├── hooks/                   # 9 hooks across 4 lifecycle events
+├── hooks/                   # 10 hooks across 4 lifecycle events
 │   ├── hooks.json           # Hook config (auto-loaded)
 │   ├── safety-check.sh      # Dangerous operation blocker
 │   ├── security-patterns.sh # Edit-time vulnerability detection
@@ -530,10 +530,6 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 - [x] Cross-domain dirty-bit enforcement — blocks completion without test evidence per domain
 - [x] Go code quality hooks — error-path access, nil-return, race detection, portability
 - [x] **Language-universal hooks** — consolidated Go-specific hooks into `lang-review.sh` with Go, TypeScript, Rust, Python, and Shell support
-- [x] **Hook consolidation** — merged 14 hooks into 9, reduced per-edit shell processes from 7 to 4. Consolidated stop hooks (dirty-bit + go-vet-stop + old stop-gate) into single `stop-gate.sh`
-- [ ] Stop hook redesign — opt-in or session-end only, not every turn
-- [ ] Cost event hooks — budget threshold events with auto-downgrade actions
-- [ ] Execution registry — centralized step tracking with timing and token usage
-- [ ] Preset library — curated prompt templates for common review/improvement scenarios
-- [ ] Framework-specific review checklists — React, Django, Go, Rust patterns
-- [ ] Conditional hook firing — gitBranch, fileExists, envSet conditions
+- [x] **Hook consolidation** — merged 14 hooks into 10, reduced per-edit shell processes from 7 to 4. Consolidated stop hooks (dirty-bit + go-vet-stop + old stop-gate) into single `stop-gate.sh`
+
+All planned items complete. See [ROADMAP.md](ROADMAP.md) for retired items and rationale.
