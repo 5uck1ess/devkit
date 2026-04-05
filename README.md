@@ -133,7 +133,7 @@ Automated propose → measure → keep/discard → repeat cycles.
 | `/self:lint` | Iteratively fix lint/type errors until zero remain |
 | `/self:perf` | Hypothesis-driven performance investigation — evidence, hypotheses, one-at-a-time testing |
 | `/self:migrate` | Incremental migration (JS→TS, class→hooks, etc.) with test gate |
-| `/self:audit` | Karpathy-style codebase audit — measure everything, rank hypotheses by evidence, report only |
+| `/self:audit` | Codebase audit inspired by karpathy/autoresearch — measure everything, rank hypotheses, report only |
 
 ### Multi-Agent Commands (Claude + optional Codex/Gemini)
 

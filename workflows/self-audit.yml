@@ -1,5 +1,5 @@
 name: Self-Audit
-description: Karpathy-style codebase audit — measure everything, rank hypotheses by evidence, present actionable plan
+description: Codebase audit inspired by karpathy/autoresearch — measure everything, rank hypotheses by evidence, present actionable plan
 
 budget:
   limit: 200000

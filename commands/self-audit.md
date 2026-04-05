@@ -1,14 +1,14 @@
 ---
-description: Karpathy-style self-audit — measure the codebase, rank improvement hypotheses by evidence, present actionable plan. Don't guess, measure.
+description: Automated self-audit — measure the codebase, rank improvement hypotheses by evidence, present actionable plan. Inspired by karpathy/autoresearch.
 ---
 
 # Self-Audit
 
-Systematic codebase audit using Karpathy's research methodology: measure first, form hypotheses from evidence, rank by impact. No guessing, no speculative improvements.
+Systematic codebase audit inspired by [karpathy/autoresearch](https://github.com/karpathy/autoresearch): one file, one metric, keep or discard, loop. Applied to codebase quality instead of ML training.
 
 ## Philosophy
 
-> Most of the value comes from understanding the system deeply. Don't jump to building stuff without knowing what's actually broken. — inspired by Karpathy's research methodology
+autoresearch gives an AI agent a training setup and lets it experiment autonomously — modify code, measure the metric, keep or revert, repeat ~100 times overnight. We apply the same pattern to codebase quality: measure everything with a single pass, form ranked hypotheses, then test one at a time with a clear keep/discard metric.
 
 This command does NOT fix anything. It measures, analyzes, and presents a ranked hypothesis list. You decide which to test. One at a time.
 
