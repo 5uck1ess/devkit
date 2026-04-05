@@ -39,6 +39,14 @@ jobs:
             exit 1
           fi
 
+  hook-smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run hook smoke tests
+        run: bash hooks/hooks_test.sh
+
   validate-counts:
     runs-on: ubuntu-latest
     steps:
