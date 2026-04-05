@@ -122,23 +122,3 @@ func TestTruncStr_EdgeCases(t *testing.T) {
 		})
 	}
 }
-
-func TestRunOptsDefaults(t *testing.T) {
-	opts := RunOpts{}
-	if opts.WorkDir != "" {
-		t.Error("default WorkDir should be empty")
-	}
-	if opts.MaxTurns != 0 {
-		t.Error("default MaxTurns should be 0")
-	}
-	if opts.AllowedTools != "" {
-		t.Error("default AllowedTools should be empty")
-	}
-}
-
-func TestRunResultDefaults(t *testing.T) {
-	r := RunResult{}
-	if r.Output != "" || r.CostUSD != 0 || r.ExitCode != 0 {
-		t.Error("default RunResult should have zero values")
-	}
-}

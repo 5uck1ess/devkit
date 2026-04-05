@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var validWorkflowName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
 var workflowCmd = &cobra.Command{
 	Use:   "workflow [name] [description...]",
 	Short: "Run a YAML workflow by name",
@@ -33,7 +35,7 @@ var workflowCmd = &cobra.Command{
 		}
 
 		// Validate workflow name to prevent path traversal
-		if !regexp.MustCompile(`^[a-zA-Z0-9_-]+$`).MatchString(name) {
+		if !validWorkflowName.MatchString(name) {
 			return fmt.Errorf("invalid workflow name %q — use only letters, numbers, hyphens, underscores", name)
 		}
 
