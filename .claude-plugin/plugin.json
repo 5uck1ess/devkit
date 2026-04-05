@@ -1,6 +1,6 @@
 {
   "name": "devkit",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "A deterministic development harness for AI agents — YAML workflow engine, self-learning hooks, and multi-agent consensus",
   "author": {
     "name": "5uck1ess"
