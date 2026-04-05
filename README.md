@@ -531,9 +531,5 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 - [x] Go code quality hooks — error-path access, nil-return, race detection, portability
 - [x] **Language-universal hooks** — consolidated Go-specific hooks into `lang-review.sh` with Go, TypeScript, Rust, Python, and Shell support
 - [x] **Hook consolidation** — merged 14 hooks into 9, reduced per-edit shell processes from 7 to 4. Consolidated stop hooks (dirty-bit + go-vet-stop + old stop-gate) into single `stop-gate.sh`
-- [ ] Stop hook redesign — opt-in or session-end only, not every turn
-- [ ] Cost event hooks — budget threshold events with auto-downgrade actions
-- [ ] Execution registry — centralized step tracking with timing and token usage
-- [ ] Preset library — curated prompt templates for common review/improvement scenarios
-- [ ] Framework-specific review checklists — React, Django, Go, Rust patterns
-- [ ] Conditional hook firing — gitBranch, fileExists, envSet conditions
+
+All planned items complete. See [ROADMAP.md](ROADMAP.md) for retired items and rationale.
