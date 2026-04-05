@@ -1,6 +1,6 @@
 ---
 name: research
-description: Research workflow — use when asked to research a topic, do a deep dive, investigate options, compare approaches, or find the best solution to a technical question. For complex or high-stakes questions where correctness is critical, use deep-research instead.
+description: Research workflow — use when asked to research a topic, investigate options, compare approaches, or find the best solution to a technical question. NOT for "deep research" or "validate" requests — those go to deep-research. For complex or high-stakes questions where correctness is critical, use deep-research instead.
 ---
 
 # Research Workflow
