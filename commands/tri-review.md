@@ -113,7 +113,7 @@ Retrieve result with `/codex:result` when done. Omit `--model` to use the accoun
 
 ```bash
 if [ "$HAS_CODEX_CLI" = "yes" ]; then
-  codex exec --full-auto "{prompt} $(cat /tmp/tri-review-diff.txt)" \
+  cat /tmp/tri-review-diff.txt | codex exec --full-auto "{prompt}" \
     > /tmp/tri-review-codex.txt 2>&1 &
   CODEX_PID=$!
 fi
@@ -134,7 +134,7 @@ Retrieve result with `/gemini:result` when done. Omit `--model` to use the accou
 
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
+  cat /tmp/tri-review-diff.txt | gemini -p "{prompt}" \
     -y --output-format text \
     > /tmp/tri-review-gemini.txt 2>&1 &
   GEMINI_PID=$!
