@@ -14,12 +14,17 @@
 # PostToolUse hook schema:
 #   { "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": "string" } }
 
-set -euo pipefail
+set -uo pipefail
 
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty')
+# Safety net: if anything crashes, exit cleanly (hook must never die without output)
+trap 'exit 0' ERR
+
+INPUT=$(cat || true)
+[ -z "$INPUT" ] && exit 0
+
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // .tool_input.new_string // empty' 2>/dev/null || true)
 
 # Only check Edit/Write
 if [ "$TOOL_NAME" != "Edit" ] && [ "$TOOL_NAME" != "Write" ]; then
@@ -40,7 +45,7 @@ check_go() {
   # Error-path result access — simplified: check if any line between
   # "if err != nil {" and its closing "}" references result./res.
   if echo "$CONTENT" | grep -qE 'if err != nil'; then
-    MATCH=$(echo "$CONTENT" | awk '
+    echo "$CONTENT" | awk '
       /if err != nil[[:space:]]*\{/ { in_err = 1; depth = 0 }
       in_err {
         for (i = 1; i <= length($0); i++) {
@@ -52,8 +57,8 @@ check_go() {
         if (depth <= 0) { in_err = 0 }
       }
       END { exit matched ? 0 : 1 }
-    ')
-    if [ $? -eq 0 ]; then
+    ' && AWK_MATCHED=true || AWK_MATCHED=false
+    if $AWK_MATCHED; then
       add_warning "Go: possible result field access inside error path (result may be zero-value when err != nil)"
     fi
   fi

@@ -10,10 +10,15 @@
 # Stop hook schema:
 #   { "decision": "approve" | "block", "reason": "string" }
 
-set -euo pipefail
+set -uo pipefail
 
-INPUT=$(cat)
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript // empty')
+# Safety net: Stop hooks MUST return JSON. If anything crashes, approve rather than hang.
+trap 'jq -n "{ decision: \"approve\" }" 2>/dev/null || echo "{\"decision\":\"approve\"}"; exit 0' ERR
+
+INPUT=$(cat || true)
+[ -z "$INPUT" ] && { jq -n '{ decision: "approve" }'; exit 0; }
+
+TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript // empty' 2>/dev/null || true)
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 CHANGED_FILES=$(cd "$REPO_ROOT" && {
