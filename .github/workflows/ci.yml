@@ -38,3 +38,98 @@ jobs:
             echo "$unformatted"
             exit 1
           fi
+
+  validate-counts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate README and ROADMAP counts
+        run: |
+          ERRORS=""
+
+          # Count actual files
+          CMD_COUNT=$(ls commands/*.md 2>/dev/null | wc -l | tr -d ' ')
+          SKILL_COUNT=$(ls -d skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+          WORKFLOW_COUNT=$(ls workflows/*.yml 2>/dev/null | wc -l | tr -d ' ')
+          HOOK_COUNT=$(cat hooks/hooks.json | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          scripts = set()
+          for event in data.get('hooks', {}).values():
+            for entry in event:
+              for h in entry.get('hooks', []):
+                cmd = h.get('command', '')
+                scripts.add(cmd.split('/')[-1])
+          print(len(scripts))
+          ")
+
+          echo "Actual counts: commands=$CMD_COUNT skills=$SKILL_COUNT workflows=$WORKFLOW_COUNT hooks=$HOOK_COUNT"
+
+          # Check README
+          for file in README.md ROADMAP.md; do
+            if [ ! -f "$file" ]; then continue; fi
+
+            # Commands
+            if grep -qE "\*\*[0-9]+ slash commands\*\*" "$file"; then
+              DOC_CMD=$(grep -oE '\*\*[0-9]+ slash commands\*\*' "$file" | grep -oE '[0-9]+')
+              if [ "$DOC_CMD" != "$CMD_COUNT" ]; then
+                ERRORS="$ERRORS\n$file: says $DOC_CMD commands, actual is $CMD_COUNT"
+              fi
+            fi
+
+            # Skills
+            if grep -qE "\*\*[0-9]+ context-activated skills\*\*" "$file"; then
+              DOC_SKILL=$(grep -oE '\*\*[0-9]+ context-activated skills\*\*' "$file" | grep -oE '[0-9]+')
+              if [ "$DOC_SKILL" != "$SKILL_COUNT" ]; then
+                ERRORS="$ERRORS\n$file: says $DOC_SKILL skills, actual is $SKILL_COUNT"
+              fi
+            fi
+
+            # Workflows
+            if grep -qE "\*\*[0-9]+ YAML workflows\*\*" "$file"; then
+              DOC_WF=$(grep -oE '\*\*[0-9]+ YAML workflows\*\*' "$file" | grep -oE '[0-9]+')
+              if [ "$DOC_WF" != "$WORKFLOW_COUNT" ]; then
+                ERRORS="$ERRORS\n$file: says $DOC_WF workflows, actual is $WORKFLOW_COUNT"
+              fi
+            fi
+
+            # Hooks
+            if grep -qE "\*\*[0-9]+ hooks\*\*" "$file"; then
+              DOC_HOOK=$(grep -oE '\*\*[0-9]+ hooks\*\*' "$file" | grep -oE '[0-9]+')
+              if [ "$DOC_HOOK" != "$HOOK_COUNT" ]; then
+                ERRORS="$ERRORS\n$file: says $DOC_HOOK hooks, actual is $HOOK_COUNT"
+              fi
+            fi
+          done
+
+          # Check README repo structure comments
+          if grep -qE '# [0-9]+ slash commands' README.md; then
+            TREE_CMD=$(grep -oE '# [0-9]+ slash commands' README.md | grep -oE '[0-9]+')
+            if [ "$TREE_CMD" != "$CMD_COUNT" ]; then
+              ERRORS="$ERRORS\nREADME.md tree: says $TREE_CMD commands, actual is $CMD_COUNT"
+            fi
+          fi
+          if grep -qE '# [0-9]+ context-activated skills' README.md; then
+            TREE_SKILL=$(grep -oE '# [0-9]+ context-activated skills' README.md | grep -oE '[0-9]+')
+            if [ "$TREE_SKILL" != "$SKILL_COUNT" ]; then
+              ERRORS="$ERRORS\nREADME.md tree: says $TREE_SKILL skills, actual is $SKILL_COUNT"
+            fi
+          fi
+          if grep -qE '# [0-9]+ YAML workflow' README.md; then
+            TREE_WF=$(grep -oE '# [0-9]+ YAML workflow' README.md | grep -oE '[0-9]+')
+            if [ "$TREE_WF" != "$WORKFLOW_COUNT" ]; then
+              ERRORS="$ERRORS\nREADME.md tree: says $TREE_WF workflows, actual is $WORKFLOW_COUNT"
+            fi
+          fi
+
+          if [ -n "$ERRORS" ]; then
+            echo ""
+            echo "COUNT MISMATCHES FOUND:"
+            printf "$ERRORS\n"
+            echo ""
+            echo "Fix the counts in README.md and/or ROADMAP.md to match actual file counts."
+            exit 1
+          else
+            echo "All counts match."
+          fi
