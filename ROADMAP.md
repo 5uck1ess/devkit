@@ -2,7 +2,7 @@
 
 ## Implemented
 
-- **21 slash commands** — Lifecycle workflows, self-improvement loops, multi-agent dispatch, project health audit, post-PR monitoring, AST repo mapping
+- **22 slash commands** — Lifecycle workflows, self-improvement loops, multi-agent dispatch, project health audit, post-PR monitoring, AST repo mapping, autoresearch-inspired self-audit
 - **16 context-activated skills** — 7 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, deep-research, scrape) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad)
 - **6 agents** — Scoped tool access, worktree isolation, model assignment
 - **10 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression)
@@ -12,7 +12,7 @@
 - **Early-exit conditions** — Self-improvement loops stop when goal is met, not just at max iterations
 - **Token budget guidance** — Per-command budget recommendations with model downgrade patterns
 - **RTK token optimization** — Optional PreToolUse hook compresses Bash output via RTK (60-90% savings)
-- **13 YAML workflows** — Portable workflow definitions (feature, bugfix, refactor, research, deep-research, self-*, tri-*)
+- **14 YAML workflows** — Portable workflow definitions (feature, bugfix, refactor, research, deep-research, self-*, tri-*)
 - **Separate marketplace** — Multi-plugin marketplace at `5uck1ess/marketplace`
 - **Companion ecosystem** — Evaluated official marketplace, documented holistic setup with 7 complementary plugins
 - **Hypothesis-driven perf** — Evidence gathering, ranked hypotheses, one-at-a-time testing replaces blind benchmark loops
@@ -34,6 +34,6 @@ Items below were on the roadmap but determined to be unnecessary — either alre
 | Stop hook redesign | Still fires every turn, but exits early with `approve` when no files are changed — near-instant on clean trees, so the performance concern is moot. Revisit only if it causes measurable latency. |
 | Cost event hooks | Budget enforcement already exists in the Go engine via `overBudget()` + `addCost()` callbacks with hard limits |
 | Execution registry | Step tracking already handled by SQLite via `lib.DB` with status, cost, and timing per step |
-| Preset library | The 13 YAML workflows and 16 skills already serve this purpose |
+| Preset library | The 14 YAML workflows and 16 skills already serve this purpose |
 | Framework-specific review checklists | `lang-review.sh` covers language-level patterns; framework-specific rules are better added per-project via hookify |
 | Conditional hook firing | Hooks already self-filter internally (extension checks, changed-file checks); a generic condition system adds complexity for no current need |
