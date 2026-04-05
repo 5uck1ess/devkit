@@ -86,7 +86,7 @@ Retrieve result with `/gemini:result` when done. Omit `--model` to use the accou
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "$PROMPT" -y \
-    --output-format text > /tmp/tri-dispatch-gemini.txt 2>/dev/null &
+    --output-format text > /tmp/tri-dispatch-gemini.txt 2>&1 &
 fi
 
 wait
