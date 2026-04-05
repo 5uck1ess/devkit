@@ -2,7 +2,7 @@
 
 A deterministic development harness for AI agents.
 
-AI agents write code fast but cut corners — they skip error handling, introduce race conditions, ignore edge cases, and refactor things you didn't ask them to touch. Devkit is the infrastructure layer between you and the agents. A Go engine executes workflows deterministically — branching, loops, budget enforcement, and parallel dispatch all happen in compiled code, not LLM reasoning. 14 hooks enforce quality at every stage of the lifecycle, many learned directly from bugs found in previous review cycles. The system gets better every time it catches something new.
+AI agents write code fast but cut corners — they skip error handling, introduce race conditions, ignore edge cases, and refactor things you didn't ask them to touch. Devkit is the infrastructure layer between you and the agents. A Go engine executes workflows deterministically — branching, loops, budget enforcement, and parallel dispatch all happen in compiled code, not LLM reasoning. 9 language-aware hooks enforce quality at every stage of the lifecycle across Go, TypeScript, Rust, Python, and Shell — many learned directly from bugs found in previous review cycles. The system gets better every time it catches something new.
 
 Define your workflow in YAML. The engine handles orchestration. The agent handles creativity. Every change is measured, gated, and auditable.
 
@@ -204,7 +204,7 @@ For brainstorming, planning, TDD, verification, and skill authoring — install 
 
 ## Hooks
 
-Devkit ships 14 hooks across 4 lifecycle events. All are installed automatically with the plugin — no setup required.
+Devkit ships 9 hooks across 4 lifecycle events. All are installed automatically with the plugin — no setup required.
 
 ### PreToolUse
 
@@ -212,7 +212,6 @@ Devkit ships 14 hooks across 4 lifecycle events. All are installed automatically
 |---|---|---|
 | **safety-check** | Bash, Edit, Write | Blocks destructive commands (`rm -rf /`, `DROP TABLE`, private key writes). Prompts on risky operations (force push, `git reset --hard`, editing secrets). |
 | **security-patterns** | Edit, Write | Catches vulnerability patterns at creation time — `eval()`, XSS, shell injection, weak hashes, hardcoded secrets, path traversal. Language-aware (JS/TS/Python/Go). |
-| **shell-compat** | Edit, Write | Flags macOS-incompatible constructs in shell scripts — `grep -P`, `sed -i` without `''`, `readlink -f`, `stat --format`, `xargs -d`, `date -d`. |
 | **audit-trail** | Bash | Logs every command to `.devkit/audit.log` with UTC timestamps. Auto-rotates at 10k lines. |
 | **pr-gate** | Bash | Detects `gh pr create` and prompts to run `/devkit:pr-ready` first. 10-minute cooldown. |
 | **rtk-rewrite** | Bash | Rewrites commands through [RTK](https://github.com/rtk-ai/rtk) for 60-90% token savings. No-op if RTK not installed. |
@@ -223,21 +222,19 @@ Devkit ships 14 hooks across 4 lifecycle events. All are installed automatically
 |---|---|---|
 | **post-validate** | Bash, Edit, Write | Warns on suppressed errors, leaked secrets in written content, writes outside repo. |
 | **slop-detect** | Edit, Write | Catches AI code patterns — doc/code ratio imbalance, restating comments, excessive JSDoc in .js files. |
-| **go-review** | Edit, Write | Go-specific quality checks — error-path result access, concurrent map access without mutex, unsanitized filepath input. |
-| **go-nil-return** | Edit, Write | Detects Go functions with error return type that only ever return nil — catches silent failure patterns. |
+| **lang-review** | Edit, Write | Language-aware code quality checks. Detects language from file extension and runs the right checks: Go (error-path access, map races, nil-error returns, filepath traversal), TypeScript (empty catches, any-type, unhandled promises), Rust (unwrap in non-test, let _ = discard, unsafe blocks), Python (bare except, pass-in-except, mutable defaults), Shell (macOS portability — grep -P, sed -i, readlink -f, timeout). |
 
 ### SubagentStop
 
 | Hook | Matcher | What it does |
 |---|---|---|
-| **subagent-stop** | Stop | Verifies subagent work products before accepting. Recognizes Go, Node, Python, and generic test frameworks. |
+| **subagent-stop** | Stop | Verifies subagent work products before accepting. Recognizes Go, Node, Python, Rust, and generic test frameworks. |
 
 ### Stop
 
 | Hook | Matcher | What it does |
 |---|---|---|
-| **dirty-bit** | Stop | Detects cross-domain changes (backend + frontend + config + SQL) and blocks completion if any touched domain lacks test evidence. |
-| **go-vet-stop** | Stop | Runs `go vet` and `go test -race` on modified Go packages before session completes. Catches data races and vet violations. |
+| **stop-gate** | Stop | Consolidated quality gate: detects merge conflicts, checks cross-domain test evidence (blocks if backend + frontend changed but only one tested), runs language-appropriate linter (go vet + race detector, cargo clippy, tsc --noEmit, ruff). |
 
 ---
 
@@ -347,21 +344,18 @@ devkit/
 │   ├── test-writer.md       # Sonnet, worktree isolation
 │   ├── documenter.md        # Haiku, worktree isolation
 │   └── security-auditor.md  # Opus, worktree isolation
-├── hooks/                   # 14 hooks across 4 lifecycle events
+├── hooks/                   # 9 hooks across 4 lifecycle events
 │   ├── hooks.json           # Hook config (auto-loaded)
 │   ├── safety-check.sh      # Dangerous operation blocker
 │   ├── security-patterns.sh # Edit-time vulnerability detection
-│   ├── shell-compat.sh      # macOS portability checker
 │   ├── audit-trail.sh       # Command logging
 │   ├── rtk-rewrite.sh       # Token optimization
+│   ├── pr-gate.sh           # PR pipeline prompt
 │   ├── post-validate.sh     # Output validation
 │   ├── slop-detect.sh       # AI pattern detection
-│   ├── go-review.sh         # Go code quality patterns
-│   ├── go-nil-return.sh     # Go nil-error detection
-│   ├── pr-gate.sh           # PR pipeline prompt
+│   ├── lang-review.sh       # Language-aware code quality (Go/TS/Rust/Python/Shell)
 │   ├── subagent-stop.sh     # Subagent work verification
-│   ├── dirty-bit.sh         # Cross-domain test enforcement
-│   └── go-vet-stop.sh       # Go vet + race detector
+│   └── stop-gate.sh         # Consolidated quality gate (cross-domain + vet/lint)
 ├── workflows/               # 12 YAML workflow definitions
 ├── presets/                  # Reserved for future use
 ├── .github/workflows/       # CI/CD
@@ -535,8 +529,8 @@ See [ROADMAP.md](ROADMAP.md) for full details.
 - [x] Iteration scratchpads — persistent memory across loop iterations to prevent repeated failures
 - [x] Cross-domain dirty-bit enforcement — blocks completion without test evidence per domain
 - [x] Go code quality hooks — error-path access, nil-return, race detection, portability
-- [ ] **Language-universal hooks** — consolidate Go-specific hooks (go-review, go-nil-return, go-vet-stop) into a single `lang-review.sh` that detects language from file extension and runs the right checks. Extend to TypeScript (eslint, tsc --noEmit, empty catch blocks), Rust (clippy, unwrap-after-error, `let _ =` discard), and Python (mypy/ruff, bare except, pass-in-catch)
-- [ ] **Hook consolidation** — merge per-event hooks into fewer scripts to reduce shell process overhead (currently 7 processes per Edit/Write). Add `if` filters to skip non-matching file types without spawning
+- [x] **Language-universal hooks** — consolidated Go-specific hooks into `lang-review.sh` with Go, TypeScript, Rust, Python, and Shell support
+- [x] **Hook consolidation** — merged 14 hooks into 9, reduced per-edit shell processes from 7 to 4. Consolidated stop hooks (dirty-bit + go-vet-stop + old stop-gate) into single `stop-gate.sh`
 - [ ] Stop hook redesign — opt-in or session-end only, not every turn
 - [ ] Cost event hooks — budget threshold events with auto-downgrade actions
 - [ ] Execution registry — centralized step tracking with timing and token usage

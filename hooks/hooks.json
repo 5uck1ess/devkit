@@ -1,5 +1,5 @@
 {
-  "description": "Multi-layer enforcement stack: PreToolUse safety + security patterns + RTK optimization, PostToolUse validation, SubagentStop verification, Stop quality gate",
+  "description": "Consolidated enforcement stack: PreToolUse safety + security, PostToolUse validation + language review, SubagentStop verification, Stop quality gate",
   "hooks": {
     "PreToolUse": [
       {
@@ -63,18 +63,7 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/security-patterns.sh",
-            "statusMessage": "Security pattern check...",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/shell-compat.sh",
-            "statusMessage": "Shell portability check...",
+            "statusMessage": "Security check...",
             "timeout": 5
           }
         ]
@@ -119,19 +108,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-review.sh",
-            "statusMessage": "Go quality check...",
-            "timeout": 5
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-nil-return.sh",
-            "statusMessage": "Nil-error check...",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/lang-review.sh",
+            "statusMessage": "Code quality check...",
             "timeout": 5
           }
         ]
@@ -156,19 +134,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/dirty-bit.sh",
-            "statusMessage": "Checking cross-domain coverage...",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "Stop",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/go-vet-stop.sh",
-            "statusMessage": "Running go vet + race check...",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stop-gate.sh",
+            "statusMessage": "Quality gate...",
             "timeout": 90
           }
         ]
