@@ -133,6 +133,7 @@ Automated propose → measure → keep/discard → repeat cycles.
 | `/self:lint` | Iteratively fix lint/type errors until zero remain |
 | `/self:perf` | Hypothesis-driven performance investigation — evidence, hypotheses, one-at-a-time testing |
 | `/self:migrate` | Incremental migration (JS→TS, class→hooks, etc.) with test gate |
+| `/self:audit` | Karpathy-style codebase audit — measure everything, rank hypotheses by evidence, one-at-a-time |
 
 ### Multi-Agent Commands (Claude + optional Codex/Gemini)
 
@@ -311,7 +312,7 @@ devkit/
 │   └── plugin.json          # Plugin metadata (name, version, author)
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 21 slash commands (tab-completable)
+├── commands/                # 22 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -360,7 +361,7 @@ devkit/
 │   ├── lang-review.sh       # Language-aware code quality (Go/TS/Rust/Python/Shell)
 │   ├── subagent-stop.sh     # Subagent work verification
 │   └── stop-gate.sh         # Consolidated quality gate (cross-domain + vet/lint)
-├── workflows/               # 13 YAML workflow definitions
+├── workflows/               # 14 YAML workflow definitions
 ├── presets/                  # Reserved for future use
 ├── .github/workflows/       # CI/CD
 │   ├── ci.yml               # Build + test + vet on push/PR

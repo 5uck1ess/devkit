@@ -1,0 +1,103 @@
+name: Self-Audit
+description: Karpathy-style codebase audit — measure everything, rank hypotheses by evidence, present actionable plan
+
+budget:
+  limit: 200000
+  downgrade: fast
+
+steps:
+  - id: detect
+    model: fast
+    prompt: |
+      Detect the tech stack in this repository.
+      Check for: Go (go.mod), TypeScript/JS (package.json, tsconfig.json),
+      Python (pyproject.toml, requirements.txt), Rust (Cargo.toml),
+      CI (.github/workflows), Docker (Dockerfile), tests.
+
+      Report what you found as a structured list.
+
+  - id: measure-quality
+    model: general
+    prompt: |
+      Stack detected: {{detect}}
+
+      Run code quality measurements for each detected language:
+      - Go: go vet, go test -cover, gofmt -l
+      - TS/JS: tsc --noEmit, eslint
+      - Python: ruff check, mypy
+      - Rust: cargo clippy
+
+      Record raw numbers. Skip languages not in the stack.
+
+  - id: measure-security
+    model: general
+    prompt: |
+      Stack detected: {{detect}}
+
+      Run security measurements:
+      - Dependency vulnerabilities (govulncheck, npm audit, pip-audit, cargo audit)
+      - Hardcoded secrets grep
+      - TODO/FIXME/HACK count
+
+      Record raw numbers.
+
+  - id: measure-git
+    model: fast
+    prompt: |
+      Measure git health:
+      - 30-day commit count
+      - Stale merged branches count
+      - Large files in history (top 5 by size)
+      - README last modified date
+
+      Record raw numbers.
+
+  - id: dispatch-measurements
+    parallel: [measure-quality, measure-security, measure-git]
+
+  - id: analyze
+    model: smart
+    prompt: |
+      Stack: {{detect}}
+      Quality measurements: {{measure-quality}}
+      Security measurements: {{measure-security}}
+      Git health: {{measure-git}}
+
+      Form hypotheses from the evidence. For each issue found:
+      1. State the hypothesis clearly
+      2. Cite the specific measurement that supports it
+      3. Rate IMPACT (high/medium/low) and EFFORT (high/medium/low)
+      4. Suggest which devkit command to use (self-improve, self-test, self-lint, tri-security)
+
+      Rank by impact/effort ratio. Do NOT suggest fixes — only measure and analyze.
+
+      If the codebase is clean (no lint issues, >80% coverage, no vulns), say so.
+      Do not manufacture problems.
+
+  - id: synthesize
+    model: smart
+    prompt: |
+      Analysis: {{analyze}}
+
+      Write the final self-audit report:
+
+      ## Self-Audit: {repo}
+
+      ### Stack Detected
+      {from detect step}
+
+      ### Raw Measurements
+      {table of all metrics with values}
+
+      ### Ranked Hypotheses
+      {numbered list, highest impact/effort first, with evidence citations}
+
+      ### Recommended Next Steps
+      1. Which hypothesis to test first and why
+      2. Which devkit command to run
+      3. Reminder: one change at a time, measure after each
+
+      ### What NOT to Do
+      - Don't fix everything at once
+      - Don't start with easy low-impact items
+      - Don't refactor untested code (add tests first)
