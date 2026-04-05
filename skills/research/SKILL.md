@@ -82,6 +82,19 @@ Mark claims as:
 - CONTESTED (sources disagree)
 ```
 
+## Escalation Check
+
+After corroboration, evaluate whether this question needs deep research. **Ask the user** (via `AskUserQuestion`) to upgrade to `/devkit:deep-research` if ANY of these are true:
+
+1. **3+ CONTESTED claims** — sources actively contradict each other on key points
+2. **High-stakes domain** — the question involves security, architecture decisions, compliance, data integrity, or financial impact
+3. **User expressed uncertainty** — they said "I'm not sure if", "is this actually true", "I've heard conflicting things", or similar
+4. **Most claims are UNCORROBORATED** — more than half the key claims have only one source
+
+Phrasing: "I'm finding [conflicting sources / low confidence / high-stakes implications] on this. Want me to switch to deep research with competing hypothesis analysis? It costs more tokens but produces higher-confidence results."
+
+If the user says no, continue with the standard synthesis. Do NOT auto-escalate — always ask first.
+
 ## Step 6: Follow-Up
 
 ```
@@ -128,4 +141,4 @@ Loop up to 2 times.
 - Follow up on gaps — loop if key claims are uncorroborated
 - Cite sources — every finding links to where it came from
 - Recommend — don't just dump information, give a clear recommendation with confidence level
-- For complex/high-stakes questions, suggest the user run `/devkit:deep-research` instead
+- Escalate when warranted — if sources conflict, stakes are high, or confidence is low, ask the user to upgrade to deep-research. Never auto-escalate.
