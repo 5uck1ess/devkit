@@ -74,7 +74,7 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 │ research, scrape (no slash command needed)            │
 ├──────────────────────────────────────────────────────┤
 │ Always active: devkit hooks (safety, security,       │
-│ audit, slop, go-review, dirty-bit, go-vet, compat)  │
+│ audit, slop, lang-review, security, stop-gate)       │
 ├──────────────────────────────────────────────────────┤
 │ Meta: hookify (create hooks), skill-creator (skills) │
 │       context-mode (token management)                │
