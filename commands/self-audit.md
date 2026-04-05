@@ -16,12 +16,12 @@ This command does NOT fix anything. It measures, analyzes, and presents a ranked
 
 ```bash
 # Detect what's in this repo
-HAS_GO=$([ -f go.mod ] || [ -f */go.mod ] && echo yes || echo no)
+HAS_GO=$([ -f go.mod ] || find . -maxdepth 2 -name go.mod -print -quit | grep -q . && echo yes || echo no)
 HAS_TS=$([ -f tsconfig.json ] && echo yes || echo no)
 HAS_JS=$([ -f package.json ] && echo yes || echo no)
 HAS_PYTHON=$([ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ] && echo yes || echo no)
 HAS_RUST=$([ -f Cargo.toml ] && echo yes || echo no)
-HAS_TESTS=$(find . -name '*_test.go' -o -name '*.test.ts' -o -name '*.test.js' -o -name 'test_*.py' -o -name '*_test.rs' 2>/dev/null | head -1)
+HAS_TESTS=$([ -n "$(find . -name '*_test.go' -o -name '*.test.ts' -o -name '*.test.js' -o -name 'test_*.py' -o -name '*_test.rs' 2>/dev/null | head -1)" ] && echo yes || echo no)
 HAS_CI=$([ -d .github/workflows ] || [ -f .gitlab-ci.yml ] || [ -f Jenkinsfile ] && echo yes || echo no)
 HAS_DOCKER=$([ -f Dockerfile ] || [ -f docker-compose.yml ] && echo yes || echo no)
 ```
@@ -95,7 +95,7 @@ grep -rn 'TODO\|FIXME\|HACK\|XXX' --include='*.go' --include='*.ts' --include='*
 
 ```bash
 # README exists and is recent?
-stat -f '%Sm' README.md 2>/dev/null || stat -c '%y' README.md 2>/dev/null
+git log -1 --format='%ai' -- README.md 2>/dev/null
 # API docs?
 # Changelog?
 # Are counts/claims in docs accurate? (run validate-counts if available)

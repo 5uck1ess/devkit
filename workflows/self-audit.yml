@@ -10,6 +10,8 @@ steps:
     model: fast
     prompt: |
       Detect the tech stack in this repository.
+      User context: {{input}}
+
       Check for: Go (go.mod), TypeScript/JS (package.json, tsconfig.json),
       Python (pyproject.toml, requirements.txt), Rust (Cargo.toml),
       CI (.github/workflows), Docker (Dockerfile), tests.
