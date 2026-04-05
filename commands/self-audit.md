@@ -8,7 +8,7 @@ Systematic codebase audit using Karpathy's research methodology: measure first, 
 
 ## Philosophy
 
-> "Most of the value comes from understanding the system deeply. People jump to building stuff without knowing what's actually broken." — Karpathy approach
+> Most of the value comes from understanding the system deeply. Don't jump to building stuff without knowing what's actually broken. — inspired by Karpathy's research methodology
 
 This command does NOT fix anything. It measures, analyzes, and presents a ranked hypothesis list. You decide which to test. One at a time.
 
@@ -17,7 +17,8 @@ This command does NOT fix anything. It measures, analyzes, and presents a ranked
 ```bash
 # Detect what's in this repo
 HAS_GO=$([ -f go.mod ] || [ -f */go.mod ] && echo yes || echo no)
-HAS_TS=$([ -f tsconfig.json ] || [ -f package.json ] && echo yes || echo no)
+HAS_TS=$([ -f tsconfig.json ] && echo yes || echo no)
+HAS_JS=$([ -f package.json ] && echo yes || echo no)
 HAS_PYTHON=$([ -f pyproject.toml ] || [ -f requirements.txt ] || [ -f setup.py ] && echo yes || echo no)
 HAS_RUST=$([ -f Cargo.toml ] && echo yes || echo no)
 HAS_TESTS=$(find . -name '*_test.go' -o -name '*.test.ts' -o -name '*.test.js' -o -name 'test_*.py' -o -name '*_test.rs' 2>/dev/null | head -1)
@@ -165,10 +166,10 @@ For each hypothesis, estimate:
 4. One change at a time — don't bundle
 
 ### What NOT to Do
-- Don't fix everything at once
+- Don't fix anything from this report directly — use the suggested devkit command instead
+- Don't fix everything at once — one hypothesis at a time
 - Don't start with low-impact items just because they're easy
 - Don't add features — this is about quality, not functionality
-- Don't refactor code that has no tests (add tests first)
 ```
 
 ## Budget

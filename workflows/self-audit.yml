@@ -98,6 +98,7 @@ steps:
       3. Reminder: one change at a time, measure after each
 
       ### What NOT to Do
-      - Don't fix everything at once
+      - Don't fix anything from this report directly — use the suggested devkit command
+      - Don't fix everything at once — one hypothesis at a time
       - Don't start with easy low-impact items
-      - Don't refactor untested code (add tests first)
+      - Don't add features — this is about quality, not functionality

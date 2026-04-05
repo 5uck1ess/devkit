@@ -314,7 +314,7 @@ devkit/
 ├── PREFERENCES.md           # Agent behavior guidelines
 ├── commands/                # 22 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
-│   ├── self-*.md            # Self-improvement loops (5)
+│   ├── self-*.md            # Self-improvement loops (6)
 │   ├── pr-ready.md          # PR preparation pipeline
 │   ├── pr-monitor.md        # Post-PR review monitor
 │   ├── bugfix.md            # Bug fix lifecycle
