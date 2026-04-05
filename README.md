@@ -119,6 +119,7 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 | `/devkit:refactor` | Full refactor lifecycle — analyze, plan, restructure, verify, compare |
 | `/devkit:decompose` | Goal decomposition — break into task DAG, assign agents, execute in dependency order |
 | `/devkit:audit` | Full project health audit — deps, vulnerabilities, licenses, lint, security |
+| `/devkit:deep-research` | ACH-enhanced deep research — competing hypotheses, directed disconfirmation, evidence matrix, sensitivity analysis |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
 
 ### Self-Improvement Loops (Claude-only)
@@ -174,7 +175,8 @@ These replace slash commands. Ask naturally and the skill fires:
 | `devkit:doc-gen` | "document this module", "generate API docs", "write docs for" |
 | `devkit:changelog` | "generate a changelog", "release notes", "what changed since" |
 | `devkit:onboard` | "explain this codebase", "help me understand the architecture", "onboard" |
-| `devkit:research` | "research X", "deep dive on", "compare approaches for" |
+| `devkit:research` | "research X", "compare approaches for", "investigate options" |
+| `devkit:deep-research` | "deep research", "validate this", "make sure this is right", "rigorous analysis" |
 | `devkit:scrape` | "scrape this URL", "fetch content from", "extract from this page" |
 
 ### Coding Principles
@@ -309,7 +311,7 @@ devkit/
 │   └── plugin.json          # Plugin metadata (name, version, author)
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 20 slash commands (tab-completable)
+├── commands/                # 21 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (5)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -322,7 +324,7 @@ devkit/
 │   ├── audit.md             # Project health audit
 │   ├── repo-map.md          # AST-based symbol index
 │   └── status.md            # Health check
-├── skills/                  # 15 context-activated skills
+├── skills/                  # 16 context-activated skills
 │   ├── executing/SKILL.md   # Principle: methodical execution
 │   ├── clean-code/SKILL.md  # Principle: readability
 │   ├── dry/SKILL.md         # Principle: don't repeat yourself
@@ -335,7 +337,9 @@ devkit/
 │   ├── doc-gen/SKILL.md     # Auto: "document this module"
 │   ├── test-gen/SKILL.md    # Auto: "write tests for X"
 │   ├── onboard/SKILL.md     # Auto: "explain this codebase"
-│   ├── research/SKILL.md    # Auto: "research X"
+│   ├��─ research/SKILL.md    # Auto: "research X"
+│   ├── deep-research/SKILL.md # Auto: "deep research", ACH pipeline
+│   ├── scratchpad/SKILL.md  # Iteration memory protocol
 │   └── scrape/SKILL.md      # Auto: "scrape this URL"
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
@@ -356,7 +360,7 @@ devkit/
 │   ├── lang-review.sh       # Language-aware code quality (Go/TS/Rust/Python/Shell)
 │   ├── subagent-stop.sh     # Subagent work verification
 │   └── stop-gate.sh         # Consolidated quality gate (cross-domain + vet/lint)
-├── workflows/               # 12 YAML workflow definitions
+├── workflows/               # 13 YAML workflow definitions
 ├── presets/                  # Reserved for future use
 ├── .github/workflows/       # CI/CD
 │   ├── ci.yml               # Build + test + vet on push/PR

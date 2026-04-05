@@ -1,8 +1,8 @@
 name: Research
-description: Deep research — clarify with user, parallel search, analyze, synthesize
+description: Research workflow — clarify, decompose, parallel search, summarize, corroborate, synthesize
 
 budget:
-  limit: 300000
+  limit: 200000
   downgrade: fast
 
 steps:
@@ -18,69 +18,86 @@ steps:
 
       After getting their answer, restate the research question precisely.
 
-  - id: search-broad
+  - id: decompose
     model: general
     prompt: |
       Research question: {{clarify}}
 
-      Use web_search with a broad query to find general sources.
+      Break this into 3-5 sub-questions, each with an explicit retrieval goal.
+
+      Format each as:
+      - Query: <search query>
+        Goal: <what this search should find>
+
+      Rules:
+      - Each query targets a DIFFERENT angle (definition, evidence, criticism, alternatives, recency)
+      - No two queries should return the same results
+      - Include at least one query seeking disconfirming evidence or criticism
+
+  - id: search-1
+    model: general
+    prompt: |
+      Execute web search for the FIRST sub-question from this decomposition:
+      {{decompose}}
+
       Collect titles, URLs, and key snippets.
 
-  - id: search-specific
+  - id: search-2
+    model: general
+    prompt: |
+      Execute web search for the SECOND sub-question from this decomposition:
+      {{decompose}}
+
+      Collect titles, URLs, and key snippets.
+
+  - id: search-3
+    model: fast
+    prompt: |
+      Execute web search for the THIRD sub-question from this decomposition:
+      {{decompose}}
+
+      Collect titles, URLs, and key snippets.
+
+  - id: dispatch-searches
+    parallel: [search-1, search-2, search-3]
+
+  - id: summarize
+    model: smart
+    prompt: |
+      Research question: {{clarify}}
+
+      Search results:
+      {{search-1}}
+      {{search-2}}
+      {{search-3}}
+
+      For the 3-5 most promising URLs, fetch clean content:
+        WebFetch https://r.jina.ai/{url} with header Accept: text/markdown
+
+      CRITICAL: Immediately summarize each page into 3-5 key CLAIMS with source attribution.
+      Do NOT carry raw page content forward.
+
+      For each claim, note if it appears in multiple sources.
+      Mark claims as:
+      - CONFIRMED (2+ independent sources)
+      - UNCORROBORATED (1 source only)
+      - CONTESTED (sources disagree)
+
+  - id: follow-up
     model: general
     prompt: |
       Research question: {{clarify}}
 
-      Use web_search with specific technical queries targeting
-      documentation, benchmarks, or comparisons related to the question.
-      Use different search terms than a broad search would.
+      Current claims and corroboration status:
+      {{summarize}}
 
-  - id: search-alternatives
-    model: fast
-    prompt: |
-      Research question: {{clarify}}
+      Review claims marked UNCORROBORATED or CONTESTED.
+      For each, run one targeted search to confirm or resolve.
+      Summarize new sources immediately.
 
-      Use web_search to find contrarian or alternative viewpoints.
-      Search for "problems with", "alternatives to", or "vs" queries.
-
-  - id: dispatch-searches
-    parallel: [search-broad, search-specific, search-alternatives]
-
-  - id: analyze
-    model: smart
-    prompt: |
-      Research question: {{clarify}}
-
-      Sources from broad search:
-      {{search-broad}}
-
-      Sources from specific search:
-      {{search-specific}}
-
-      Alternative viewpoints:
-      {{search-alternatives}}
-
-      Read the 3-5 most promising URLs in depth using Jina Reader for clean Markdown:
-        WebFetch https://r.jina.ai/{url} with header Accept: text/markdown
-      This strips boilerplate and returns clean article content.
-      If Jina fails for a URL, fall back to raw WebFetch on the original URL.
-      Extract key findings, compare approaches, note contradictions.
-
-  - id: follow-up
-    model: smart
-    prompt: |
-      Research question: {{clarify}}
-
-      Initial analysis:
-      {{analyze}}
-
-      Are there gaps in the research? If the initial sources were weak
-      or missing key perspectives, use web_search and Jina Reader
-      (WebFetch https://r.jina.ai/{url}) to fill gaps.
-
-      If the analysis is thorough enough, say "RESEARCH_COMPLETE".
+      If all key claims are resolved, say "RESEARCH_COMPLETE".
     loop:
-      max: 3
+      max: 2
       until: RESEARCH_COMPLETE
 
   - id: synthesize
@@ -88,12 +105,12 @@ steps:
     prompt: |
       Research question: {{clarify}}
 
-      Full analysis:
+      Full analysis with corroboration:
       {{follow-up}}
 
       Write a clear synthesis:
       1. **Direct answer** to the research question
-      2. **Key findings** with source URLs
+      2. **Key findings** with source URLs and corroboration status (CONFIRMED/UNCORROBORATED/CONTESTED)
       3. **Tradeoffs** between approaches
-      4. **Open questions** that couldn't be resolved
-      5. **Recommendation** with reasoning
+      4. **Open questions** — any CONTESTED claims without resolution
+      5. **Recommendation** with confidence level (HIGH/MEDIUM/LOW)
