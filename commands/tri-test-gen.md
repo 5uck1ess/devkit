@@ -102,7 +102,7 @@ Retrieve result with `/gemini:result` when done. Omit `--model` to use the accou
 ```bash
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "{prompt} {source_code}" -y \
-    --output-format text > /tmp/tri-test-gemini.txt 2>/dev/null &
+    --output-format text > /tmp/tri-test-gemini.txt 2>&1 &
 fi
 
 wait

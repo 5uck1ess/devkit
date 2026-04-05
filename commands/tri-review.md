@@ -114,7 +114,7 @@ Retrieve result with `/codex:result` when done. Omit `--model` to use the accoun
 ```bash
 if [ "$HAS_CODEX_CLI" = "yes" ]; then
   codex exec --full-auto "{prompt} $(cat /tmp/tri-review-diff.txt)" \
-    > /tmp/tri-review-codex.txt 2>/dev/null &
+    > /tmp/tri-review-codex.txt 2>&1 &
   CODEX_PID=$!
 fi
 ```
@@ -136,7 +136,7 @@ Retrieve result with `/gemini:result` when done. Omit `--model` to use the accou
 if [ "$HAS_GEMINI_CLI" = "yes" ]; then
   gemini -p "{prompt} $(cat /tmp/tri-review-diff.txt)" \
     -y --output-format text \
-    > /tmp/tri-review-gemini.txt 2>/dev/null &
+    > /tmp/tri-review-gemini.txt 2>&1 &
   GEMINI_PID=$!
 fi
 
@@ -144,6 +144,21 @@ wait
 ```
 
 Note: Gemini CLI defaults to the best available model. Don't hardcode a model name — it may not be available on all accounts.
+
+### Post-dispatch validation
+
+After `wait`, check each CLI output file. If empty, report the failure instead of silently dropping the agent:
+
+```bash
+for agent_file in /tmp/tri-review-codex.txt /tmp/tri-review-gemini.txt; do
+  if [ -f "$agent_file" ] && [ ! -s "$agent_file" ]; then
+    agent=$(basename "$agent_file" | sed 's/tri-review-//;s/\.txt//')
+    echo "WARNING: $agent produced empty output — check CLI installation and authentication"
+  fi
+done
+```
+
+If an agent's output contains only stderr (error messages, not review content), note it in the consolidation as a failure rather than omitting it silently.
 
 ## Autonomy Flags
 
