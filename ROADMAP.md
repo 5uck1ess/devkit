@@ -23,7 +23,7 @@
 - **Iteration scratchpads** — Persistent memory across loop iterations to prevent repeated failures
 - **Cross-domain dirty-bit enforcement** — Blocks completion without test evidence per domain
 - **Language-universal hooks** — Consolidated language-specific hooks into `lang-review.sh` with Go, TypeScript, Rust, Python, and Shell support
-- **Hook consolidation** — Merged 14 hooks into 9, reduced per-edit shell processes from 7 to 4
+- **Hook consolidation** — Merged 14 hooks into 10, reduced per-edit shell processes from 7 to 4
 
 ## Retired
 

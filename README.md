@@ -191,7 +191,6 @@ Loaded as reference material when relevant:
 | `devkit:yagni` | Build only what's needed, no speculative features or premature abstractions |
 | `devkit:dont-reinvent` | Use existing libraries, tools, and stdlib before building custom solutions |
 | `devkit:stuck` | Detect agent looping/failing, structured recovery — backtrack, simplify, escalate |
-| `devkit:deep-research` | ACH-enhanced research — competing hypotheses, disconfirmation, evidence matrix |
 | `devkit:scratchpad` | Iteration memory protocol — prevents Groundhog Day loops by recording what was tried |
 
 ### Tools
@@ -338,8 +337,9 @@ devkit/
 │   ├── doc-gen/SKILL.md     # Auto: "document this module"
 │   ├── test-gen/SKILL.md    # Auto: "write tests for X"
 │   ├── onboard/SKILL.md     # Auto: "explain this codebase"
-│   ├── research/SKILL.md    # Auto: "research X"
+│   ├��─ research/SKILL.md    # Auto: "research X"
 │   ├── deep-research/SKILL.md # Auto: "deep research", ACH pipeline
+│   ├── scratchpad/SKILL.md  # Iteration memory protocol
 │   └── scrape/SKILL.md      # Auto: "scrape this URL"
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
