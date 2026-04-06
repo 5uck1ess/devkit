@@ -121,6 +121,7 @@ Verify with `/context-mode:ctx-doctor` (plugin install) or check MCP tools are a
 | `/devkit:audit` | Full project health audit — deps, vulnerabilities, licenses, lint, security |
 | `/devkit:deep-research` | ACH-enhanced deep research — competing hypotheses, directed disconfirmation, evidence matrix, sensitivity analysis |
 | `/devkit:status` | Health check — installed CLIs, available agents, ready commands |
+| `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` |
 
 ### Self-Improvement Loops (Claude-only)
 
@@ -204,6 +205,26 @@ Loaded as reference material when relevant:
 | `devkit:creating-workflows` | How to create workflow YAML files — schema, step types, interpolation |
 
 For brainstorming, planning, TDD, verification, and skill authoring — install [superpowers](https://github.com/obra/superpowers).
+
+### Coding Rules (user-level)
+
+Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` (not part of the plugin — plugins don't support `rules/`). These complement hooks: **rules guide how to write, hooks catch what you missed**.
+
+Install with one command:
+
+```
+/devkit:setup-rules
+```
+
+| File | Paths | What it covers |
+|---|---|---|
+| `go.md` | `**/*.go` | Error wrapping, context.Context, defer traps, import grouping, table-driven tests |
+| `typescript.md` | `**/*.{ts,tsx,js,jsx,mjs,cjs}` | Type safety (unknown not any), discriminated unions, catch narrowing, nullish coalescing |
+| `python.md` | `**/*.py` | Exception chains, type hints, dataclasses, pathlib, comprehensions |
+| `rust.md` | `**/*.rs` | Ownership patterns, ? propagation, newtypes, iterator preference, clippy-as-errors |
+| `shell.md` | `**/*.sh` | set -euo pipefail, quoting, macOS portability, subshell traps |
+
+Each file uses `paths:` frontmatter for scoped activation. Rules are ~10 lines each — minimal token overhead.
 
 ---
 
@@ -314,7 +335,7 @@ devkit/
 │   └── plugin.json          # Plugin metadata (name, version, author)
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 23 slash commands (tab-completable)
+├── commands/                # 24 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (6)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -326,7 +347,8 @@ devkit/
 │   ├── workflow.md          # YAML workflow runner
 │   ├── audit.md             # Project health audit
 │   ├── repo-map.md          # AST-based symbol index
-│   └── status.md            # Health check
+│   ├── status.md            # Health check
+│   └── setup-rules.md       # Install coding rules to ~/.claude/rules/
 ├── skills/                  # 18 context-activated skills
 │   ├── executing/SKILL.md   # Principle: methodical execution
 │   ├── clean-code/SKILL.md  # Principle: readability
@@ -364,6 +386,7 @@ devkit/
 │   ├── lang-review.sh       # Language-aware code quality (Go/TS/Rust/Python/Shell)
 │   ├── subagent-stop.sh     # Subagent work verification
 │   └── stop-gate.sh         # Consolidated quality gate (cross-domain + vet/lint)
+├── resources/rules/         # Reference rule files (installed via /devkit:setup-rules)
 ├── workflows/               # 15 YAML workflow definitions
 ├── presets/                  # Reserved for future use
 ├── .github/workflows/       # CI/CD
