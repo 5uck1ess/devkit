@@ -20,10 +20,11 @@ If the user hasn't specified, ask one question: "What decision are you documenti
 ## Step 2: Check Existing ADRs
 
 ```bash
-mkdir -p docs/adr && ls docs/adr/ 2>/dev/null | tail -5
+mkdir -p docs/adr
+ls docs/adr/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1
 ```
 
-Determine the next sequence number. If no ADRs exist, start at `0001`.
+Add 1 to the highest number found, zero-padded to 4 digits. If none exist, start at `0001`.
 
 ## Step 3: Write the ADR
 
