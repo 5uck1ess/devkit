@@ -216,15 +216,15 @@ Install with one command:
 /devkit:setup-rules
 ```
 
-| File | Paths | What it covers |
+| File | Paths | Examples (see file for full list) |
 |---|---|---|
-| `go.md` | `**/*.go` | Error wrapping, context.Context, defer traps, import grouping, table-driven tests |
-| `typescript.md` | `**/*.{ts,tsx,js,jsx,mjs,cjs}` | Type safety (unknown not any), discriminated unions, catch narrowing, nullish coalescing |
-| `python.md` | `**/*.py` | Exception chains, type hints, dataclasses, pathlib, comprehensions |
-| `rust.md` | `**/*.rs` | Ownership patterns, ? propagation, newtypes, iterator preference, clippy-as-errors |
-| `shell.md` | `**/*.sh` | set -euo pipefail, quoting, macOS portability, subshell traps |
+| `go.md` | `**/*.go` | Error wrapping, context.Context, defer traps, JSON float64 gotcha, range var reuse |
+| `typescript.md` | `**/*.{ts,tsx,js,jsx,mjs,cjs}` | unknown not any, discriminated unions, catch narrowing, nullish coalescing, sort mutation |
+| `python.md` | `**/*.py` | Exception chains, type hints, dataclasses, pathlib, ruff, is vs == |
+| `rust.md` | `**/*.rs` | Ownership/borrowing, ? propagation, newtypes, if let/let else, clippy-as-errors |
+| `shell.md` | `**/*.sh` | set -euo pipefail, quoting, macOS portability, subshell traps, mktemp + trap |
 
-Each file uses `paths:` frontmatter for scoped activation. Rules are ~10 lines each — minimal token overhead.
+Each file uses `paths:` frontmatter for scoped activation. ~10 rules per file, ~20 lines — minimal token overhead.
 
 ---
 

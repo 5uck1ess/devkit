@@ -8,7 +8,7 @@ Install language-specific coding rules to `~/.claude/rules/`. These auto-activat
 
 ## What it does
 
-Copies rule files from this plugin's `resources/rules/` to `~/.claude/rules/`. Existing files are overwritten (the plugin version is the source of truth).
+Copies rule files from this plugin's `resources/rules/` to `~/.claude/rules/`. Existing files are overwritten — if the user has customized rules, warn them before overwriting. `CLAUDE_PLUGIN_ROOT` is set automatically by the Claude Code plugin runtime.
 
 ## Steps
 
