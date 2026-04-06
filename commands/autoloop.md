@@ -53,8 +53,8 @@ Compare baseline vs measurement using the direction:
 
 ## Step 7: Keep or Revert
 
-- **IMPROVED** → `git add -A && git commit`, update scratchpad, update baseline to new number, loop back to Step 3
-- **REGRESSED** → `git checkout -- . && git clean -fd`, update scratchpad with failure reason, loop back to Step 3
+- **IMPROVED** → stage only modified files + `git commit`, update scratchpad, update baseline to new number, loop back to Step 3
+- **REGRESSED** → `git checkout -- <modified files>` (no `git clean -fd` — protect untracked work), update scratchpad with failure reason, loop back to Step 3
 
 ## Step 8: Report
 

@@ -15,7 +15,10 @@ steps:
 
       Extract the metric command from the input and run it via Bash.
       Report the raw output and extract a single numeric score.
-      State clearly: "BASELINE: <number>" and "DIRECTION: higher-is-better" or "DIRECTION: lower-is-better"
+
+      You MUST output these two lines exactly:
+        SCORE: <number>
+        DIRECTION: higher-is-better   (or: DIRECTION: lower-is-better)
 
       If no metric command was provided, detect the stack and use the appropriate default:
       - Go: go test -cover ./... (higher-is-better: coverage %)
@@ -24,6 +27,9 @@ steps:
       - Rust: cargo test (higher-is-better: pass count)
       - Lint: count of errors (lower-is-better)
 
+      If the command fails or produces no numeric output, say "AUTOLOOP_ERROR: metric command failed"
+      and do NOT proceed.
+
   - id: audit
     model: smart
     prompt: |
@@ -31,9 +37,9 @@ steps:
 
       User objective: {{input}}
       Current baseline: {{baseline}}
-      Previous attempts (if any): {{revert}}{{keep}}
 
       Read .devkit/scratchpads/current.md if it exists — it contains what was already tried.
+      Do NOT repeat any approach listed as "reverted" in the scratchpad.
 
       Measure what's relevant to the objective:
       - If coverage objective: find the lowest-coverage package/file
@@ -62,38 +68,47 @@ steps:
       - Do NOT change tests to make them pass (fix the code, not the tests)
       - Keep changes minimal and focused
       - Check .devkit/scratchpads/current.md to avoid repeating failed approaches
+      - Track which files you modify — list them at the end
 
-      After making changes, describe exactly what you changed and why.
+      After making changes, output:
+      - What you changed and why
+      - MODIFIED FILES: <comma-separated list of files you changed>
 
   - id: measure
     model: fast
     prompt: |
       Run the EXACT same metric command from the baseline to measure the result.
 
-      Baseline measurement: {{baseline}}
+      Baseline step output: {{baseline}}
 
       Extract the metric command that was used in the baseline step and run it again via Bash.
       Report the raw output and extract the numeric score.
-      State clearly: "MEASUREMENT: <number>"
+
+      You MUST output this line exactly:
+        SCORE: <number>
 
   - id: compare
     model: fast
     prompt: |
       Compare the baseline to the current measurement.
 
+      Baseline output:
       {{baseline}}
+
+      Current measurement:
       {{measure}}
 
-      Extract the BASELINE number, the MEASUREMENT number, and the DIRECTION.
+      Extract the SCORE from the baseline and the SCORE from the measurement.
+      Extract the DIRECTION from the baseline.
 
       Rules — follow these exactly:
-      - If DIRECTION is higher-is-better: MEASUREMENT > BASELINE means IMPROVED
-      - If DIRECTION is lower-is-better: MEASUREMENT < BASELINE means IMPROVED
-      - If MEASUREMENT equals BASELINE: REGRESSED (no change counts as failure)
-      - If the metric command failed or produced no number: REGRESSED
+      - If DIRECTION is higher-is-better: current SCORE > baseline SCORE means IMPROVED
+      - If DIRECTION is lower-is-better: current SCORE < baseline SCORE means IMPROVED
+      - If scores are equal: REGRESSED (no change counts as failure)
+      - If either SCORE is missing or non-numeric: REGRESSED
 
       Output exactly one word on the first line: IMPROVED or REGRESSED
-      Then explain the comparison on the next line.
+      Then explain: "baseline SCORE was X, current SCORE is Y, direction is Z"
     branch:
       - when: "IMPROVED"
         goto: keep
@@ -109,14 +124,18 @@ steps:
       Measurement: {{measure}}
       Comparison: {{compare}}
 
-      1. Run: git add -A && git commit -m "autoloop: <brief description of what improved>"
+      1. Stage and commit only the modified files listed in the fix step:
+         git add <files from MODIFIED FILES list> && git commit -m "autoloop: <brief description>"
+         Do NOT use git add -A (it stages untracked files that may not be yours).
       2. Update .devkit/scratchpads/current.md — append:
-         - Iteration: kept
-         - Hypothesis: {{audit}}
-         - Result: {{compare}}
-      3. Update the baseline number for the next cycle.
+         ---
+         Iteration: kept
+         Hypothesis: {{audit}}
+         Result: {{compare}}
+      3. The baseline SCORE for the next cycle is now the current SCORE from {{measure}}.
 
-      If budget is exhausted or iterations are done, say "AUTOLOOP_COMPLETE".
+      Count the iterations in the scratchpad. Extract the iteration limit from the user input: {{input}}
+      If the iteration count >= the limit (default 10), say "AUTOLOOP_COMPLETE".
       Otherwise say "CONTINUE" to trigger the next audit cycle.
     branch:
       - when: "AUTOLOOP_COMPLETE"
@@ -133,14 +152,19 @@ steps:
       Measurement: {{measure}}
       Comparison: {{compare}}
 
-      1. Run: git checkout -- . && git clean -fd
+      1. Revert only the modified files from the fix step:
+         git checkout -- <files from MODIFIED FILES list in {{fix}}>
+         If you cannot determine the files, use: git checkout -- . (but do NOT run git clean -fd)
       2. Update .devkit/scratchpads/current.md — append:
-         - Iteration: reverted
-         - Hypothesis: {{audit}}
-         - Result: {{compare}}
-         - Why it failed (so we don't repeat this approach)
+         ---
+         Iteration: reverted
+         Hypothesis: {{audit}}
+         Result: {{compare}}
+         Reason: <why it failed, so we don't repeat this approach>
 
-      Say "CONTINUE" to try the next hypothesis.
+      Count the iterations in the scratchpad. Extract the iteration limit from the user input: {{input}}
+      If the iteration count >= the limit (default 10), say "AUTOLOOP_COMPLETE".
+      Otherwise say "CONTINUE" to try the next hypothesis.
     branch:
       - when: "AUTOLOOP_COMPLETE"
         goto: report
@@ -165,8 +189,8 @@ steps:
       {what the user wanted}
 
       ### Results
-      - Starting metric: {baseline number}
-      - Final metric: {final number}
+      - Starting metric: {baseline SCORE}
+      - Final metric: {final SCORE}
       - Net change: {delta}
       - Iterations: {count kept + count reverted}
       - Kept: {count}
