@@ -12,13 +12,21 @@ Copies rule files from this plugin's `resources/rules/` to `~/.claude/rules/`. E
 
 ## Steps
 
-1. Create the rules directory:
+1. Verify plugin context and create the rules directory:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  echo "ERROR: CLAUDE_PLUGIN_ROOT is not set. Run this as /devkit:setup-rules." >&2
+  exit 1
+fi
 mkdir -p ~/.claude/rules
 ```
 
-2. Copy each rule file from the plugin:
+2. Check for existing customized rules — warn before overwriting:
+
+If any files in `~/.claude/rules/` differ from the plugin versions, tell the user which files will be overwritten and ask for confirmation before proceeding.
+
+3. Copy each rule file from the plugin:
 
 ```bash
 cp "${CLAUDE_PLUGIN_ROOT}/resources/rules/go.md" ~/.claude/rules/go.md
@@ -28,7 +36,7 @@ cp "${CLAUDE_PLUGIN_ROOT}/resources/rules/rust.md" ~/.claude/rules/rust.md
 cp "${CLAUDE_PLUGIN_ROOT}/resources/rules/shell.md" ~/.claude/rules/shell.md
 ```
 
-3. Confirm installation:
+4. Confirm installation:
 
 ```bash
 echo "Installed rules:" && ls ~/.claude/rules/*.md
