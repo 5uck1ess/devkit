@@ -62,7 +62,7 @@ Or if the Go harness is not available, follow the workflow steps manually:
 4. **Measure** — run the same metric command again
 5. **Compare** — IMPROVED or REGRESSED based on direction
 6. **Keep** (if improved) — git commit, update scratchpad, loop back to audit
-7. **Revert** (if regressed) — git checkout ., update scratchpad, loop back to audit
+7. **Revert** (if regressed) — git checkout -- <modified files>, update scratchpad, loop back to audit
 8. **Report** — final summary with kept changes, reverted attempts, net improvement
 
 ## Rules
