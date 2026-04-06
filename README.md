@@ -134,6 +134,7 @@ Automated propose → measure → keep/discard → repeat cycles.
 | `/self:perf` | Hypothesis-driven performance investigation — evidence, hypotheses, one-at-a-time testing |
 | `/self:migrate` | Incremental migration (JS→TS, class→hooks, etc.) with test gate |
 | `/self:audit` | Codebase audit inspired by karpathy/autoresearch — measure everything, rank hypotheses, report only |
+| `/devkit:autoloop` | Autonomous improvement loop — audit, fix, measure, keep or revert, repeat |
 
 ### Multi-Agent Commands (Claude + optional Codex/Gemini)
 
@@ -312,7 +313,7 @@ devkit/
 │   └── plugin.json          # Plugin metadata (name, version, author)
 ├── ROADMAP.md               # Implemented features and future plans
 ├── PREFERENCES.md           # Agent behavior guidelines
-├── commands/                # 22 slash commands (tab-completable)
+├── commands/                # 23 slash commands (tab-completable)
 │   ├── tri-*.md             # Multi-agent dispatch (5)
 │   ├── self-*.md            # Self-improvement loops (6)
 │   ├── pr-ready.md          # PR preparation pipeline
@@ -325,7 +326,7 @@ devkit/
 │   ├── audit.md             # Project health audit
 │   ├── repo-map.md          # AST-based symbol index
 │   └── status.md            # Health check
-├── skills/                  # 16 context-activated skills
+├── skills/                  # 17 context-activated skills
 │   ├── executing/SKILL.md   # Principle: methodical execution
 │   ├── clean-code/SKILL.md  # Principle: readability
 │   ├── dry/SKILL.md         # Principle: don't repeat yourself
@@ -361,7 +362,7 @@ devkit/
 │   ├── lang-review.sh       # Language-aware code quality (Go/TS/Rust/Python/Shell)
 │   ├── subagent-stop.sh     # Subagent work verification
 │   └── stop-gate.sh         # Consolidated quality gate (cross-domain + vet/lint)
-├── workflows/               # 14 YAML workflow definitions
+├── workflows/               # 15 YAML workflow definitions
 ├── presets/                  # Reserved for future use
 ├── .github/workflows/       # CI/CD
 │   ├── ci.yml               # Build + test + vet on push/PR
