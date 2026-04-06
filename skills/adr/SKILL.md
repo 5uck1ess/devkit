@@ -20,10 +20,10 @@ If the user hasn't specified, ask one question: "What decision are you documenti
 ## Step 2: Check Existing ADRs
 
 ```bash
-ls docs/adr/ 2>/dev/null | tail -5
+mkdir -p docs/adr && ls docs/adr/ 2>/dev/null | tail -5
 ```
 
-Determine the next sequence number. If no `docs/adr/` exists, start at `0001`.
+Determine the next sequence number. If no ADRs exist, start at `0001`.
 
 ## Step 3: Write the ADR
 
@@ -59,4 +59,4 @@ What follows from this decision? Both positive and negative. Bullet list.
 - One decision per ADR. If there are two decisions, write two ADRs.
 - Use plain language. No jargon that requires context to parse.
 - Status is usually `accepted`. Use `proposed` only if the user hasn't decided yet.
-- Never modify existing ADRs — create a new one that supersedes.
+- Never modify existing ADRs — create a new one that supersedes. When superseding, update the old ADR's status line to `superseded by [MMMM]`.
