@@ -1,0 +1,184 @@
+name: Autoloop
+description: Autonomous improvement loop inspired by karpathy/autoresearch — audit, fix, measure, keep or revert, repeat
+
+budget:
+  limit: 500000
+  downgrade: fast
+
+steps:
+  - id: baseline
+    model: fast
+    prompt: |
+      Run the user's metric command to establish a baseline measurement.
+
+      User input: {{input}}
+
+      Extract the metric command from the input and run it via Bash.
+      Report the raw output and extract a single numeric score.
+      State clearly: "BASELINE: <number>" and "DIRECTION: higher-is-better" or "DIRECTION: lower-is-better"
+
+      If no metric command was provided, detect the stack and use the appropriate default:
+      - Go: go test -cover ./... (higher-is-better: coverage %)
+      - TypeScript: npx jest --coverage (higher-is-better: coverage %)
+      - Python: pytest --cov --cov-report term-missing (higher-is-better: coverage %)
+      - Rust: cargo test (higher-is-better: pass count)
+      - Lint: count of errors (lower-is-better)
+
+  - id: audit
+    model: smart
+    prompt: |
+      Analyze the codebase and pick the SINGLE highest-impact improvement to make.
+
+      User objective: {{input}}
+      Current baseline: {{baseline}}
+      Previous attempts (if any): {{revert}}{{keep}}
+
+      Read .devkit/scratchpads/current.md if it exists — it contains what was already tried.
+
+      Measure what's relevant to the objective:
+      - If coverage objective: find the lowest-coverage package/file
+      - If lint objective: find the most common lint error category
+      - If performance objective: identify the hottest path
+      - If security objective: find the most critical vulnerability
+
+      Output exactly ONE hypothesis to test:
+      - HYPOTHESIS: <what to change and why>
+      - TARGET: <specific file(s) to modify>
+      - EXPECTED IMPACT: <what the metric should do>
+
+      Do NOT make any changes yet. Only analyze and recommend.
+
+  - id: fix
+    model: smart
+    prompt: |
+      Make the change recommended by the audit.
+
+      Objective: {{input}}
+      Hypothesis: {{audit}}
+
+      Rules:
+      - Only change what the hypothesis recommends
+      - Do NOT refactor unrelated code
+      - Do NOT change tests to make them pass (fix the code, not the tests)
+      - Keep changes minimal and focused
+      - Check .devkit/scratchpads/current.md to avoid repeating failed approaches
+
+      After making changes, describe exactly what you changed and why.
+
+  - id: measure
+    model: fast
+    prompt: |
+      Run the EXACT same metric command from the baseline to measure the result.
+
+      Baseline measurement: {{baseline}}
+
+      Extract the metric command that was used in the baseline step and run it again via Bash.
+      Report the raw output and extract the numeric score.
+      State clearly: "MEASUREMENT: <number>"
+
+  - id: compare
+    model: fast
+    prompt: |
+      Compare the baseline to the current measurement.
+
+      {{baseline}}
+      {{measure}}
+
+      Extract the BASELINE number, the MEASUREMENT number, and the DIRECTION.
+
+      Rules — follow these exactly:
+      - If DIRECTION is higher-is-better: MEASUREMENT > BASELINE means IMPROVED
+      - If DIRECTION is lower-is-better: MEASUREMENT < BASELINE means IMPROVED
+      - If MEASUREMENT equals BASELINE: REGRESSED (no change counts as failure)
+      - If the metric command failed or produced no number: REGRESSED
+
+      Output exactly one word on the first line: IMPROVED or REGRESSED
+      Then explain the comparison on the next line.
+    branch:
+      - when: "IMPROVED"
+        goto: keep
+      - when: "REGRESSED"
+        goto: revert
+
+  - id: keep
+    model: fast
+    prompt: |
+      The change IMPROVED the metric. Keep it.
+
+      What was changed: {{fix}}
+      Measurement: {{measure}}
+      Comparison: {{compare}}
+
+      1. Run: git add -A && git commit -m "autoloop: <brief description of what improved>"
+      2. Update .devkit/scratchpads/current.md — append:
+         - Iteration: kept
+         - Hypothesis: {{audit}}
+         - Result: {{compare}}
+      3. Update the baseline number for the next cycle.
+
+      If budget is exhausted or iterations are done, say "AUTOLOOP_COMPLETE".
+      Otherwise say "CONTINUE" to trigger the next audit cycle.
+    branch:
+      - when: "AUTOLOOP_COMPLETE"
+        goto: report
+      - when: "CONTINUE"
+        goto: audit
+
+  - id: revert
+    model: fast
+    prompt: |
+      The change REGRESSED or had no effect. Revert it.
+
+      What was attempted: {{fix}}
+      Measurement: {{measure}}
+      Comparison: {{compare}}
+
+      1. Run: git checkout -- . && git clean -fd
+      2. Update .devkit/scratchpads/current.md — append:
+         - Iteration: reverted
+         - Hypothesis: {{audit}}
+         - Result: {{compare}}
+         - Why it failed (so we don't repeat this approach)
+
+      Say "CONTINUE" to try the next hypothesis.
+    branch:
+      - when: "AUTOLOOP_COMPLETE"
+        goto: report
+      - when: "CONTINUE"
+        goto: audit
+
+  - id: report
+    model: smart
+    prompt: |
+      The autoloop session is complete. Write a final report.
+
+      Original objective: {{input}}
+      Starting baseline: {{baseline}}
+      Final measurement: {{measure}}
+
+      Read .devkit/scratchpads/current.md for the full iteration history.
+
+      Report:
+      ## Autoloop Report
+
+      ### Objective
+      {what the user wanted}
+
+      ### Results
+      - Starting metric: {baseline number}
+      - Final metric: {final number}
+      - Net change: {delta}
+      - Iterations: {count kept + count reverted}
+      - Kept: {count}
+      - Reverted: {count}
+
+      ### Changes Made (kept)
+      {list each kept change with what it improved}
+
+      ### Failed Attempts (reverted)
+      {list each reverted attempt with why it failed}
+
+      ### Recommendation
+      {what to do next — run another cycle, investigate a specific area, or stop}
+
+      Clean up: delete .devkit/scratchpads/current.md
