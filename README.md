@@ -180,6 +180,7 @@ These replace slash commands. Ask naturally and the skill fires:
 | `devkit:research` | "research X", "compare approaches for", "investigate options" |
 | `devkit:deep-research` | "deep research", "validate this", "make sure this is right", "rigorous analysis" |
 | `devkit:scrape` | "scrape this URL", "fetch content from", "extract from this page" |
+| `devkit:adr` | "create an ADR", "document this decision", "record why we chose X" |
 
 ### Coding Principles
 
@@ -326,7 +327,7 @@ devkit/
 │   ├── audit.md             # Project health audit
 │   ├── repo-map.md          # AST-based symbol index
 │   └── status.md            # Health check
-├── skills/                  # 17 context-activated skills
+├── skills/                  # 18 context-activated skills
 │   ├── executing/SKILL.md   # Principle: methodical execution
 │   ├── clean-code/SKILL.md  # Principle: readability
 │   ├── dry/SKILL.md         # Principle: don't repeat yourself
@@ -342,7 +343,8 @@ devkit/
 │   ├��─ research/SKILL.md    # Auto: "research X"
 │   ├── deep-research/SKILL.md # Auto: "deep research", ACH pipeline
 │   ├── scratchpad/SKILL.md  # Iteration memory protocol
-│   └── scrape/SKILL.md      # Auto: "scrape this URL"
+│   ├── scrape/SKILL.md      # Auto: "scrape this URL"
+│   └── adr/SKILL.md         # Auto: "create an ADR", decision records
 ├── agents/                  # 6 agents
 │   ├── reviewer.md          # Opus, worktree isolation
 │   ├── researcher.md        # Sonnet, worktree isolation
