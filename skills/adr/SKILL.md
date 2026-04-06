@@ -24,7 +24,7 @@ mkdir -p docs/adr
 ls docs/adr/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1
 ```
 
-Add 1 to the highest number found, zero-padded to 4 digits. If none exist, start at `0001`.
+Add 1 to the highest number found, zero-padded to 4 digits. If no output, the directory is empty — start at `0001`.
 
 ## Step 3: Write the ADR
 
@@ -60,4 +60,4 @@ What follows from this decision? Both positive and negative. Bullet list.
 - One decision per ADR. If there are two decisions, write two ADRs.
 - Use plain language. No jargon that requires context to parse.
 - Status is usually `accepted`. Use `proposed` only if the user hasn't decided yet.
-- Never modify existing ADRs — create a new one that supersedes. When superseding, update the old ADR's status line to `superseded by [MMMM]`.
+- Never modify the substantive content of existing ADRs (Context, Decision, Alternatives, Consequences). When superseding, only update the old ADR's Status line to `superseded by [MMMM]`.
