@@ -65,29 +65,11 @@ Fetch top 5-8 URLs with Jina Reader. Extract atomic claims (subject-predicate-ob
 
 ## Step 6: Generate Competing Hypotheses
 
-Generate 2-4 mutually exclusive hypotheses. Include at least one contrarian hypothesis.
+Generate 2-4 competing hypotheses. Include at least one contrarian hypothesis.
 
 ## Step 7: Directed Disconfirmation
 
 For EACH hypothesis, search specifically for evidence that would DISPROVE it. This is the critical ACH step — you're trying to kill each hypothesis, not confirm it.
-
-## Step 7.5: Adversarial Debate (optional — use when hypotheses are close or stakes are high)
-
-When two or more hypotheses survive disconfirmation with similar evidence profiles, run an adversarial refinement cycle to stress-test them:
-
-1. **Advocate** — For each surviving hypothesis, write the strongest possible case. Cite specific evidence. Assume this hypothesis is correct and explain away contradictions.
-
-2. **Critic** — For each advocacy, write a targeted attack. Find the weakest link in the argument. Identify what the advocate glossed over or explained away too easily. Name the single observation that would kill this hypothesis.
-
-3. **Synthesize** — Given the advocacy and critique for all hypotheses, ask: Is there a composite hypothesis that accounts for more evidence than any individual one? Can the strongest elements be combined?
-
-4. **Blind Judge** — Present the surviving candidates (original + any composite) with randomized labels (Candidate A, B, C — not in hypothesis order). Evaluate on:
-   - Fewest unexplained observations
-   - Most falsifiable (can be tested)
-   - Least reliance on coincidence
-   Pick a winner. If no clear winner, note the deadlock and carry both forward with explicit uncertainty.
-
-Skip this step if: one hypothesis clearly dominates after Step 7, or the question is low-stakes.
 
 ## Step 8: Build Evidence Matrix
 
@@ -100,6 +82,24 @@ CC=Strongly Consistent, C=Consistent, N=Neutral, I=Inconsistent, II=Strongly Inc
 ```
 
 Score by FEWEST inconsistencies (not most consistencies).
+
+## Step 8.5: Adversarial Debate (optional — use when hypotheses are close or stakes are high)
+
+When two or more hypotheses survive with similar scores in the evidence matrix, run an adversarial refinement cycle to stress-test them. Use the completed matrix as input.
+
+1. **Advocate** — For each surviving hypothesis, write the strongest possible case. Cite specific evidence from the matrix. Assume this hypothesis is correct and explain away inconsistencies.
+
+2. **Critic** — For each advocacy, write a targeted attack. Find the weakest link in the argument. Identify what the advocate glossed over or explained away too easily. Name the single observation that would kill this hypothesis.
+
+3. **Synthesize** — Given the advocacy and critique for all hypotheses, ask: Is there a composite hypothesis that accounts for more evidence than any individual one? If so, the composite replaces its parent hypotheses — rescore it against the evidence matrix as a new candidate.
+
+4. **Judge** — Present the surviving candidates (original + any composite) with randomized labels (Candidate A, B, C — not in hypothesis order) as a heuristic to reduce anchoring bias. Note: in a single-agent context this is a nudge, not a true blind. Evaluate using the evidence matrix on:
+   - Fewest inconsistencies in the matrix
+   - Most falsifiable (can be tested)
+   - Least reliance on coincidence
+   Pick a winner. If no clear winner, note the deadlock and carry both forward with explicit uncertainty.
+
+Skip this step if: one hypothesis has 2+ fewer inconsistencies than the runner-up in the matrix, or the research question is informational rather than decision-driving.
 
 ## Step 9: Sensitivity Check
 
@@ -146,5 +146,5 @@ Review for: genuine disconfirmation effort, missed perspectives, source over-wei
 - Self-critique before output
 - Cite everything
 - Be honest about uncertainty
-- Use adversarial debate when hypotheses are close — don't just pick the first plausible one
-- Blind judge evaluations use randomized labels to prevent ordering bias
+- Use adversarial debate when hypotheses score similarly in the evidence matrix — don't just pick the first plausible one
+- Judge evaluations use randomized labels as an anchoring-bias heuristic (not a true blind in single-agent context)

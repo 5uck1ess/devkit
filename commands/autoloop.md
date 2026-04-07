@@ -27,11 +27,13 @@ If the input doesn't contain a metric command, use `AskUserQuestion` to collect:
 3. **Direction** — higher-is-better or lower-is-better
 4. **Iterations** — how many cycles (default 10)
 5. **Scope** — file/package constraints (optional)
-6. **Guard** — optional safety-net command that must always pass (e.g., `npm test`, `tsc --noEmit`). Changes that improve the metric but break the guard are reverted.
+6. **Guard** — optional safety-net command that must always pass (e.g., `npm test`, `tsc --noEmit`). Changes that improve the metric but break the guard are treated as regressions and reverted. Guard commands must be side-effect free (no generated files, snapshots, or caches that persist between runs).
 
 ## Step 2: Baseline
 
 Run the metric command. Record the starting number and direction.
+
+If a guard command is set, run it now. If the guard fails at baseline, stop and tell the user — the invariant must hold before the loop can start.
 
 ## Step 3: Audit
 
@@ -54,14 +56,14 @@ Compare baseline vs measurement using the direction:
 
 ## Step 6.5: Guard Check (if guard command is set)
 
-If the metric improved, run the guard command:
+If the metric improved, run the guard command with a timeout:
 
 ```bash
-{guard_command} 2>&1
+timeout 120 {guard_command} 2>&1
 ```
 
 - Guard passes (exit 0) → proceed to Step 7 as IMPROVED
-- Guard fails → treat as REGRESSED regardless of metric improvement. Log: "Metric improved but guard failed — reverting to protect invariant."
+- Guard fails or times out → treat as REGRESSED regardless of metric improvement. Log: "Metric improved but guard failed — reverting to protect invariant."
 
 ## Step 7: Keep or Revert
 
@@ -70,7 +72,7 @@ If the metric improved, run the guard command:
 
 ### Escalation: Repeated Failures
 
-Track consecutive failures on the same target area. After 3 failed attempts at the same hypothesis or file:
+Track consecutive failures by primary modified file. After 3 failed attempts where the same file is the main edit target:
 
 1. **Log** what was tried and why each approach failed
 2. **Skip** — move the hypothesis to a "blocked" list in the scratchpad
@@ -102,5 +104,5 @@ After all iterations or budget exhausted:
 - Use the scratchpad to prevent repeating failures
 - The metric command must be identical in baseline and measure steps
 - Update the baseline number after each kept change (so the next cycle compares against the new state, not the original)
-- Guard failures override metric improvements — the invariant is sacred
-- 3 failures on the same target → skip and pivot, don't grind
+- Guard failures override metric improvements — never accept a change that breaks the guard
+- 3 failures on the same file → skip and pivot, don't grind

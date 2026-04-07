@@ -40,6 +40,25 @@ HAS_GEMINI_CLI=$(command -v gemini && echo "yes" || echo "no")
 
 Prefer plugin over CLI.
 
+## Step 2.5: Scenario Expansion (orchestrator guidance — not injected into sub-agent prompts)
+
+When analyzing the target in Step 1, identify which scenario expansion techniques are highest-yield for each public function/method based on its behavior and risk profile. Use this to guide prompt construction — don't apply every technique to every function.
+
+| Technique | When high-yield | Example |
+|-----------|-----------------|---------|
+| Missing data | Functions with required parameters | "What if the required field is null/undefined?" |
+| Boundary | Functions with numeric/collection inputs | "0, -1, MAX_INT, empty array, single element" |
+| What-if | Functions with branching logic | "What if the input is empty string instead of valid?" |
+| Ordering | Functions called in sequences or pipelines | "What if step 2 happens before step 1?" |
+| Interruption | I/O or network-dependent functions | "What if the network drops mid-request?" |
+| Stale data | Functions using caches or shared state | "What if the cached value changed between read and use?" |
+
+Prioritize unless existing test patterns in the repo establish a different convention: missing/null data > boundary conditions > error paths > ordering > interruption > stale data.
+
+Interruption and stale data scenarios often require integration-level test infrastructure (mocking I/O, time manipulation). Skip these when generating pure unit tests.
+
+Include only the applicable techniques in each agent's prompt — not the full table.
+
 ## Step 3: Build the Prompt
 
 ```
@@ -48,19 +67,7 @@ Generate a comprehensive test suite for the following code.
 - Use {framework} conventions.
 - Match existing test patterns in the repo.
 - Write tests that actually run — no placeholder assertions.
-
-For each public function/method, systematically apply these scenario expansion techniques:
-
-| Technique | Description | Example |
-|-----------|-------------|---------|
-| What-if | Change one variable from the happy path | "What if the input is empty string instead of valid?" |
-| Boundary | Push values to limits | "0, -1, MAX_INT, empty array, single element" |
-| Interruption | Inject failure mid-flow | "What if the network drops mid-request?" |
-| Ordering | Change sequence of operations | "What if step 2 happens before step 1?" |
-| Missing data | Remove expected input | "What if the required field is null/undefined?" |
-| Stale data | Use outdated information | "What if the cached value changed between read and use?" |
-
-Prioritize: boundary conditions > missing/null data > error paths > ordering > interruption > stale data.
+{scenario_guidance — applicable techniques from Step 2.5, tailored to this target}
 
 Target: {target_files}
 Code: {source_code}
