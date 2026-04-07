@@ -138,10 +138,29 @@ wait
 1. ...
 ```
 
+## Investigation Techniques
+
+When building the debug prompt or analyzing results, apply the most appropriate technique:
+
+| Technique | When to Use | How |
+|-----------|-------------|-----|
+| **Binary search** | Bug exists somewhere in a range of changes/code | Bisect the search space — disable half, test, narrow |
+| **Differential debugging** | "It worked before" | Compare working vs broken state — `git diff`, env diff, config diff |
+| **Minimal reproduction** | Complex bug with many variables | Strip away everything unrelated until the simplest trigger remains |
+| **Trace execution** | Control flow is unclear | Add logging or step through — follow the actual path, not the assumed one |
+| **Working backwards** | You know the symptom but not the cause | Start at the error, trace data/control flow backwards to the source |
+| **5 Whys** | Surface fix isn't enough | Ask "why?" at each layer: symptom → immediate cause → deeper cause → root cause → systemic issue |
+
+## Domain-Specific Debugging Checklists
+
+When the bug domain is identifiable (API, database, auth, async, performance), read the relevant section from `references/debug-checklists.md` (relative to this `commands/` directory) and include it in each agent's prompt. Only include the matching domain — don't load the full file.
+
 ## Rules
 
 - Claude always runs — Codex and Gemini are optional
 - If only Claude is available, still provide the full report format (just one perspective)
 - Report which agents participated
 - If agents disagree on root cause, present all hypotheses ranked by evidence
+- When agents agree on symptoms but disagree on root cause, apply the 5 Whys to the shared symptoms to converge on a deeper cause. If they disagree on symptoms too, prioritize verifying symptoms through additional logs or traces before root-cause analysis
+- Include the relevant domain checklist in each agent's prompt when the bug category is identifiable
 - Clean up temp files after
