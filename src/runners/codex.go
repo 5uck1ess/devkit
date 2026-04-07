@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 type CodexRunner struct{}
@@ -17,12 +18,16 @@ func (r *CodexRunner) Available() bool {
 }
 
 func (r *CodexRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
-	args := []string{"exec", "--full-auto", prompt}
+	// Codex reads additional input from stdin automatically.
+	// Pass a short instruction as the argument, pipe the full prompt via stdin.
+	args := []string{"exec", "--full-auto", "Follow the instructions provided on stdin."}
 
 	cmd := exec.CommandContext(ctx, "codex", args...)
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
+
+	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

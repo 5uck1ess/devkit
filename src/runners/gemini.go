@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 )
 
 type GeminiRunner struct{}
@@ -17,8 +18,10 @@ func (r *GeminiRunner) Available() bool {
 }
 
 func (r *GeminiRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
+	// Gemini -p appends to stdin content. Pipe the full prompt via stdin
+	// and use -p for just the instruction prefix to avoid ARG_MAX limits.
 	args := []string{
-		"-p", prompt,
+		"-p", "Review the content provided on stdin.",
 		"-y",
 		"--output-format", "text",
 	}
@@ -27,6 +30,8 @@ func (r *GeminiRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
+
+	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 )
 
 type ClaudeRunner struct{}
@@ -25,13 +27,23 @@ type claudeResponse struct {
 func (r *ClaudeRunner) Name() string { return "claude" }
 
 func (r *ClaudeRunner) Available() bool {
-	_, err := exec.LookPath("claude")
-	return err == nil
+	if _, err := exec.LookPath("claude"); err != nil {
+		return false
+	}
+	// OAuth tokens (sk-ant-oat*) don't work for subprocess claude -p calls.
+	// Only real API keys (sk-ant-api*) or no key (keychain auth) work.
+	key := os.Getenv("ANTHROPIC_API_KEY")
+	if strings.HasPrefix(key, "sk-ant-oat") {
+		return false
+	}
+	return true
 }
 
 func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
+	// Pipe prompt via stdin to avoid ARG_MAX limits on large diffs.
+	// claude -p reads from stdin when "-" is passed or when stdin has content.
 	args := []string{
-		"-p", prompt,
+		"-p", "-",
 		"--output-format", "json",
 		"--no-session-persistence",
 	}
@@ -52,6 +64,8 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
+
+	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

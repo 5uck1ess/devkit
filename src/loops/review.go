@@ -38,10 +38,16 @@ func RunReview(ctx context.Context, db *lib.DB, available []runners.Runner, git 
 		return nil, fmt.Errorf("no diff found — nothing to review")
 	}
 
-	// Truncate diff for prompt
-	const maxDiff = 30000
+	// Truncate diff at file boundaries to preserve reviewable context.
+	// 500K chars ≈ 125K tokens — well within Claude (200K) and Gemini (1M) limits.
+	const maxDiff = 500000
 	if len(diff) > maxDiff {
-		diff = diff[:maxDiff] + "\n... (diff truncated)"
+		// Cut at last file boundary (--- a/ or diff --git) to avoid mid-hunk truncation
+		cut := diff[:maxDiff]
+		if idx := strings.LastIndex(cut, "\ndiff --git "); idx > 0 {
+			cut = cut[:idx]
+		}
+		diff = cut + "\n\n... (diff truncated — review remaining files separately)"
 	}
 
 	prompt := cfg.Prompt
