@@ -17,6 +17,8 @@ func (r *CodexRunner) Available() bool {
 }
 
 func (r *CodexRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
+	// Codex reads stdin and appends to the prompt argument.
+	// Pipe the full prompt via stdin to handle large diffs safely.
 	args := []string{"exec", "--full-auto", prompt}
 
 	cmd := exec.CommandContext(ctx, "codex", args...)
@@ -34,12 +36,20 @@ func (r *CodexRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Run
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return RunResult{ExitCode: 1}, fmt.Errorf("codex failed to start: %w", err)
+			return RunResult{ExitCode: 1}, fmt.Errorf("codex failed to run: %w", err)
 		}
 	}
 
-	return RunResult{
+	result := RunResult{
 		Output:   stdout.String(),
 		ExitCode: exitCode,
-	}, nil
+	}
+	if exitCode != 0 {
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = stdout.String()
+		}
+		return result, fmt.Errorf("codex exited %d: %s", exitCode, TruncStr(errMsg, 200))
+	}
+	return result, nil
 }
