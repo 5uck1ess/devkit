@@ -75,17 +75,14 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return RunResult{ExitCode: 1}, fmt.Errorf("claude failed to start: %w — is claude CLI installed?", err)
+			return RunResult{ExitCode: 1}, fmt.Errorf("claude failed to run: %w", err)
 		}
 	}
 
 	var resp claudeResponse
 	if err := json.Unmarshal(stdout.Bytes(), &resp); err != nil {
-		// If JSON parsing fails, return raw output
-		return RunResult{
-			Output:   stdout.String(),
-			ExitCode: exitCode,
-		}, nil
+		return RunResult{Output: stdout.String(), ExitCode: exitCode},
+			fmt.Errorf("claude returned non-JSON output: %s", TruncStr(stdout.String(), 200))
 	}
 
 	return RunResult{

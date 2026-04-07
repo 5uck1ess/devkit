@@ -42,7 +42,7 @@ func (r *GeminiRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return RunResult{ExitCode: 1}, fmt.Errorf("gemini failed to start: %w", err)
+			return RunResult{ExitCode: 1}, fmt.Errorf("gemini failed to run: %w", err)
 		}
 	}
 

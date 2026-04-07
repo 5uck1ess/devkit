@@ -36,12 +36,20 @@ func (r *CodexRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Run
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return RunResult{ExitCode: 1}, fmt.Errorf("codex failed to start: %w", err)
+			return RunResult{ExitCode: 1}, fmt.Errorf("codex failed to run: %w", err)
 		}
 	}
 
-	return RunResult{
+	result := RunResult{
 		Output:   stdout.String(),
 		ExitCode: exitCode,
-	}, nil
+	}
+	if exitCode != 0 {
+		errMsg := stderr.String()
+		if errMsg == "" {
+			errMsg = stdout.String()
+		}
+		return result, fmt.Errorf("codex exited %d: %s", exitCode, TruncStr(errMsg, 200))
+	}
+	return result, nil
 }

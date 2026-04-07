@@ -42,12 +42,14 @@ func RunReview(ctx context.Context, db *lib.DB, available []runners.Runner, git 
 	// 500K chars ≈ 125K tokens — well within Claude (200K) and Gemini (1M) limits.
 	const maxDiff = 500000
 	if len(diff) > maxDiff {
-		// Cut at last file boundary (--- a/ or diff --git) to avoid mid-hunk truncation
+		// Cut at last file boundary to avoid mid-hunk truncation
 		cut := diff[:maxDiff]
 		if idx := strings.LastIndex(cut, "\ndiff --git "); idx > 0 {
 			cut = cut[:idx]
+			diff = cut + "\n\n... (diff truncated at file boundary — review remaining files separately)"
+		} else {
+			diff = cut + "\n\n... (diff truncated mid-hunk — no clean file boundary found in first 500K chars)"
 		}
-		diff = cut + "\n\n... (diff truncated — review remaining files separately)"
 	}
 
 	prompt := cfg.Prompt
