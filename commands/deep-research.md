@@ -71,6 +71,24 @@ Generate 2-4 mutually exclusive hypotheses. Include at least one contrarian hypo
 
 For EACH hypothesis, search specifically for evidence that would DISPROVE it. This is the critical ACH step — you're trying to kill each hypothesis, not confirm it.
 
+## Step 7.5: Adversarial Debate (optional — use when hypotheses are close or stakes are high)
+
+When two or more hypotheses survive disconfirmation with similar evidence profiles, run an adversarial refinement cycle to stress-test them:
+
+1. **Advocate** — For each surviving hypothesis, write the strongest possible case. Cite specific evidence. Assume this hypothesis is correct and explain away contradictions.
+
+2. **Critic** — For each advocacy, write a targeted attack. Find the weakest link in the argument. Identify what the advocate glossed over or explained away too easily. Name the single observation that would kill this hypothesis.
+
+3. **Synthesize** — Given the advocacy and critique for all hypotheses, ask: Is there a composite hypothesis that accounts for more evidence than any individual one? Can the strongest elements be combined?
+
+4. **Blind Judge** — Present the surviving candidates (original + any composite) with randomized labels (Candidate A, B, C — not in hypothesis order). Evaluate on:
+   - Fewest unexplained observations
+   - Most falsifiable (can be tested)
+   - Least reliance on coincidence
+   Pick a winner. If no clear winner, note the deadlock and carry both forward with explicit uncertainty.
+
+Skip this step if: one hypothesis clearly dominates after Step 7, or the question is low-stakes.
+
 ## Step 8: Build Evidence Matrix
 
 ```
@@ -128,3 +146,5 @@ Review for: genuine disconfirmation effort, missed perspectives, source over-wei
 - Self-critique before output
 - Cite everything
 - Be honest about uncertainty
+- Use adversarial debate when hypotheses are close — don't just pick the first plausible one
+- Blind judge evaluations use randomized labels to prevent ordering bias

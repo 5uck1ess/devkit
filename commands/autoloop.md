@@ -27,6 +27,7 @@ If the input doesn't contain a metric command, use `AskUserQuestion` to collect:
 3. **Direction** — higher-is-better or lower-is-better
 4. **Iterations** — how many cycles (default 10)
 5. **Scope** — file/package constraints (optional)
+6. **Guard** — optional safety-net command that must always pass (e.g., `npm test`, `tsc --noEmit`). Changes that improve the metric but break the guard are reverted.
 
 ## Step 2: Baseline
 
@@ -51,10 +52,32 @@ Compare baseline vs measurement using the direction:
 - lower-is-better: new < old → IMPROVED
 - Equal or failed → REGRESSED
 
+## Step 6.5: Guard Check (if guard command is set)
+
+If the metric improved, run the guard command:
+
+```bash
+{guard_command} 2>&1
+```
+
+- Guard passes (exit 0) → proceed to Step 7 as IMPROVED
+- Guard fails → treat as REGRESSED regardless of metric improvement. Log: "Metric improved but guard failed — reverting to protect invariant."
+
 ## Step 7: Keep or Revert
 
 - **IMPROVED** → stage only modified files + `git commit`, update scratchpad, update baseline to new number, loop back to Step 3
 - **REGRESSED** → `git checkout -- <modified files>` (no `git clean -fd` — protect untracked work), update scratchpad with failure reason, loop back to Step 3
+
+### Escalation: Repeated Failures
+
+Track consecutive failures on the same target area. After 3 failed attempts at the same hypothesis or file:
+
+1. **Log** what was tried and why each approach failed
+2. **Skip** — move the hypothesis to a "blocked" list in the scratchpad
+3. **Pivot** — choose a completely different hypothesis targeting different files
+4. **Report** — include blocked items in the final report with context for manual investigation
+
+Never loop on the same failing approach. Each attempt must use a materially different strategy.
 
 ## Step 8: Report
 
@@ -79,3 +102,5 @@ After all iterations or budget exhausted:
 - Use the scratchpad to prevent repeating failures
 - The metric command must be identical in baseline and measure steps
 - Update the baseline number after each kept change (so the next cycle compares against the new state, not the original)
+- Guard failures override metric improvements — the invariant is sacred
+- 3 failures on the same target → skip and pivot, don't grind

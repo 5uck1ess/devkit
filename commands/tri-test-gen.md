@@ -49,6 +49,19 @@ Generate a comprehensive test suite for the following code.
 - Match existing test patterns in the repo.
 - Write tests that actually run — no placeholder assertions.
 
+For each public function/method, systematically apply these scenario expansion techniques:
+
+| Technique | Description | Example |
+|-----------|-------------|---------|
+| What-if | Change one variable from the happy path | "What if the input is empty string instead of valid?" |
+| Boundary | Push values to limits | "0, -1, MAX_INT, empty array, single element" |
+| Interruption | Inject failure mid-flow | "What if the network drops mid-request?" |
+| Ordering | Change sequence of operations | "What if step 2 happens before step 1?" |
+| Missing data | Remove expected input | "What if the required field is null/undefined?" |
+| Stale data | Use outdated information | "What if the cached value changed between read and use?" |
+
+Prioritize: boundary conditions > missing/null data > error paths > ordering > interruption > stale data.
+
 Target: {target_files}
 Code: {source_code}
 ```
