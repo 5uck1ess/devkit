@@ -34,16 +34,16 @@ func (r *ClaudeRunner) Available() bool {
 	// Only real API keys (sk-ant-api*) or no key (keychain auth) work.
 	key := os.Getenv("ANTHROPIC_API_KEY")
 	if strings.HasPrefix(key, "sk-ant-oat") {
+		fmt.Fprintf(os.Stderr, "claude: skipping — ANTHROPIC_API_KEY is an OAuth token (sk-ant-oat*), which doesn't work for subprocess calls\n")
 		return false
 	}
 	return true
 }
 
 func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
-	// Pipe prompt via stdin to avoid ARG_MAX limits on large diffs.
-	// claude -p reads from stdin when "-" is passed or when stdin has content.
+	// claude -p is "print mode" — the prompt is a positional argument.
 	args := []string{
-		"-p", "-",
+		"-p", prompt,
 		"--output-format", "json",
 		"--no-session-persistence",
 	}
@@ -64,8 +64,6 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 	if opts.WorkDir != "" {
 		cmd.Dir = opts.WorkDir
 	}
-
-	cmd.Stdin = strings.NewReader(prompt)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
