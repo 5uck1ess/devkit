@@ -40,7 +40,7 @@ HAS_GEMINI_CLI=$(command -v gemini && echo "yes" || echo "no")
 
 Prefer plugin over CLI.
 
-## Step 2.5: Scenario Expansion (orchestrator guidance — not injected into sub-agent prompts)
+## Step 2.5: Scenario Expansion (orchestrator selects applicable techniques — only selected items are injected into sub-agent prompts)
 
 When analyzing the target in Step 1, identify which scenario expansion techniques are highest-yield for each public function/method based on its behavior and risk profile. Use this to guide prompt construction — don't apply every technique to every function.
 
@@ -53,7 +53,7 @@ When analyzing the target in Step 1, identify which scenario expansion technique
 | Interruption | I/O or network-dependent functions | "What if the network drops mid-request?" |
 | Stale data | Functions using caches or shared state | "What if the cached value changed between read and use?" |
 
-Prioritize unless existing test patterns in the repo establish a different convention: missing/null data > boundary conditions > error paths > ordering > interruption > stale data.
+Prioritize unless existing test patterns in the repo establish a different convention: missing/null data > boundary conditions > what-if > ordering > interruption > stale data.
 
 Interruption and stale data scenarios often require integration-level test infrastructure (mocking I/O, time manipulation). Skip these when generating pure unit tests.
 

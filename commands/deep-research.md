@@ -94,9 +94,9 @@ When two or more hypotheses survive with similar scores in the evidence matrix, 
 3. **Synthesize** — Given the advocacy and critique for all hypotheses, ask: Is there a composite hypothesis that accounts for more evidence than any individual one? If so, the composite replaces its parent hypotheses — rescore it against the evidence matrix as a new candidate.
 
 4. **Judge** — Present the surviving candidates (original + any composite) with randomized labels (Candidate A, B, C — not in hypothesis order) as a heuristic to reduce anchoring bias. Note: in a single-agent context this is a nudge, not a true blind. Evaluate using the evidence matrix on:
-   - Fewest inconsistencies in the matrix
-   - Most falsifiable (can be tested)
+   - Fewest inconsistencies in the matrix (primary)
    - Least reliance on coincidence
+   - Most falsifiable (tiebreaker — prefer hypotheses that can be tested)
    Pick a winner. If no clear winner, note the deadlock and carry both forward with explicit uncertainty.
 
 Skip this step if: one hypothesis has 2+ fewer inconsistencies than the runner-up in the matrix, or the research question is informational rather than decision-driving.

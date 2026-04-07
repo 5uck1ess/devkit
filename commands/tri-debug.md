@@ -153,7 +153,7 @@ When building the debug prompt or analyzing results, apply the most appropriate 
 
 ## Domain-Specific Debugging Checklists
 
-When the bug domain is identifiable (API, database, auth, async, performance), read the relevant section from `commands/references/debug-checklists.md` and include it in each agent's prompt. Only include the matching domain — don't load the full file.
+When the bug domain is identifiable (API, database, auth, async, performance), read the relevant section from `references/debug-checklists.md` (relative to this `commands/` directory) and include it in each agent's prompt. Only include the matching domain — don't load the full file.
 
 ## Rules
 

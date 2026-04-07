@@ -56,7 +56,7 @@ Compare baseline vs measurement using the direction:
 
 ## Step 6.5: Guard Check (if guard command is set)
 
-If the metric improved, run the guard command with a timeout:
+Guard is only evaluated when the metric improved. Regressions are already reverted in Step 7, so running the guard on them would be wasted work. If the metric improved, run the guard with a timeout:
 
 ```bash
 timeout 120 {guard_command} 2>&1
@@ -68,7 +68,7 @@ timeout 120 {guard_command} 2>&1
 ## Step 7: Keep or Revert
 
 - **IMPROVED** → stage only modified files + `git commit`, update scratchpad, update baseline to new number, loop back to Step 3
-- **REGRESSED** → `git checkout -- <modified files>` (no `git clean -fd` — protect untracked work), update scratchpad with failure reason, loop back to Step 3
+- **REGRESSED** → `git checkout -- <modified files>` (no `git clean -fd` — protect untracked work), update scratchpad with failure reason, increment per-file failure counter (see Escalation below), loop back to Step 3
 
 ### Escalation: Repeated Failures
 

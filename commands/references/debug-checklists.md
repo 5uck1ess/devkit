@@ -34,6 +34,8 @@ Domain-specific checklists for inclusion in debug agent prompts. Include only th
 - Memory leak? Compare heap snapshots over time
 - Connection pool or thread pool exhaustion?
 
+### Quick Symptom Lookup
+
 | Symptom | Likely Cause | Investigation |
 |---------|--------------|---------------|
 | Slow API response | N+1 queries | Log SQL count per request |
