@@ -8,6 +8,8 @@ Complete feature lifecycle: brainstorm → plan → implement → test → lint 
 
 ## Step 1: Brainstorm
 
+Identify the feature's relevant domains (auth, API, database, UI, etc. — features often span multiple) and read each matching section from `references/domain-probes.md` to surface gray areas. If no section matches, skip domain probing. Use the probes to ask targeted questions via `AskUserQuestion` — only for genuinely ambiguous decisions, not obvious ones. Skip probing if the user's input already resolves the gray areas.
+
 ```
 Feature: {user's input}
 
@@ -16,8 +18,9 @@ Think through the design:
 - What's the simplest approach that works?
 - What are the risks or unknowns?
 - Are there edge cases to handle upfront?
+- What gray areas need user input before planning? (use domain probes)
 
-Produce a short design summary. Don't write code yet.
+Produce a short design summary with decisions locked. Don't write code yet.
 ```
 
 ## Step 2: Plan

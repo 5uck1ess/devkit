@@ -75,9 +75,8 @@ Record: total coverage %, lowest-coverage packages, untested files.
 # Python: pip-audit or safety check
 # Rust: cargo audit
 
-# Hardcoded secrets
-grep -rn 'password\s*=\s*"[^"]*"' --include='*.go' --include='*.ts' --include='*.py' . 2>/dev/null | head -5
-grep -rn 'api_key\s*=\s*"[^"]*"' --include='*.go' --include='*.ts' --include='*.py' . 2>/dev/null | head -5
+# Hardcoded secrets — use the patterns from references/stub-patterns.md
+# "Hardcoded Values Where Dynamic Expected" section (excludes test files, includes .tsx)
 ```
 
 ### Stale Code
@@ -87,9 +86,13 @@ grep -rn 'api_key\s*=\s*"[^"]*"' --include='*.go' --include='*.ts' --include='*.
 # Unused dependencies
 # go mod tidy -diff (shows removable deps)
 # npm prune --dry-run
-# TODO/FIXME/HACK count
-grep -rn 'TODO\|FIXME\|HACK\|XXX' --include='*.go' --include='*.ts' --include='*.py' --include='*.rs' . 2>/dev/null | wc -l
+# TODO/FIXME/HACK count — matches stub-patterns.md canonical list
+grep -rn 'TODO\|FIXME\|HACK\|XXX\|PLACEHOLDER' \
+  --include='*.go' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' \
+  --include='*.py' --include='*.rs' --include='*.rb' . 2>/dev/null | wc -l
 ```
+
+For deeper stub detection (empty implementations, placeholder text, hardcoded values, skipped tests), run the patterns from `references/stub-patterns.md`. Run unconditionally — a repo can have zero TODOs but still contain empty catch blocks, placeholder UI copy, or hardcoded localhost URLs.
 
 ### Documentation
 
