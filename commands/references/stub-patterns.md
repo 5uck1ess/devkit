@@ -16,13 +16,14 @@ grep -rn 'TODO\|FIXME\|HACK\|XXX\|PLACEHOLDER' \
 
 ```bash
 # Functions that return nothing useful — high false-positive rate.
-# Filter results manually: return nil/null/{}/[] is often legitimate.
+# Filter results manually: these returns are often legitimate.
 # Strongest signal when combined with TODO/FIXME nearby.
-grep -rn 'return nil\|return null\|return undefined' \
-  --include='*.go' --include='*.ts' --include='*.js' --include='*.py' . 2>/dev/null
+grep -rn 'return nil' --include='*.go' . 2>/dev/null
+grep -rn 'return null\|return undefined' --include='*.ts' --include='*.js' . 2>/dev/null
+grep -rn 'return None' --include='*.py' . 2>/dev/null
 
-# Python pass-only functions
-grep -rn 'pass$' --include='*.py' . 2>/dev/null
+# Python pass-only functions (indented pass on its own line)
+grep -rEn '^[[:space:]]+pass[[:space:]]*$' --include='*.py' . 2>/dev/null
 
 # Empty catch/error blocks (use grep -E for extended regex portability)
 grep -rEn 'catch[^{]*\{\s*\}' --include='*.ts' --include='*.tsx' --include='*.js' --include='*.jsx' . 2>/dev/null
@@ -46,7 +47,7 @@ grep -rn '\[TODO\]\|<TODO>\|{TODO}' \
 ```bash
 # Hardcoded IDs or secrets (not in test files)
 grep -rn 'api_key\s*=\s*"[^"]\+"\|password\s*=\s*"[^"]\+"' \
-  --include='*.go' --include='*.ts' --include='*.tsx' --include='*.py' . 2>/dev/null | grep -v '_test\.\|\.test\.\|\.spec\.'
+  --include='*.go' --include='*.ts' --include='*.tsx' --include='*.py' . 2>/dev/null | grep -v '_test\.\|\.test\.\|\.spec\.\|test_'
 
 # Hardcoded URLs (not config/const files)
 grep -rn 'http://localhost\|127\.0\.0\.1' \
