@@ -91,6 +91,8 @@ grep -rn 'api_key\s*=\s*"[^"]*"' --include='*.go' --include='*.ts' --include='*.
 grep -rn 'TODO\|FIXME\|HACK\|XXX' --include='*.go' --include='*.ts' --include='*.py' --include='*.rs' . 2>/dev/null | wc -l
 ```
 
+For deeper stub detection (empty implementations, placeholder text, hardcoded values, skipped tests), run the patterns from `references/stub-patterns.md`. Only use these when the basic TODO count suggests stale code worth investigating.
+
 ### Documentation
 
 ```bash
