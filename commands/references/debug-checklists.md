@@ -46,15 +46,8 @@ When the bug domain isn't obvious, use the symptom to route to the right checkli
 
 ## Performance Bugs
 - Profile first — the slow part is almost never where you think
-- Check for N+1 queries, missing indexes, unbounded loops
-- Memory leak? Compare heap snapshots over time
-- Connection pool or thread pool exhaustion?
-
-### Quick Symptom Lookup
-
-| Symptom | Likely Cause | Investigation |
-|---------|--------------|---------------|
-| Slow API response | N+1 queries | Log SQL count per request |
-| Slow page render | Expensive recomputation | Profile render cycle |
-| Gradual memory growth | Leak (listeners, connections) | Heap snapshots over time |
-| Intermittent slowness | Lock contention / pool exhaustion | Connection pool metrics |
+- Slow API response? Log SQL count per request — likely N+1 queries
+- Slow page render? Profile the render cycle — likely expensive recomputation
+- Gradual memory growth? Heap snapshots over time — likely leaked listeners or connections
+- Intermittent slowness? Check connection pool metrics — likely lock contention or pool exhaustion
+- Check for missing indexes and unbounded loops
