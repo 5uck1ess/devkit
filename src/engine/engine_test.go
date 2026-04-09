@@ -983,9 +983,9 @@ func TestRunWorkflowLoopGateFail(t *testing.T) {
 		Name: "test",
 		Steps: []WfStep{
 			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{
-				Max:  10,
+				Max:   10,
 				Until: "DONE",
-				Gate: "false", // always fails
+				Gate:  "false", // always fails
 			}},
 		},
 	}
