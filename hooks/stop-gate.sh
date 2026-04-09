@@ -157,15 +157,24 @@ fi
 # Filter tsc output to only errors in changed files. Running tsc --noEmit
 # checks the whole project — pre-existing errors in untouched files must
 # not block the agent (this caused infinite loops in large TS codebases).
+# tsc error format: "path/file.ts(line,col): error TS..." — we extract the
+# path before "(" and compare against changed files for exact matching.
 if $HAS_TS && [ -f "$REPO_ROOT/tsconfig.json" ] && command -v npx >/dev/null 2>&1; then
-  TS_FILES=$(echo "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
-  if [[ -n "$TS_FILES" ]]; then
-    TSC_OUTPUT=$(cd "$REPO_ROOT" && npx tsc --noEmit 2>&1) || true
-    # Build grep pattern from changed files to filter relevant errors only
-    TSC_ERRORS=$(echo "$TSC_OUTPUT" | grep -E 'error TS' | grep -F -f <(echo "$TS_FILES") | head -5 || true)
-    if [[ -n "$TSC_ERRORS" ]]; then
-      jq -n --arg msg "TypeScript errors in changed files:\n$TSC_ERRORS" '{ decision: "block", reason: $msg }'
-      exit 0
+  TS_FILES=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
+  if [ -n "$TS_FILES" ]; then
+    TSC_OUTPUT=$(cd "$REPO_ROOT" && npx tsc --noEmit 2>&1) || TSC_EXIT=$?
+    if [ "${TSC_EXIT:-0}" -ne 0 ]; then
+      # Extract error lines, then match only errors whose path (before the "(")
+      # exactly matches a changed file. Avoids substring false positives like
+      # "button.tsx" matching "icon-button.tsx".
+      TSC_ERRORS=$(printf '%s\n' "$TSC_OUTPUT" | grep -E 'error TS' | while IFS= read -r line; do
+        err_path="${line%%\(*}"
+        printf '%s\n' "$TS_FILES" | grep -qFx "$err_path" && printf '%s\n' "$line"
+      done | head -5)
+      if [ -n "$TSC_ERRORS" ]; then
+        jq -n --arg msg "TypeScript errors in changed files:\n$TSC_ERRORS" '{ decision: "block", reason: $msg }'
+        exit 0
+      fi
     fi
   fi
 fi
