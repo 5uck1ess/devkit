@@ -16,11 +16,11 @@ If `devkit workflow` is not available, follow this manually:
 
 1. **Triage** — Classify as TRIVIAL / NORMAL / COMPLEX. Trivial bugs skip to quick-fix path.
 2. **Reproduce** — Read relevant code, understand expected vs actual, identify minimal reproduction path
-3. **Diagnose** — Trace root cause (WHY, not just WHERE); propose specific fix with reasoning
+3. **Diagnose** — Check scratchpad for previous attempts; trace root cause (WHY, not just WHERE); propose specific fix with reasoning; append diagnosis to scratchpad
 4. **Fix** — Implement minimal fix; don't refactor surrounding code
 5. **Regression test** — Write a test that would have caught this bug; verify it fails without the fix and passes with it
 6. **Run tests** — Run full test suite including new regression test
-7. **Fix test failures** — If tests fail, determine if bug is in test or code; fix and re-run (loop max 5)
+7. **Fix test failures** — If tests fail, check scratchpad for what was tried; determine if bug is in test or code; fix and re-run; append result to scratchpad (loop max 5)
 8. **Summary** — Report bug, root cause, fix, regression test, and test suite status
 
 ## Rules
