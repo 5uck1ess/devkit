@@ -12,6 +12,8 @@ Send an arbitrary task to 2-3 AI agents in parallel and compare their results.
 devkit workflow run tri-dispatch "{task_description}"
 ```
 
+The YAML workflow uses model tiers (smart/general/fast) for parallelism. The fallback below uses external agents (Claude/Codex/Gemini) — the richer path when the engine is unavailable.
+
 If `devkit workflow` is not available, follow this manually:
 
 1. **Detect agents** — Check for Codex and Gemini availability. Claude always runs.

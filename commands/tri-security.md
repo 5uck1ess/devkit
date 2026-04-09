@@ -12,6 +12,8 @@ Dispatch a security audit to 2-3 AI agents in parallel and consolidate with seve
 devkit workflow run tri-security "{scope or default}"
 ```
 
+The YAML workflow dispatches by security domain (injection/auth/config) across model tiers. The fallback below uses external agents (Claude/Codex/Gemini) — the richer path when the engine is unavailable.
+
 If `devkit workflow` is not available, follow this manually:
 
 1. **Gather scope** — Determine audit scope: full repo, specific directory, or changed files only. Capture relevant code.
