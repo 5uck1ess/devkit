@@ -18,11 +18,13 @@ budget:               # Optional: token budget
 steps:
   - id: string        # Unique step identifier
     model: string     # Model tier: "smart", "general", "fast"
-    prompt: string    # Instruction (supports ${{variable}} interpolation)
+    prompt: string    # Instruction (supports {{variable}} interpolation)
+    command: string   # Shell command — runs directly, no LLM (mutually exclusive with prompt)
     parallel: [ids]   # Optional: run these step IDs concurrently
     loop:             # Optional: repeat this step
       max: number     # Maximum iterations
       until: string   # Stop condition (string match in output)
+      gate: string    # Shell command run after each iteration — exit 0 keeps, non-zero reverts
     branch:           # Optional: conditional execution
       if: string      # Condition expression
       then: string    # Step id to jump to if true
@@ -33,9 +35,11 @@ steps:
 
 - **id** — Must be unique. Used for branch targets and output references.
 - **model** — Which model tier runs this step. Pick based on task complexity.
-- **prompt** — The instruction. Use `${{steps.previous_id.output}}` to reference earlier outputs. Use `${{input.field}}` for workflow inputs.
+- **prompt** — The instruction. Use `{{step-id}}` to reference earlier outputs. Use `{{input}}` for workflow input. Mutually exclusive with `command`.
+- **command** — Shell command run directly (no LLM). Output is captured and available via `{{step-id}}`. Costs $0. Mutually exclusive with `prompt`.
 - **parallel** — Lists step IDs to run concurrently. Results collected before next sequential step.
-- **loop** — Repeats with `max` iterations. Exits early if output contains `until` string.
+- **loop** — Repeats with `max` iterations. Exits early if output contains `until` string. Optional `gate` command enforces quality after each iteration.
+- **loop.gate** — Shell command run after each loop iteration. Exit 0 = keep changes and commit. Non-zero = revert changes via `git checkout`. 3 consecutive gate failures trigger stuck detection and stop the loop.
 - **branch** — Routes execution conditionally. Both `then` and `else` reference step `id`s.
 
 ## Minimal Example
@@ -57,6 +61,35 @@ steps:
       Summary: ${{steps.summarize.output}}
       Original: ${{input.document}}
 ```
+
+## Command + Gate Example
+
+```yaml
+name: lint-and-fix
+description: Deterministic lint loop with gate enforcement
+steps:
+  - id: baseline
+    command: "eslint src/ 2>&1 || true"
+
+  - id: fix
+    model: smart
+    prompt: |
+      Lint output: {{baseline}}
+      Fix ONE group of related issues.
+    loop:
+      max: 10
+      until: "exit code: 0"
+      gate: "eslint src/"
+
+  - id: report
+    command: "echo 'Lint session complete'"
+```
+
+Key behaviors:
+- `command` steps run shell commands directly — no LLM tokens spent.
+- `gate` runs after each loop iteration. Exit 0 keeps changes, non-zero reverts via git.
+- 3 consecutive gate failures stop the loop (stuck detection).
+- Command output includes `exit code: N` for downstream branching.
 
 ## Tips
 

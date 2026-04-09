@@ -1,9 +1,12 @@
 package engine
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -174,8 +177,8 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 			continue
 		}
 
-		// Skip empty steps
-		if step.Prompt == "" {
+		// Skip empty steps (no prompt, no command)
+		if step.Prompt == "" && step.Command == "" {
 			i++
 			continue
 		}
@@ -247,9 +250,66 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	}, stepErr
 }
 
+// runCommand executes a shell command and returns its combined output.
+func (e *Engine) runCommand(ctx context.Context, command string) (string, int, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Dir = e.repoRoot
+
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return "", 1, fmt.Errorf("command execution failed: %w", err)
+		}
+	}
+	return out.String(), exitCode, nil
+}
+
 // runStep executes a single step and records it in the database.
 func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, string, error) {
 	*iterNum++
+
+	// Command step: run shell command directly, no LLM cost.
+	if step.Command != "" {
+		command := Interpolate(step.Command, input, outputs)
+		fmt.Printf("--- %s (step %d, command) ---\n", step.ID, *iterNum)
+
+		dbStep := &lib.Step{
+			SessionID: session.ID,
+			Iteration: *iterNum,
+			Status:    "running",
+			AgentName: "shell",
+		}
+		e.db.CreateStep(dbStep)
+
+		output, exitCode, err := e.runCommand(ctx, command)
+		if err != nil {
+			dbStep.Status = "failed"
+			dbStep.ChangeSummary = err.Error()
+			e.db.UpdateStep(dbStep)
+			return 0, "", fmt.Errorf("step %s command failed: %w", step.ID, err)
+		}
+
+		// Include exit code in output so downstream steps can check it
+		fullOutput := fmt.Sprintf("%s\nexit code: %d", strings.TrimRight(output, "\n"), exitCode)
+
+		dbStep.Status = "kept"
+		dbStep.Kept = true
+		dbStep.ChangeSummary = runners.TruncStr(fullOutput, 200)
+		e.db.UpdateStep(dbStep)
+		fmt.Printf("  done (exit %d)\n\n", exitCode)
+
+		return 0, fullOutput, nil
+	}
+
+	// Prompt step: run through LLM runner.
 	fmt.Printf("--- %s (step %d) ---\n", step.ID, *iterNum)
 
 	prompt := Interpolate(step.Prompt, input, outputs)
@@ -281,6 +341,7 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 // runLoop executes a step repeatedly until the until-string is found or max iterations reached.
 // Returns an error if all iterations fail. Respects budget via overBudget, reports cost via addCost.
+// If a gate command is set, it runs after each iteration — non-zero exit reverts the iteration.
 func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int, overBudget func() bool, addCost func(float64)) (float64, error) {
 	var totalCost float64
 	maxIter := step.Loop.Max
@@ -290,6 +351,7 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 
 	succeeded := false
 	consecutiveFailures := 0
+	stuckDetected := false
 
 	for attempt := 1; attempt <= maxIter; attempt++ {
 		if ctx.Err() != nil {
@@ -322,23 +384,77 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			continue
 		}
 
+		iterCost := result.CostUSD
+
+		// Gate check: run shell command, revert if non-zero exit.
+		if step.Loop.Gate != "" {
+			gateCmd := Interpolate(step.Loop.Gate, input, outputs)
+			fmt.Printf("  gate: %s\n", runners.TruncStr(gateCmd, 80))
+			_, exitCode, gateErr := e.runCommand(ctx, gateCmd)
+
+			// Distinguish "gate couldn't execute" from "gate ran and returned non-zero".
+			// A startup/context error is fatal — the gate never validated anything.
+			if gateErr != nil {
+				dbStep.Status = "failed"
+				dbStep.CostUSD = iterCost
+				dbStep.ChangeSummary = fmt.Sprintf("gate error: %s", gateErr)
+				e.db.UpdateStep(dbStep)
+				totalCost += iterCost
+				if addCost != nil {
+					addCost(iterCost)
+				}
+				return totalCost, fmt.Errorf("loop %s: gate command failed: %w", step.ID, gateErr)
+			}
+
+			if exitCode != 0 {
+				reason := fmt.Sprintf("gate failed (exit %d)", exitCode)
+				fmt.Printf("  → %s, reverting iteration\n\n", reason)
+				if revertErr := e.git.RevertAll(); revertErr != nil {
+					fmt.Printf("  → revert failed: %s\n", revertErr)
+					dbStep.Status = "failed"
+					dbStep.ChangeSummary = fmt.Sprintf("%s; revert failed: %s", reason, revertErr)
+					e.db.UpdateStep(dbStep)
+					return totalCost, fmt.Errorf("loop %s: revert failed after gate failure: %w", step.ID, revertErr)
+				}
+				dbStep.Status = "reverted"
+				dbStep.Kept = false
+				dbStep.CostUSD = iterCost
+				dbStep.ChangeSummary = reason
+				e.db.UpdateStep(dbStep)
+				consecutiveFailures++
+				totalCost += iterCost
+				if addCost != nil {
+					addCost(iterCost)
+				}
+				if consecutiveFailures >= 3 {
+					fmt.Printf("  → 3 consecutive gate failures, stopping loop\n\n")
+					stuckDetected = true
+					break
+				}
+				continue
+			}
+			fmt.Printf("  → gate passed\n")
+		}
+
 		consecutiveFailures = 0
 		succeeded = true
-		totalCost += result.CostUSD
+		totalCost += iterCost
 		if addCost != nil {
-			addCost(result.CostUSD)
+			addCost(iterCost)
 		}
 		dbStep.Status = "kept"
 		dbStep.Kept = true
-		dbStep.CostUSD = result.CostUSD
+		dbStep.CostUSD = iterCost
 		dbStep.ChangeSummary = runners.TruncStr(result.Output, 200)
 		e.db.UpdateStep(dbStep)
 
 		outputs[step.ID] = result.Output
-		fmt.Printf("  done ($%.4f)\n\n", result.CostUSD)
+		fmt.Printf("  done ($%.4f)\n\n", iterCost)
 
-		// Commit after each loop iteration
-		e.git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt))
+		// Commit after each successful loop iteration
+		if commitErr := e.git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt)); commitErr != nil {
+			fmt.Printf("  → commit failed: %s\n", commitErr)
+		}
 
 		// Check until condition
 		if step.Loop.Until != "" && strings.Contains(strings.ToUpper(result.Output), strings.ToUpper(step.Loop.Until)) {
@@ -348,6 +464,9 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 	}
 
 	if !succeeded {
+		if stuckDetected {
+			return totalCost, fmt.Errorf("loop %s: stuck after %d consecutive gate failures (ran %d of %d iterations)", step.ID, consecutiveFailures, consecutiveFailures, maxIter)
+		}
 		return totalCost, fmt.Errorf("loop %s: all %d iterations failed", step.ID, maxIter)
 	}
 

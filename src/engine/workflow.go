@@ -30,6 +30,7 @@ type WfStep struct {
 	ID       string   `yaml:"id"`
 	Model    string   `yaml:"model"`
 	Prompt   string   `yaml:"prompt"`
+	Command  string   `yaml:"command"`
 	Parallel []string `yaml:"parallel"`
 	Loop     *Loop    `yaml:"loop"`
 	Branch   []Branch `yaml:"branch"`
@@ -39,6 +40,7 @@ type WfStep struct {
 type Loop struct {
 	Max   int    `yaml:"max"`
 	Until string `yaml:"until"`
+	Gate  string `yaml:"gate"`
 }
 
 // Branch routes execution based on step output.
@@ -93,8 +95,14 @@ func validate(wf *Workflow) error {
 		ids[s.ID] = true
 
 		// Validate step mode mutual exclusion
-		if len(s.Parallel) > 0 && s.Prompt != "" {
-			return fmt.Errorf("step %q has both parallel and prompt — these are mutually exclusive", s.ID)
+		if s.Command != "" && s.Prompt != "" {
+			return fmt.Errorf("step %q has both command and prompt — these are mutually exclusive", s.ID)
+		}
+		if len(s.Parallel) > 0 && (s.Prompt != "" || s.Command != "") {
+			return fmt.Errorf("step %q has both parallel and prompt/command — these are mutually exclusive", s.ID)
+		}
+		if s.Command != "" && s.Loop != nil {
+			return fmt.Errorf("step %q has both command and loop — these are mutually exclusive", s.ID)
 		}
 		if len(s.Parallel) > 0 && s.Loop != nil {
 			return fmt.Errorf("step %q has both parallel and loop — these are mutually exclusive", s.ID)

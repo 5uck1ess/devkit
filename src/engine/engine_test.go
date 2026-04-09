@@ -226,6 +226,23 @@ steps:
     loop: {max: 3, until: DONE}
   - id: b
     prompt: "other"`, "mutually exclusive"},
+		{"command with prompt", `name: T
+steps:
+  - id: a
+    command: "echo hi"
+    prompt: "do thing"`, "mutually exclusive"},
+		{"parallel with command", `name: T
+steps:
+  - id: a
+    command: "echo hi"
+    parallel: [b]
+  - id: b
+    prompt: "other"`, "mutually exclusive"},
+		{"command with loop", `name: T
+steps:
+  - id: a
+    command: "echo hi"
+    loop: {max: 3, until: DONE}`, "mutually exclusive"},
 	}
 
 	for _, tt := range tests {
@@ -783,6 +800,306 @@ func TestRunWorkflowBudgetInLoop(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Parse real workflow files
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Command step tests
+// ---------------------------------------------------------------------------
+
+func TestRunWorkflowCommandStep(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// Runner should NOT be called for command steps
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "check", Command: "echo hello world"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+
+	output, ok := res.Outputs["check"]
+	if !ok {
+		t.Fatal("command step output missing")
+	}
+	if !strings.Contains(output, "hello world") {
+		t.Errorf("output = %q, want it to contain 'hello world'", output)
+	}
+	if !strings.Contains(output, "exit code: 0") {
+		t.Errorf("output should contain exit code, got %q", output)
+	}
+	// No LLM cost for command steps
+	if res.TotalUSD != 0 {
+		t.Errorf("total cost = %f, want 0 for command-only workflow", res.TotalUSD)
+	}
+	// Runner should not have been called
+	if runner.callIdx != 0 {
+		t.Errorf("runner called %d times, want 0 for command step", runner.callIdx)
+	}
+}
+
+func TestRunWorkflowCommandInterpolation(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "greet", Command: "echo {{input}}"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "howdy"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if !strings.Contains(res.Outputs["greet"], "howdy") {
+		t.Errorf("input not interpolated in command output: %q", res.Outputs["greet"])
+	}
+}
+
+func TestRunWorkflowCommandChainedWithPrompt(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner([]runners.RunResult{
+		result("analyzed: found 3 issues"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "lint", Command: "echo 'error: unused var x'"},
+			{ID: "fix", Model: "smart", Prompt: "Fix these issues: {{lint}}"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+
+	// Command output should be interpolated into the prompt
+	if !strings.Contains(runner.prompts[0], "unused var x") {
+		t.Errorf("command output not interpolated into prompt: %q", runner.prompts[0])
+	}
+	// Only the prompt step should cost money
+	if res.TotalUSD != 0.01 {
+		t.Errorf("total cost = %f, want 0.01", res.TotalUSD)
+	}
+}
+
+func TestRunWorkflowCommandNonZeroExit(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fail", Command: "echo 'errors found'; exit 1"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+
+	// Non-zero exit should NOT be a fatal error — output is still captured
+	output := res.Outputs["fail"]
+	if !strings.Contains(output, "errors found") {
+		t.Errorf("output missing, got %q", output)
+	}
+	if !strings.Contains(output, "exit code: 1") {
+		t.Errorf("exit code not captured, got %q", output)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Gate tests
+// ---------------------------------------------------------------------------
+
+func TestRunWorkflowLoopGatePass(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner([]runners.RunResult{
+		result("fixed something ALL_DONE"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{
+				Max:   5,
+				Until: "ALL_DONE",
+				Gate:  "true", // always passes
+			}},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	// Gate passes, until found on first iteration → 1 call
+	if runner.callIdx != 1 {
+		t.Errorf("runner called %d times, want 1", runner.callIdx)
+	}
+	if len(res.Steps) == 0 {
+		t.Fatal("expected at least one step")
+	}
+	if res.Steps[0].Status != "kept" {
+		t.Errorf("step status = %q, want kept", res.Steps[0].Status)
+	}
+}
+
+func TestRunWorkflowLoopGateFail(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// 3 attempts, all gate-fail, then stuck detection kicks in
+	runner := newMockRunner([]runners.RunResult{
+		result("attempt 1"),
+		result("attempt 2"),
+		result("attempt 3"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{
+				Max:   10,
+				Until: "DONE",
+				Gate:  "false", // always fails
+			}},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	// All iterations reverted → all failed
+	if err == nil {
+		t.Fatal("expected error when all iterations are gate-reverted")
+	}
+	// Should have stopped after 3 consecutive failures
+	if runner.callIdx != 3 {
+		t.Errorf("runner called %d times, want 3 (stuck detection)", runner.callIdx)
+	}
+}
+
+func TestRunWorkflowLoopGateRecovery(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	// First attempt fails gate, second passes and hits until
+	runner := newMockRunner([]runners.RunResult{
+		result("attempt 1"),
+		result("attempt 2 ALL_DONE"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// Gate: exit 1 on first call, exit 0 on second.
+	// Counter file must be OUTSIDE the repo so git revert doesn't reset it.
+	counterDir := t.TempDir()
+	counterFile := filepath.Join(counterDir, "gate-counter")
+	if err := os.WriteFile(counterFile, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateScript := fmt.Sprintf(
+		`count=$(cat %q); count=$((count + 1)); printf '%%s' "$count" > %q; test "$count" -ge 2`,
+		counterFile, counterFile,
+	)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "fix", Model: "smart", Prompt: "Fix", Loop: &Loop{
+				Max:   5,
+				Until: "ALL_DONE",
+				Gate:  gateScript,
+			}},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	// 2 runner calls: first reverted, second kept
+	if runner.callIdx != 2 {
+		t.Errorf("runner called %d times, want 2", runner.callIdx)
+	}
+
+	// Check that we have both reverted and kept steps
+	var reverted, kept int
+	for _, s := range res.Steps {
+		switch s.Status {
+		case "reverted":
+			reverted++
+		case "kept":
+			kept++
+		}
+	}
+	if reverted != 1 {
+		t.Errorf("reverted steps = %d, want 1", reverted)
+	}
+	if kept != 1 {
+		t.Errorf("kept steps = %d, want 1", kept)
+	}
+}
+
+func TestParseCommandStep(t *testing.T) {
+	yaml := `
+name: CmdTest
+description: test
+steps:
+  - id: run
+    command: "echo hello"
+`
+	wf, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if wf.Steps[0].Command != "echo hello" {
+		t.Errorf("command = %q, want 'echo hello'", wf.Steps[0].Command)
+	}
+}
+
+func TestParseLoopGate(t *testing.T) {
+	yaml := `
+name: GateTest
+description: test
+steps:
+  - id: fix
+    model: smart
+    prompt: "Fix"
+    loop:
+      max: 5
+      until: DONE
+      gate: "npm test"
+`
+	wf, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if wf.Steps[0].Loop.Gate != "npm test" {
+		t.Errorf("gate = %q, want 'npm test'", wf.Steps[0].Loop.Gate)
+	}
+}
 
 func TestParseRealWorkflows(t *testing.T) {
 	workflowDir := filepath.Join("..", "..", "workflows")
