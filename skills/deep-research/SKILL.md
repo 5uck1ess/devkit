@@ -5,7 +5,7 @@ description: Deep research with Analysis of Competing Hypotheses — use when as
 
 # Deep Research
 
-ACH-enhanced deterministic research: clarify → perspectives → decompose → search → extract claims → hypotheses → disconfirm → evidence matrix → self-critique → synthesize.
+ACH-enhanced deterministic research: clarify → perspectives → decompose → parallel search → extract claims → hypotheses → disconfirm → evidence matrix (with sensitivity check) → self-critique → synthesize.
 
 Costs more tokens (~400k budget) but produces higher-confidence results by actively trying to disprove answers.
 
@@ -30,10 +30,9 @@ If `devkit workflow` is not available, follow these steps manually:
 5. **Extract claims** — Fetch top 5-8 URLs via Jina Reader; extract atomic claims (3-8 per source); do NOT carry raw content forward
 6. **Hypotheses** — Generate 2-4 competing hypotheses; include at least one contrarian; each must be testable
 7. **Directed disconfirmation** — For EACH hypothesis, search for evidence that DISPROVES it; this is the critical ACH step
-8. **Evidence matrix** — Rows = claims, columns = hypotheses; mark CC/C/N/I/II; score by FEWEST inconsistencies (not most consistencies)
-9. **Sensitivity check** — Identify linchpin evidence; what single fact, if wrong, changes the conclusion?
-10. **Self-critique** — Did you genuinely try to disprove? Missed perspectives? Over-weighting a source? One more search round if gaps found (loop max 2)
-11. **Synthesize** — Direct answer with confidence (HIGH/MEDIUM/LOW) → hypotheses evaluated → evidence matrix → key findings → sensitivity analysis → recommendation
+8. **Evidence matrix + sensitivity check** — Rows = claims, columns = hypotheses; mark CC/C/N/I/II; score by FEWEST inconsistencies (not most consistencies); identify linchpin evidence — what single fact, if wrong, changes the conclusion?
+9. **Self-critique** — Did you genuinely try to disprove? Missed perspectives? Over-weighting a source? One more search round if gaps found (loop max 2)
+10. **Synthesize** — Direct answer with confidence (HIGH/MEDIUM/LOW) → hypotheses evaluated → evidence matrix → key findings → sensitivity analysis → recommendation
 
 ## Rules
 
@@ -44,4 +43,5 @@ If `devkit workflow` is not available, follow these steps manually:
 - Sensitivity check is mandatory — know how fragile your conclusion is
 - Self-critique before output — catch your own biases
 - Cite everything — every claim links to its source
+- Confidence calibration — HIGH/MEDIUM/LOW based on evidence robustness, not gut feel
 - Be honest about uncertainty — "I don't know" with good reasoning beats a confident wrong answer

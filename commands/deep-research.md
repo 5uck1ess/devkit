@@ -18,7 +18,7 @@ Use regular `/devkit:research` for quick lookups. Use this when:
 devkit workflow run deep-research "{input}"
 ```
 
+If `devkit workflow` is not available, activate the `/devkit:deep-research` skill which contains a condensed fallback for manual execution.
+
 The YAML workflow (`workflows/deep-research.yml`) enforces the full ACH sequence deterministically:
 clarify → perspectives → decompose → parallel search → extract claims → hypotheses → disconfirm → evidence matrix → self-critique → synthesize.
-
-The `deep-research` skill (`/devkit:deep-research`) contains a condensed fallback for environments without the Go engine.

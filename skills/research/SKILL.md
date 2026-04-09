@@ -5,7 +5,7 @@ description: Research workflow — use when asked to research a topic, investiga
 
 # Research
 
-Deterministic research workflow: clarify → decompose → parallel search → corroborate → synthesize.
+Deterministic research workflow: clarify → decompose → parallel search → summarize → follow-up → synthesize.
 
 ## Invoke
 
@@ -19,20 +19,21 @@ The YAML workflow (`workflows/research.yml`) enforces the step sequence determin
 
 ## Fallback (no engine)
 
-If `devkit workflow` is not available, follow these steps manually:
+If `devkit workflow` is not available, follow these steps manually. Token budget: ~200k. Early exit if first search pass clearly answers the question.
 
 1. **Clarify** — Use `AskUserQuestion` to sharpen the question before searching
 2. **Decompose** — Break into 3-5 sub-questions with explicit retrieval goals; include at least one disconfirming query
 3. **Search** — Launch searches in parallel using the `researcher` agent (max 3); collect titles, URLs, snippets
 4. **Summarize** — Fetch top URLs via Jina Reader (`WebFetch https://r.jina.ai/{url}`); extract 3-5 claims per source immediately; do NOT carry raw content forward
 5. **Corroborate** — Mark each claim CONFIRMED (2+ sources) / UNCORROBORATED (1 source) / CONTESTED (sources disagree)
-6. **Escalation check** — If 3+ CONTESTED claims or high-stakes domain, ask the user to upgrade to `/devkit:deep-research`. Never auto-escalate.
+6. **Escalation check** — Ask the user to upgrade to `/devkit:deep-research` if ANY: 3+ CONTESTED claims, high-stakes domain, user expressed uncertainty, or most claims UNCORROBORATED. Never auto-escalate.
 7. **Follow-up** — For UNCORROBORATED/CONTESTED claims, run one targeted search to resolve (loop max 2)
 8. **Synthesize** — Direct answer → key findings with corroboration status → tradeoffs → open questions → recommendation with confidence level
 
 ## Rules
 
 - Clarify before searching — don't waste searches on a vague question
+- Decompose with explicit goals — no vague "broad search"
 - Summarize immediately — never carry raw fetched content forward
 - Track corroboration — every claim notes how many sources support it
 - Cite sources — every finding links to where it came from
