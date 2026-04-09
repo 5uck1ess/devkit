@@ -307,7 +307,7 @@ Self-Improvement (self:* commands)
 ```
 devkit/
 ├── commands/          # 24 slash commands
-├── skills/            # 18 context-activated skills
+├── skills/            # 19 context-activated skills
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 10 hooks (safety, security, quality gates)
 ├── workflows/         # 18 YAML workflow definitions
