@@ -4,7 +4,7 @@ description: Incremental migration loop — migrate code one piece at a time wit
 
 # Self-Migrate
 
-Deterministic migration loop: run tests → migrate one piece → gate check → repeat until done.
+Deterministic migration loop: run tests → migrate one piece → gate check → repeat until gate exits 0.
 
 ## Invoke
 
@@ -15,7 +15,7 @@ devkit workflow run self-migrate "{test_command}"
 If `devkit workflow` is not available, follow this manually:
 
 1. **Baseline** — Run tests to confirm green starting point
-2. **Migrate loop** — Migrate one file or closely-related group per iteration; update imports/references; re-run tests; stop when all migrated (max 20 iterations)
+2. **Migrate loop** — Migrate one file or closely-related group per iteration; update imports/references; re-run gate command after each step (max 20 iterations). To detect migration completeness, use a gate command that exits non-zero until all files are converted (e.g., `npm test && ! grep -r 'require(' src/`).
 3. **Verify** — Run tests one final time
 4. **Summary** — Report which files were migrated and what remains
 

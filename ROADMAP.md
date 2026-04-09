@@ -12,7 +12,7 @@
 - **Early-exit conditions** — Self-improvement loops stop when goal is met, not just at max iterations
 - **Token budget guidance** — Per-command budget recommendations with model downgrade patterns
 - **RTK token optimization** — Optional PreToolUse hook compresses Bash output via RTK (60-90% savings)
-- **15 YAML workflows** — Portable workflow definitions (feature, bugfix, refactor, research, deep-research, autoloop, self-*, tri-*)
+- **16 YAML workflows** — Portable workflow definitions (feature, bugfix, refactor, research, deep-research, autoloop, self-*, tri-*)
 - **Separate marketplace** — Multi-plugin marketplace at `5uck1ess/marketplace`
 - **Companion ecosystem** — Evaluated official marketplace, documented holistic setup with 7 complementary plugins
 - **Hypothesis-driven perf** — Evidence gathering, ranked hypotheses, one-at-a-time testing replaces blind benchmark loops
@@ -34,6 +34,6 @@ Items below were on the roadmap but determined to be unnecessary — either alre
 | Stop hook redesign | Still fires every turn, but exits early with `approve` when no files are changed — near-instant on clean trees, so the performance concern is moot. Revisit only if it causes measurable latency. |
 | Cost event hooks | Budget enforcement already exists in the Go engine via `overBudget()` + `addCost()` callbacks with hard limits |
 | Execution registry | Step tracking already handled by SQLite via `lib.DB` with status, cost, and timing per step |
-| Preset library | The 15 YAML workflows and 18 skills already serve this purpose |
+| Preset library | The 16 YAML workflows and 18 skills already serve this purpose |
 | Framework-specific review checklists | `lang-review.sh` covers language-level patterns; framework-specific rules are better added per-project via hookify |
 | Conditional hook firing | Hooks already self-filter internally (extension checks, changed-file checks); a generic condition system adds complexity for no current need |

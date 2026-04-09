@@ -4,7 +4,7 @@ description: Profile performance, optimize hot paths deterministically, verify i
 
 # Self-Perf
 
-Deterministic performance optimization: benchmark → optimize → gate check → repeat until target met.
+Deterministic performance optimization: benchmark → optimize → gate check → repeat until benchmark exits 0.
 
 ## Invoke
 
@@ -21,7 +21,6 @@ If `devkit workflow` is not available, follow this manually:
 
 ## Rules
 
+- The benchmark command must exit non-zero when the target is not met (wrap bare benchmarks in a threshold-checking script)
 - One optimization at a time — no speculative refactoring
 - Only change what impacts the metric
-- Run benchmarks 3x minimum for stable baselines when possible
-- Revert on regression or no improvement

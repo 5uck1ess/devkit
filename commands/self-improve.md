@@ -24,4 +24,4 @@ If `devkit workflow` is not available, follow this manually:
 - Only change what's needed to improve the metric
 - Don't refactor unrelated code
 - One group of related fixes per iteration
-- Discard on regression
+- The metric command must exit non-zero when improvement is still needed
