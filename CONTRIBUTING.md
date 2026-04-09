@@ -1,19 +1,26 @@
 # Contributing to Devkit
 
-## Adding a Slash Command (deterministic workflow)
+## Adding a Workflow
 
-Slash commands appear in tab-completion and run step-by-step workflows.
+Most command logic lives in YAML workflows executed by the Go engine. Only 8 slash commands remain as tab-completable entry points.
+
+1. Create `workflows/my-workflow.yml` with steps, model assignments, and loop/gate definitions
+2. Test with `devkit workflow run my-workflow "input"`
+3. Optionally add a context-activated skill in `skills/` to auto-trigger it
+
+See `skills/creating-workflows/SKILL.md` for YAML schema reference.
+
+### Adding a Slash Command (rare — only for top-level entry points)
+
+Only add a command if it needs tab-completion. Most workflows are invoked via `devkit workflow run` or context-activated skills.
 
 1. Create `commands/my-command.md` with YAML frontmatter:
    ```markdown
    ---
    description: What this command does.
    ---
-   # Command Title
-   Step-by-step workflow with numbered steps.
+   Run `devkit workflow run my-workflow` to execute.
    ```
-2. Include Budget & Early Exit section if the command loops
-3. Include `[PARALLEL]` markers if steps run concurrently
 
 The command name is derived from the filename: `commands/my-command.md` becomes `/devkit:my-command`.
 

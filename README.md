@@ -306,7 +306,7 @@ Self-Improvement (self:* commands)
 
 ```
 devkit/
-├── commands/          # 24 slash commands
+├── commands/          # 8 slash commands (tab-completable entry points)
 ├── skills/            # 19 context-activated skills
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 10 hooks (safety, security, quality gates)
