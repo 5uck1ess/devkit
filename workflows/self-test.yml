@@ -1,29 +1,29 @@
 name: Self-Test
-description: Run tests, fix failures, repeat until all pass
+description: Run tests, fix failures deterministically, repeat until all pass
 
 steps:
   - id: baseline
-    model: fast
-    prompt: |
-      Run the project's test suite and report results.
-      {{input}}
-
-      Show which tests pass, which fail, and the error messages.
+    command: "{{input}} 2>&1 || true"
 
   - id: fix
     model: smart
     prompt: |
-      Test results:
+      Test output:
 
       {{baseline}}
 
       Fix the failing tests. The bug might be in the test or the code under test.
       Make targeted changes — don't refactor unrelated code.
+      ONE group of related fixes at a time.
 
-      Run tests again after fixing. If all pass, say "ALL_PASSING".
+      After fixing, say DONE.
     loop:
       max: 8
-      until: ALL_PASSING
+      until: "exit code: 0"
+      gate: "{{input}}"
+
+  - id: verify
+    command: "{{input}} 2>&1 || true"
 
   - id: summary
     model: fast
@@ -34,6 +34,6 @@ steps:
       {{baseline}}
 
       Final state:
-      {{fix}}
+      {{verify}}
 
       Summarize what was fixed and how many iterations it took.

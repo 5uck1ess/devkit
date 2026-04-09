@@ -1,0 +1,40 @@
+name: Self-Migrate
+description: Incremental migration loop — migrate code one piece at a time with tests as safety gate
+
+steps:
+  - id: baseline
+    command: "{{input}} 2>&1 || true"
+
+  - id: migrate
+    model: smart
+    prompt: |
+      Test baseline:
+
+      {{baseline}}
+
+      Identify the next file or component to migrate.
+      Perform ONE migration step (one file or closely-related group).
+      Update imports and references in the same change.
+      Preserve existing behavior — migration, not refactoring.
+
+      After making changes, say DONE.
+    loop:
+      max: 20
+      until: "exit code: 0"
+      gate: "{{input}}"
+
+  - id: verify
+    command: "{{input}} 2>&1 || true"
+
+  - id: summary
+    model: fast
+    prompt: |
+      Migration session complete.
+
+      Starting state:
+      {{baseline}}
+
+      Final state:
+      {{verify}}
+
+      Report which files were migrated and what remains.
