@@ -13,10 +13,11 @@
 set -uo pipefail
 
 # Safety net: Stop hooks MUST return JSON. If anything crashes, approve rather than hang.
-trap 'jq -n "{ decision: \"approve\" }" 2>/dev/null || echo "{\"decision\":\"approve\"}"; exit 0' ERR
+# Log to stderr so failures are visible in debug output.
+trap 'printf "stop-gate: ERR trap fired — approving to avoid hang\n" >&2; jq -n "{ decision: \"approve\" }" 2>/dev/null || echo "{\"decision\":\"approve\"}"; exit 0' ERR
 
 INPUT=$(cat || true)
-[ -z "$INPUT" ] && { jq -n '{ decision: "approve" }'; exit 0; }
+[[ -z "$INPUT" ]] && { jq -n '{ decision: "approve" }'; exit 0; }
 
 TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript // empty' 2>/dev/null || true)
 
@@ -27,7 +28,7 @@ CHANGED_FILES=$(cd "$REPO_ROOT" && {
   git diff --name-only 2>/dev/null
 } | sort -u)
 
-if [ -z "$CHANGED_FILES" ]; then
+if [[ -z "$CHANGED_FILES" ]]; then
   jq -n '{ decision: "approve" }'
   exit 0
 fi
@@ -39,9 +40,9 @@ fi
 # Merge conflict markers
 CONFLICT_PATTERN='<''<<''<<''<< '
 CONFLICTS=$(echo "$CHANGED_FILES" | while IFS= read -r f; do
-  [ -f "$REPO_ROOT/$f" ] && grep -l -- "$CONFLICT_PATTERN" "$REPO_ROOT/$f" 2>/dev/null || true
+  [[ -f "$REPO_ROOT/$f" ]] && grep -l -- "$CONFLICT_PATTERN" "$REPO_ROOT/$f" 2>/dev/null || true
 done | head -3)
-if [ -n "$CONFLICTS" ]; then
+if [[ -n "$CONFLICTS" ]]; then
   jq -n --arg files "$CONFLICTS" '{
     decision: "block",
     reason: ("Merge conflict markers found in: " + $files)
@@ -81,7 +82,7 @@ $HAS_SQL && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS sql"
 DOMAINS=$(echo "$DOMAINS" | xargs)
 
 # Skip cross-domain check if transcript is empty (no data to verify against)
-if [ "$CODE_DOMAINS" -gt 1 ] && [ -n "$TRANSCRIPT" ]; then
+if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]]; then
   MISSING=""
 
   $HAS_GO && ! echo "$TRANSCRIPT" | grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' && MISSING="$MISSING go"
@@ -91,7 +92,7 @@ if [ "$CODE_DOMAINS" -gt 1 ] && [ -n "$TRANSCRIPT" ]; then
   $HAS_SQL && ! echo "$TRANSCRIPT" | grep -qiE '(migrate|migration.*up|ALL_PASSING)' && MISSING="$MISSING sql"
 
   MISSING=$(echo "$MISSING" | xargs)
-  if [ -n "$MISSING" ]; then
+  if [[ -n "$MISSING" ]]; then
     jq -n --arg domains "$DOMAINS" --arg missing "$MISSING" '{
       decision: "block",
       reason: ("Cross-domain changes (touched: " + $domains + "). Missing test evidence for: " + $missing)
@@ -108,12 +109,12 @@ fi
 if $HAS_GO && command -v go >/dev/null 2>&1; then
   GO_MOD_DIR=""
   for candidate in "$REPO_ROOT" "$REPO_ROOT/src" "$REPO_ROOT/cmd"; do
-    [ -f "$candidate/go.mod" ] && GO_MOD_DIR="$candidate" && break
+    [[ -f "$candidate/go.mod" ]] && GO_MOD_DIR="$candidate" && break
   done
 
-  if [ -n "$GO_MOD_DIR" ]; then
+  if [[ -n "$GO_MOD_DIR" ]]; then
     VET_OUTPUT=$(cd "$GO_MOD_DIR" && go vet ./... 2>&1) || true
-    if [ -n "$VET_OUTPUT" ]; then
+    if [[ -n "$VET_OUTPUT" ]]; then
       jq -n --arg msg "go vet found issues:\n$VET_OUTPUT" '{ decision: "block", reason: $msg }'
       exit 0
     fi
@@ -123,15 +124,15 @@ if $HAS_GO && command -v go >/dev/null 2>&1; then
     GO_PKGS=$(echo "$CHANGED_FILES" | grep '\.go$' | while IFS= read -r f; do
       # Strip the module-relative prefix and add ./
       pkg=$(dirname "$f")
-      if [ -n "$MOD_REL" ]; then
+      if [[ -n "$MOD_REL" ]]; then
         pkg=$(echo "$pkg" | sed "s|^$MOD_REL/||")
       fi
       echo "./$pkg"
     done | sort -u | tr '\n' ' ')
 
-    if [ -n "$GO_PKGS" ]; then
+    if [[ -n "$GO_PKGS" ]]; then
       RACE_OUTPUT=$(cd "$GO_MOD_DIR" && perl -e 'alarm 60; exec @ARGV' -- go test -race -count=1 $GO_PKGS 2>&1) || RACE_EXIT=$?
-      if [ "${RACE_EXIT:-0}" -ne 0 ]; then
+      if [[ "${RACE_EXIT:-0}" -ne 0 ]]; then
         if echo "$RACE_OUTPUT" | grep -qE 'DATA RACE|race detected'; then
           RACE_LINES=$(echo "$RACE_OUTPUT" | grep -A5 'DATA RACE' | head -20)
           jq -n --arg msg "Race condition detected:\n$RACE_LINES" '{ decision: "block", reason: $msg }'
@@ -144,7 +145,7 @@ if $HAS_GO && command -v go >/dev/null 2>&1; then
 fi
 
 # --- Rust ---
-if $HAS_RUST && command -v cargo >/dev/null 2>&1 && [ -f "$REPO_ROOT/Cargo.toml" ]; then
+if $HAS_RUST && command -v cargo >/dev/null 2>&1 && [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
   CLIPPY_OUTPUT=$(cd "$REPO_ROOT" && cargo clippy --quiet 2>&1) || true
   if echo "$CLIPPY_OUTPUT" | grep -qE 'error\['; then
     CLIPPY_ERRORS=$(echo "$CLIPPY_OUTPUT" | grep -E 'error\[' | head -5)
@@ -159,11 +160,11 @@ fi
 # not block the agent (this caused infinite loops in large TS codebases).
 # tsc error format: "path/file.ts(line,col): error TS..." — we extract the
 # path before "(" and compare against changed files for exact matching.
-if $HAS_TS && [ -f "$REPO_ROOT/tsconfig.json" ] && command -v npx >/dev/null 2>&1; then
+if $HAS_TS && [[ -f "$REPO_ROOT/tsconfig.json" ]] && command -v npx >/dev/null 2>&1; then
   TS_FILES=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
   if [ -n "$TS_FILES" ]; then
     TSC_OUTPUT=$(cd "$REPO_ROOT" && npx tsc --noEmit 2>&1) || TSC_EXIT=$?
-    if [ "${TSC_EXIT:-0}" -ne 0 ]; then
+    if [[ "${TSC_EXIT:-0}" -ne 0 ]]; then
       # Extract error lines, then match only errors whose path (before the "(")
       # exactly matches a changed file. Avoids substring false positives like
       # "button.tsx" matching "icon-button.tsx".
@@ -182,7 +183,7 @@ fi
 # --- Python ---
 if $HAS_PYTHON && command -v ruff >/dev/null 2>&1; then
   PY_FILES=$(echo "$CHANGED_FILES" | grep '\.py$' || true)
-  if [ -n "$PY_FILES" ]; then
+  if [[ -n "$PY_FILES" ]]; then
     RUFF_OUTPUT=$(cd "$REPO_ROOT" && echo "$PY_FILES" | xargs ruff check 2>&1) || true
     if echo "$RUFF_OUTPUT" | grep -qE '^[^ ]+\.py:[0-9]+'; then
       RUFF_ERRORS=$(echo "$RUFF_OUTPUT" | head -5)
