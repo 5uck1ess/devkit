@@ -272,7 +272,7 @@ devkit status
 cd src && go test ./... -v
 ```
 
-100+ tests across 5 packages. All use mock runners — no API calls needed.
+140+ tests across 6 packages. All use mock runners — no API calls needed.
 
 ---
 

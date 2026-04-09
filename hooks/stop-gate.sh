@@ -168,7 +168,7 @@ if $HAS_TS && [ -f "$REPO_ROOT/tsconfig.json" ] && command -v npx >/dev/null 2>&
       # exactly matches a changed file. Avoids substring false positives like
       # "button.tsx" matching "icon-button.tsx".
       TSC_ERRORS=$(printf '%s\n' "$TSC_OUTPUT" | grep -E 'error TS' | while IFS= read -r line; do
-        err_path="${line%%\(*}"
+        err_path=$(printf '%s' "${line%%\(*}" | tr -d '\r')
         printf '%s\n' "$TS_FILES" | grep -qFx "$err_path" && printf '%s\n' "$line"
       done | head -5)
       if [ -n "$TSC_ERRORS" ]; then
