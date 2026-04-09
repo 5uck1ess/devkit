@@ -1,123 +1,29 @@
 ---
-description: Dispatch a task to all three agents (Claude, Codex, Gemini) in parallel and compare results. Claude uses native background agent, others via plugin or CLI.
+description: Dispatch a task to all available agents (Claude, Codex, Gemini) in parallel and compare results.
 ---
 
 # Triple-Agent Dispatch
 
-Send the same task to Claude, Codex, and Gemini in parallel. Compare outputs.
+Send an arbitrary task to 2-3 AI agents in parallel and compare their results.
 
-## Step 0: Harness Detection
-
-```bash
-if command -v devkit >/dev/null 2>&1; then
-  echo "Go harness detected — delegating to devkit dispatch for full output capture."
-  devkit dispatch {prompt}
-  exit 0
-fi
-```
-
-If the `devkit` binary is in PATH, delegate entirely to it. Only fall through to plugin-based steps if the harness is not installed.
-
-## When to use
-
-- Comparing approaches to a problem
-- Getting multiple implementation ideas
-- Validating a solution across models
-
-## Detect Available Agents
-
-Check for plugins first (preferred), then fall back to CLI:
-
-```bash
-# Plugin detection (preferred — structured job management)
-HAS_CODEX_PLUGIN=$(/codex:status >/dev/null 2>&1 && echo "yes" || echo "no")
-HAS_GEMINI_PLUGIN=$(/gemini:status >/dev/null 2>&1 && echo "yes" || echo "no")
-
-# CLI fallback detection
-HAS_CODEX_CLI=$(command -v codex && echo "yes" || echo "no")
-HAS_GEMINI_CLI=$(command -v gemini && echo "yes" || echo "no")
-```
-
-Run with whatever is available. Claude always runs. Prefer plugin over CLI.
-
-## Concurrency & Budget
-
-- **Concurrency limit:** Max 3 parallel agents.
-- **Token budget:** ~300k tokens across all agents.
-- **Rate limiting:** If API throttles, stagger agent launches with brief delays.
-
-## Execution (Hybrid, Graceful Degradation)
-
-**[PARALLEL]** Launch all available agents concurrently:
-
-**CRITICAL:** Pass the full prompt and any relevant context inline to each agent. Worktree-isolated agents cannot see the latest commits or local state.
-
-### Claude — always runs (native background agent)
-
-Spawn the `researcher` agent as a background task with the full prompt inline:
+## Invoke
 
 ```
-Task: {user's task — full prompt inlined here}
-Agent: researcher
+devkit workflow run tri-dispatch "{task_description}"
 ```
 
-<!-- The orchestrator MUST inline the complete task prompt. The agent runs in a worktree. -->
+The YAML workflow uses model tiers (smart/general/fast) for parallelism. The fallback below uses external agents (Claude/Codex/Gemini) — the richer path when the engine is unavailable.
 
-### Codex — if available
+If `devkit workflow` is not available, follow this manually:
 
-```
-/codex:rescue --effort high --background "$PROMPT"
-```
-
-Retrieve result with `/codex:result` when done. Omit `--model` to use the account default.
-
-### Gemini — if available
-
-**Plugin (preferred):**
-
-```
-/gemini:rescue --background "$PROMPT"
-```
-
-Retrieve result with `/gemini:result` when done. Omit `--model` to use the account default.
-
-**CLI fallback (only if plugin not installed):**
-
-```bash
-if [ "$HAS_GEMINI_CLI" = "yes" ]; then
-  gemini -p "$PROMPT" -y \
-    --output-format text > /tmp/tri-dispatch-gemini.txt 2>&1 &
-fi
-
-wait
-```
-
-## Output
-
-```
-## Triple Dispatch: {summary}
-
-### Claude (researcher agent)
-{agent result}
-
-### Codex
-{output}
-
-### Gemini
-{output}
-
-### Analysis
-- Where they agree: ...
-- Where they differ: ...
-- Recommended approach: ...
-```
+1. **Detect agents** — Check for Codex and Gemini availability. Claude always runs.
+2. **Dispatch in parallel** — Launch all available agents with the same prompt. Claude uses native background agent; others use plugin or CLI.
+3. **Collect results** — Wait for all agents to complete.
+4. **Compare** — Present results side by side. Highlight consensus and divergence.
 
 ## Rules
 
-- Claude always runs as native background agent for token efficiency
-- Codex and Gemini are optional — run if installed, skip gracefully if not
-- Report which agents participated (e.g., "2/3 agents" or "Claude only")
-- If only Claude is available, still provide the full report format
-- If one fails, report the others
-- Clean up temp files after
-- For file-modifying tasks, use Codex sandbox `full` instead of `read-only`
+- Claude always runs as native background agent
+- Codex and Gemini are optional — skip gracefully
+- Same prompt goes to all agents — no agent-specific modifications
+- Report which agents participated

@@ -1,0 +1,49 @@
+name: Project Audit
+description: Unified project health audit — detect ecosystem, audit deps, lint, security, report
+
+steps:
+  - id: detect
+    command: |
+      echo "go:$(test -f go.mod && echo yes || echo no)"
+      echo "node:$(test -f package.json && echo yes || echo no)"
+      echo "python:$(test -f requirements.txt -o -f pyproject.toml && echo yes || echo no)"
+      echo "rust:$(test -f Cargo.toml && echo yes || echo no)"
+
+  - id: deps
+    model: smart
+    prompt: |
+      Detected ecosystems: {{detect}}
+
+      Run dependency audit commands for each detected ecosystem:
+      - Node: npm audit --json
+      - Go: govulncheck ./...
+      - Python: pip-audit
+      - Rust: cargo audit
+
+      Report vulnerabilities, outdated packages, and license issues.
+
+  - id: lint
+    model: smart
+    prompt: |
+      Detected ecosystems: {{detect}}
+
+      Run linters for each detected ecosystem:
+      - Node: npx eslint . or npx tsc --noEmit
+      - Go: golangci-lint run
+      - Python: ruff check .
+      - Rust: cargo clippy
+
+      Report errors and warnings.
+
+  - id: report
+    model: fast
+    prompt: |
+      Compile audit report.
+
+      Ecosystem detection: {{detect}}
+      Dependencies: {{deps}}
+      Lint: {{lint}}
+
+      Score overall health (A-F) with breakdown by category.
+      Prioritize findings by severity.
+      Provide actionable recommendations.
