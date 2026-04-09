@@ -3,7 +3,7 @@
 ## Implemented
 
 - **24 slash commands** — Lifecycle workflows, self-improvement loops, multi-agent dispatch, project health audit, post-PR monitoring, AST repo mapping, autoresearch-inspired self-audit, autoloop, setup-rules
-- **18 context-activated skills** — 9 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, deep-research, scrape, autoloop, adr) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad)
+- **19 context-activated skills** — 9 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, deep-research, scrape, autoloop, adr) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad) + 1 orchestration (mega-pr)
 - **6 agents** — Scoped tool access, worktree isolation, model assignment
 - **10 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression)
 - **Graceful degradation** — tri:* commands work with 1-3 agents depending on installed CLIs
