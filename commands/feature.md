@@ -2,111 +2,34 @@
 description: Full lifecycle feature development — brainstorm, plan, implement, test, lint, review.
 ---
 
-# Feature Workflow
+# Feature
 
-Complete feature lifecycle: brainstorm → plan → implement → test → lint → review → report.
+Deterministic feature lifecycle: triage → brainstorm → plan → implement → test → lint → review → report.
 
-## Step 1: Brainstorm
-
-Identify the feature's relevant domains (auth, API, database, UI, etc. — features often span multiple) and read each matching section from `references/domain-probes.md` to surface gray areas. If no section matches, skip domain probing. Use the probes to ask targeted questions via `AskUserQuestion` — only for genuinely ambiguous decisions, not obvious ones. Skip probing if the user's input already resolves the gray areas.
+## Invoke
 
 ```
-Feature: {user's input}
-
-Think through the design:
-- What components need to change?
-- What's the simplest approach that works?
-- What are the risks or unknowns?
-- Are there edge cases to handle upfront?
-- What gray areas need user input before planning? (use domain probes)
-
-Produce a short design summary with decisions locked. Don't write code yet.
+devkit workflow run feature "{feature_description}"
 ```
 
-## Step 2: Plan
+If `devkit workflow` is not available, follow this manually:
 
-```
-Based on the design from Step 1, create an implementation plan
-as a numbered todo list.
-
-Each item should be a single, testable change.
-Order by dependency — do foundations first.
-Include a final item for writing tests.
-```
-
-## Step 3: Implement
-
-```
-Execute the next incomplete todo from the plan.
-Write the code, verify it works, then mark it done.
-Keep changes small and focused.
-```
-
-Loop until all todos are complete. Max 20 iterations.
-
-## Step 4: Generate Tests
-
-```
-Generate tests covering:
-- Happy path for each new public function/endpoint
-- Edge cases and error conditions
-- Integration between new and existing code
-
-Use the project's existing test framework.
-Place tests in the project's standard test location.
-```
-
-## Step 5: Run Tests
-
-Run the full test suite (not just the new tests). If tests fail, fix them — determine if the bug is in the test or the implementation. Loop up to 8 times until all pass.
-
-## Step 6: Lint
-
-Run the project's linter on changed files. If there are violations, fix them without changing code behavior. Loop up to 4 times until clean.
-
-## Budget
-
-- **Token budget:** ~500k tokens. Features are the most expensive workflow.
-- If approaching budget, skip the review step and report what was completed.
-
-## Step 7: Review
-
-**[PARALLEL]** Spawn the `reviewer` agent to review all changes (can run concurrently with any remaining lint fixes):
-
-```
-Task: Review all changes made in this feature session.
-Agent: reviewer
-Context:
-  - Design intent from brainstorm step
-  - Check for: correctness, security issues, missing error handling,
-    performance problems, violations of original design intent
-  - Be specific — reference files and line numbers
-```
-
-## Step 8: Final Report
-
-```
-## What was built
-Design summary from brainstorm.
-
-## Implementation
-Brief description of what was implemented and how many steps it took.
-
-## Test coverage
-Test results summary.
-
-## Review findings
-Issues found during review.
-
-## Status
-Ready to commit, or list remaining issues.
-```
+1. **Triage** — Classify as TINY / SMALL / MEDIUM / LARGE. Tiny changes skip to quick-fix path.
+2. **Brainstorm** — Explore codebase, identify patterns and conventions, propose 2-3 design approaches with trade-offs
+3. **Plan** — Create numbered implementation todo list ordered by dependency
+4. **Implement** — Execute one todo at a time; small focused changes; track progress in scratchpad (loop max 20)
+5. **Generate tests** — Write tests for the new feature covering happy path, edge cases, and error conditions
+6. **Run tests** — Run full test suite
+7. **Fix test failures** — Fix any failures, determine if bug is in test or implementation (loop max 8)
+8. **Lint** — Run linter on changed files; fix violations if any (loop max 5)
+9. **Review** — Parallel smart + fast review of all changes
+10. **Final report** — Summary of what was built, test coverage, review findings, and status
 
 ## Rules
 
-- Design before code — brainstorm and plan first, implement second
-- One todo at a time — finish each step before starting the next
-- Tests are not optional — every feature gets tests
-- Lint is not optional — clean code before review
-- Review before done — catch issues before they're committed
-- Loop on failures — don't give up after one test failure
+- Triage honestly — most changes are smaller than they seem
+- Design before implementing — don't jump to code
+- One todo per iteration — keep changes small and focused
+- Tests must pass before review
+- Lint must be clean before review
+- Use scratchpad (`.devkit/scratchpads/current.md`) to track progress across iterations
