@@ -162,7 +162,7 @@ fi
 # path before "(" and compare against changed files for exact matching.
 if $HAS_TS && [[ -f "$REPO_ROOT/tsconfig.json" ]] && command -v npx >/dev/null 2>&1; then
   TS_FILES=$(printf '%s\n' "$CHANGED_FILES" | grep -E '\.(ts|tsx|js|jsx|mjs|cjs)$' || true)
-  if [ -n "$TS_FILES" ]; then
+  if [[ -n "$TS_FILES" ]]; then
     TSC_OUTPUT=$(cd "$REPO_ROOT" && npx tsc --noEmit 2>&1) || TSC_EXIT=$?
     if [[ "${TSC_EXIT:-0}" -ne 0 ]]; then
       # Extract error lines, then match only errors whose path (before the "(")
