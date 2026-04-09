@@ -6,13 +6,7 @@ description: Triple-agent test generation — each agent generates tests indepen
 
 Dispatch test generation to 2-3 AI agents in parallel, then merge and deduplicate for maximum coverage.
 
-## Invoke
-
-```
-devkit workflow run tri-test-gen "{target_file_or_directory}"
-```
-
-If `devkit workflow` is not available, follow this manually:
+## Steps
 
 1. **Analyze target** — Read source code, identify public API, detect test framework and conventions
 2. **Scenario expansion** — Generate test scenarios using: boundary values, equivalence partitioning, error injection, state transitions, concurrency (if applicable)

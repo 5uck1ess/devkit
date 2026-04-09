@@ -19,7 +19,7 @@ If `devkit workflow` is not available, follow this manually:
 3. **Audit** — Analyze codebase for improvement opportunities
 4. **Fix** — Make one targeted improvement
 5. **Measure** — Re-run metric command
-6. **Compare** — Did the metric improve? Run guard command if set.
+6. **Compare + guard** — Did the metric improve? If yes AND a guard command is set, run it. If guard fails, treat as regression and revert.
 7. **Keep or revert** — Keep if improved and guard passes; revert otherwise. If 3+ consecutive failures, escalate.
 8. **Report** — Summary of iterations, improvements kept, and final state
 

@@ -1,0 +1,74 @@
+name: PR Ready
+description: Full PR preparation pipeline — lint, test, security, changelog, create PR
+
+steps:
+  - id: validate
+    model: fast
+    prompt: |
+      Validate the current branch is ready for PR preparation:
+      - Not on main/master
+      - No uncommitted changes
+      - Has commits ahead of main
+
+      Run git commands to check. If any validation fails, report and stop.
+
+  - id: necessity
+    model: smart
+    prompt: |
+      Review the diff (git diff main...HEAD) for unnecessary changes:
+      - Debug artifacts (console.log, print statements)
+      - Unrelated file changes
+      - Generated files that shouldn't be committed
+
+      Remove anything that doesn't belong. Report what was cleaned.
+
+  - id: lint
+    model: smart
+    prompt: |
+      Run the project's linter on changed files.
+      Fix any violations.
+
+      If clean, say DONE.
+    loop:
+      max: 5
+      until: DONE
+
+  - id: test
+    model: smart
+    prompt: |
+      Run the full test suite.
+      Fix any failures.
+
+      If all pass, say DONE.
+    loop:
+      max: 5
+      until: DONE
+
+  - id: security
+    model: smart
+    prompt: |
+      Review changed files for security issues:
+      - Hardcoded secrets or API keys
+      - SQL injection patterns
+      - XSS vulnerabilities
+      - Command injection
+      - Path traversal
+      - Insecure dependencies
+
+      Report findings with severity and file:line references.
+
+  - id: changelog
+    model: fast
+    prompt: |
+      Generate a changelog entry from git diff main...HEAD.
+      Summarize what changed and why.
+
+  - id: create-pr
+    model: smart
+    prompt: |
+      Create the PR:
+      1. Push the branch to remote
+      2. Create PR with gh pr create
+      3. Include: title, summary, changelog, test plan
+
+      Use the changelog from the previous step.

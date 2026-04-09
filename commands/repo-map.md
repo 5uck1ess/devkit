@@ -6,13 +6,7 @@ description: Build an AST-based symbol index of the repository — exports, func
 
 Build and cache an AST-based symbol index for fast codebase navigation.
 
-## Invoke
-
-```
-devkit workflow run repo-map
-```
-
-If `devkit workflow` is not available, follow this manually:
+## Steps
 
 1. **Detect languages** — Scan for language markers (go.mod, package.json, pyproject.toml, Cargo.toml, etc.)
 2. **Extract symbols (AST)** — Use language-specific AST tools to extract exports, functions, classes, types, interfaces. Fall back to regex if AST tools unavailable.

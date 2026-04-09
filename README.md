@@ -310,7 +310,7 @@ devkit/
 ├── skills/            # 18 context-activated skills
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 10 hooks (safety, security, quality gates)
-├── workflows/         # 16 YAML workflow definitions
+├── workflows/         # 18 YAML workflow definitions
 ├── resources/rules/   # Language-specific coding rules
 ├── presets/            # Reserved for future use
 ├── src/               # Go CLI harness
