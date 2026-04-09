@@ -11,7 +11,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-agent consens
 ### 1. Devkit (required)
 
 ```bash
-/plugin marketplace add https://github.com/5uck1ess/marketplace.git
+/plugin marketplace add 5uck1ess/marketplace
 /plugin install devkit@5uck1ess-plugins
 ```
 
