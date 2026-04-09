@@ -20,7 +20,7 @@ steps:
       After making changes, say DONE.
     loop:
       max: 20
-      until: "exit code: 0"
+      until: DONE
       gate: "{{input}}"
 
   - id: verify

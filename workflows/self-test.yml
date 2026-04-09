@@ -19,7 +19,7 @@ steps:
       After fixing, say DONE.
     loop:
       max: 8
-      until: "exit code: 0"
+      until: DONE
       gate: "{{input}}"
 
   - id: verify
