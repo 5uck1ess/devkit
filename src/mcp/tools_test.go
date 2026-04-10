@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1096,6 +1098,201 @@ steps:
 	}
 	if state2.CurrentStep != "b" {
 		t.Errorf("expected CurrentStep=b, got %q", state2.CurrentStep)
+	}
+}
+
+// TestAdvanceRealRace launches N concurrent devkit_advance calls while
+// the first step (a sleeping command) holds the Busy claim. Under the
+// flock + Busy claim, exactly one must get through; every other racer
+// fired while Busy=true must be rejected with "already in progress".
+// Removing the lock or the Busy check should make this test flaky.
+func TestAdvanceRealRace(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	// Command step that sleeps long enough for racers to pile up while
+	// the winner is inside runCommand (and therefore holding Busy).
+	writeFile(t, filepath.Join(wfDir, "race.yml"), `name: race
+description: concurrent race test
+steps:
+  - id: one
+    command: "sleep 0.3"
+    expect: success
+  - id: two
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "race", "input": "x"}
+	if _, err := startHandler(context.Background(), startReq); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+
+	const N = 8
+	var wg sync.WaitGroup
+	var successes, rejections int64
+	start := make(chan struct{})
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			<-start // all goroutines released together
+			req := mcpmcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{"session": sessionID}
+			result, err := advHandler(context.Background(), req)
+			if err != nil {
+				return
+			}
+			if result.IsError {
+				tc, _ := result.Content[0].(mcpmcp.TextContent)
+				if strings.Contains(tc.Text, "already in progress") {
+					atomic.AddInt64(&rejections, 1)
+				}
+				return
+			}
+			atomic.AddInt64(&successes, 1)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if successes != 1 {
+		t.Errorf("successes = %d, want 1 (Busy claim is not mutually exclusive)", successes)
+	}
+	if rejections != N-1 {
+		t.Errorf("rejections = %d, want %d (losing racers should see 'already in progress')", rejections, N-1)
+	}
+
+	final, _ := lib.ReadSessionJSON(dataDir)
+	if final == nil {
+		t.Fatal("session unexpectedly cleared")
+	}
+	if final.CurrentIndex != 1 {
+		t.Errorf("CurrentIndex = %d, want 1 (exactly one advance)", final.CurrentIndex)
+	}
+	if final.Busy {
+		t.Error("Busy should be cleared after all goroutines return")
+	}
+}
+
+// TestAdvanceCommandFailClearsBusy verifies the defer releaseClaim runs
+// and clears Busy when a command step errors out (expect mismatch). A
+// regression that leaked the claim would wedge the session forever.
+func TestAdvanceCommandFailClearsBusy(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "f.yml"), `name: f
+steps:
+  - id: boom
+    command: "exit 1"
+    expect: success
+  - id: done
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "f", "input": "x"}
+	startHandler(context.Background(), startReq)
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{"session": state.ID}
+	result, _ := advHandler(context.Background(), advReq)
+	if !result.IsError {
+		t.Fatal("expected expect:success mismatch to return IsError")
+	}
+
+	after, err := lib.ReadSessionJSON(dataDir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if after == nil {
+		t.Fatal("session should still exist after failed advance")
+	}
+	if after.Busy {
+		t.Error("Busy leaked after command failure — defer releaseClaim did not run")
+	}
+}
+
+// TestStartBranchModeRollback verifies branch-mode failure does not
+// publish a session.json. Uses git=nil to force the "not available"
+// branch, which is the simplest injectable failure.
+func TestStartBranchModeRollback(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "b.yml"), `name: b
+branch: true
+steps:
+  - id: one
+    prompt: first
+`)
+
+	srv := newTestServer(t, dataDir, wfDir) // git: nil
+	_, handler := srv.startTool()
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{"workflow": "b", "input": "x"}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true when git is nil and branch: true")
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state != nil {
+		t.Errorf("session.json should not exist after branch-mode failure, got %+v", state)
+	}
+}
+
+// TestUpdateSessionJSONNoChange verifies fn returning nil leaves the
+// on-disk state untouched (mtime unchanged, content unchanged).
+func TestUpdateSessionJSONNoChange(t *testing.T) {
+	dir := t.TempDir()
+	seed := &lib.SessionState{
+		ID:      "nochange",
+		Status:  "running",
+		Outputs: map[string]string{"a": "b"},
+	}
+	if err := lib.WriteSessionJSON(dir, seed); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	path := lib.SessionJSONPath(dir)
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	// Ensure mtime resolution is crossed.
+	time.Sleep(10 * time.Millisecond)
+
+	got, err := lib.UpdateSessionJSON(dir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+		return nil, nil // no change
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if got == nil || got.ID != "nochange" {
+		t.Errorf("got %+v, want seeded state", got)
+	}
+
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat after: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("mtime changed (%v → %v) — no-change path must not write", before.ModTime(), after.ModTime())
 	}
 }
 

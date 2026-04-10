@@ -153,12 +153,27 @@ run_hook "stop-gate.sh" "" "stop-gate: empty input" true
 echo ""
 echo "=== devkit-guard.sh (command-step enforcement) ==="
 
+# Collect tmp dirs created by the guard/stop-guard tests for a single
+# trap-driven cleanup on exit (including early exit, SIGINT, or ERR).
+GUARD_TMPS=()
+cleanup_guard_tmps() {
+  for d in "${GUARD_TMPS[@]}"; do
+    [[ -n "$d" && -d "$d" ]] && rm -rf "$d"
+  done
+}
+trap cleanup_guard_tmps EXIT INT TERM
+track_tmp() {
+  GUARD_TMPS+=("$1")
+}
+
 # Helper: run guard with a session.json containing specific fields.
 # Args: session_json_body tool_input expected_exit label
+# Tmp dir is tracked by the EXIT trap so early-exit/SIGINT also cleans up.
 run_guard() {
   local body="$1" tool_input="$2" want_exit="$3" label="$4"
   local tmp
   tmp=$(mktemp -d)
+  track_tmp "$tmp"
   printf '%s' "$body" > "$tmp/session.json"
   local exit_code=0
   printf '%s' "$tool_input" | CLAUDE_PLUGIN_DATA="$tmp" bash "$HOOK_DIR/devkit-guard.sh" >/dev/null 2>&1 || exit_code=$?
@@ -167,7 +182,6 @@ run_guard() {
   else
     fail "devkit-guard: $label (exit $exit_code, want $want_exit)"
   fi
-  rm -rf "$tmp"
 }
 
 # No CLAUDE_PLUGIN_DATA — disabled (exit 0)
@@ -176,9 +190,9 @@ if [[ $? -eq 0 ]]; then pass "devkit-guard: no CLAUDE_PLUGIN_DATA → allow"; el
 
 # Empty data dir — no session file → allow
 guard_tmp=$(mktemp -d)
+track_tmp "$guard_tmp"
 printf '{"tool_name":"Bash"}' | CLAUDE_PLUGIN_DATA="$guard_tmp" bash "$HOOK_DIR/devkit-guard.sh" >/dev/null 2>&1
 if [[ $? -eq 0 ]]; then pass "devkit-guard: no session file → allow"; else fail "devkit-guard: no session file"; fi
-rm -rf "$guard_tmp"
 
 # status != running → allow everything
 run_guard '{"status":"done","step_type":"command","enforce":"hard","current_step":"build"}' \
@@ -222,6 +236,7 @@ run_guard '{"status":"running","step_type":"command","enforce":"soft","current_s
 
 # Corrupt JSON session file → fail closed (exit 2)
 corrupt_tmp=$(mktemp -d)
+track_tmp "$corrupt_tmp"
 printf '{not valid json' > "$corrupt_tmp/session.json"
 printf '{"tool_name":"Bash"}' | CLAUDE_PLUGIN_DATA="$corrupt_tmp" bash "$HOOK_DIR/devkit-guard.sh" >/dev/null 2>&1
 corrupt_exit=$?
@@ -230,7 +245,20 @@ if [[ $corrupt_exit -eq 2 ]]; then
 else
   fail "devkit-guard: corrupt JSON (exit $corrupt_exit, want 2)"
 fi
-rm -rf "$corrupt_tmp"
+
+# Valid JSON but missing enforce field — Python .get() returns default
+# "hard", so a command step with no enforce must still block like hard.
+# This catches the "schema drift silently degrades enforcement" class.
+run_guard '{"status":"running","step_type":"command","current_step":"build"}' \
+  '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+  2 "command step with missing enforce field → block (default hard)"
+
+# Valid JSON missing step_type — should default to empty string, which
+# is NOT "command", so fall through to allow. This verifies the guard
+# does not accidentally block prompt-like steps because of schema drift.
+run_guard '{"status":"running","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+  0 "missing step_type treated as non-command → allow"
 
 echo ""
 echo "=== devkit-stop-guard.sh (stop-hook enforcement) ==="
@@ -240,10 +268,10 @@ run_stop_guard() {
   local body="$1" want_decision="$2" label="$3"
   local tmp
   tmp=$(mktemp -d)
+  track_tmp "$tmp"
   printf '%s' "$body" > "$tmp/session.json"
   local out
   out=$(printf '{}' | CLAUDE_PLUGIN_DATA="$tmp" bash "$HOOK_DIR/devkit-stop-guard.sh" 2>/dev/null || true)
-  rm -rf "$tmp"
   if ! printf '%s' "$out" | jq . >/dev/null 2>&1; then
     fail "devkit-stop-guard: $label (invalid JSON: $out)"
     return
@@ -267,13 +295,13 @@ fi
 
 # No session file → approve
 sg_tmp=$(mktemp -d)
+track_tmp "$sg_tmp"
 out=$(printf '{}' | CLAUDE_PLUGIN_DATA="$sg_tmp" bash "$HOOK_DIR/devkit-stop-guard.sh" 2>/dev/null)
 if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
   pass "devkit-stop-guard: no session file → approve"
 else
   fail "devkit-stop-guard: no session file (got: $out)"
 fi
-rm -rf "$sg_tmp"
 
 # Running workflow → block
 run_stop_guard '{"status":"running","workflow":"test","total_steps":5,"current_index":2}' \
@@ -289,6 +317,7 @@ run_stop_guard '{"status":"failed","workflow":"test","total_steps":5,"current_in
 
 # Corrupt JSON → block (fail closed)
 corrupt_sg_tmp=$(mktemp -d)
+track_tmp "$corrupt_sg_tmp"
 printf 'not json' > "$corrupt_sg_tmp/session.json"
 out=$(printf '{}' | CLAUDE_PLUGIN_DATA="$corrupt_sg_tmp" bash "$HOOK_DIR/devkit-stop-guard.sh" 2>/dev/null)
 if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
@@ -296,7 +325,6 @@ if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
 else
   fail "devkit-stop-guard: corrupt JSON (got: $out)"
 fi
-rm -rf "$corrupt_sg_tmp"
 
 echo ""
 echo "========================================="

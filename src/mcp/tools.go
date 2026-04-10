@@ -20,10 +20,8 @@ import (
 // commandTimeout is the maximum duration for workflow command execution.
 const commandTimeout = 5 * time.Minute
 
-// gateTimeout is shorter than commandTimeout because loop gates should
-// be fast checks (lint, test, build) — a gate that takes longer than
-// this is almost certainly wedged and should fail the loop fast rather
-// than eat the full command budget.
+// gateTimeout bounds each loop gate independently so a wedged gate
+// cannot consume the full commandTimeout budget.
 const gateTimeout = 60 * time.Second
 
 func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
@@ -119,7 +117,11 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q has no steps", wfName)), nil
 		}
 
-		// Create session — store the validated filename for safe re-parsing in advance
+		// Create session in memory only — store the validated filename
+		// for safe re-parsing in advance. We publish session.json ONLY
+		// after all pre-flight side effects (branch creation) succeed,
+		// so a concurrent devkit_advance can never observe a
+		// half-initialized session and race the start itself.
 		sessionID := lib.NewSessionID()
 		firstStep := wf.Steps[0]
 
@@ -137,11 +139,27 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			StartedAt:    time.Now(),
 			Outputs:      map[string]string{},
 		}
+
+		// Hard error on branch-mode failure: silent fallthrough would
+		// later commit onto the caller's current branch. Done BEFORE
+		// the session.json write so there is nothing to roll back.
+		if wf.BranchMode {
+			if s.git == nil {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q requires branch mode but git is not available", wfName)), nil
+			}
+			branchName := fmt.Sprintf("%s/%s", wf.Name, sessionID)
+			if err := s.git.CreateBranch(branchName); err != nil {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("create branch %q: %v (workflow declares branch mode and cannot proceed on the current branch)", branchName, err)), nil
+			}
+		}
+
+		// Publish session state now that all pre-flight succeeded.
 		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
 		}
 
-		// SQLite record
+		// SQLite record (best-effort; session.json is the source of
+		// truth for the hot path).
 		if s.db != nil {
 			if err := s.db.CreateSession(&lib.Session{
 				ID:       sessionID,
@@ -150,29 +168,6 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				Status:   "running",
 			}); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: db create session: %v\n", err)
-			}
-		}
-
-		// Git branch if configured. Must be a hard error — if a
-		// workflow declares branch: true and we silently fall through,
-		// completeWorkflow will later commit onto the user's current
-		// branch (often main). Roll back session state and DB record
-		// before returning.
-		if wf.BranchMode {
-			if s.git == nil {
-				_ = lib.ClearSessionJSON(s.dataDir)
-				if s.db != nil {
-					_ = s.db.UpdateSessionStatus(sessionID, "failed")
-				}
-				return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q requires branch mode but git is not available", wfName)), nil
-			}
-			branchName := fmt.Sprintf("%s/%s", wf.Name, sessionID)
-			if err := s.git.CreateBranch(branchName); err != nil {
-				_ = lib.ClearSessionJSON(s.dataDir)
-				if s.db != nil {
-					_ = s.db.UpdateSessionStatus(sessionID, "failed")
-				}
-				return mcpmcp.NewToolResultError(fmt.Sprintf("create branch %q: %v (workflow declares branch mode and cannot proceed on the current branch)", branchName, err)), nil
 			}
 		}
 
@@ -309,25 +304,23 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError(err.Error()), nil
 		}
 
-		// Ensure the claim is released no matter how we exit. On the
-		// success path we explicitly clear Busy before the final write;
-		// this deferred clear is the safety net for panics, errors, or
-		// early returns in the handlers below.
-		claimReleased := false
-		releaseClaim := func() {
-			if claimReleased {
-				return
-			}
-			claimReleased = true
-			_, _ = lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
-				if cur == nil || cur.ID != sessionID {
+		// Ensure the claim is released no matter how we exit. On
+		// success paths the handlers below have already written
+		// Busy=false, so this is a no-op. On error/panic paths this
+		// is the only thing that clears Busy — without it a failing
+		// handler would leak the claim and brick every subsequent
+		// advance. Release failure is logged, never swallowed.
+		defer func() {
+			if _, relErr := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+				if cur == nil || cur.ID != sessionID || !cur.Busy {
 					return nil, nil
 				}
 				cur.Busy = false
 				return cur, nil
-			})
-		}
-		defer releaseClaim()
+			}); relErr != nil {
+				fmt.Fprintf(os.Stderr, "devkit advance: release claim failed for session %s: %v (run `devkit clear` if advance calls start rejecting with 'already in progress')\n", sessionID, relErr)
+			}
+		}()
 
 		// Re-parse workflow using validated filename stored in state.Workflow
 		wfPath, err := s.resolveWorkflowPath(state.Workflow)
@@ -376,11 +369,13 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Handle loop steps. handleLoopAdvance writes state (clearing
-		// Busy) on all its return paths, so mark the claim released
-		// here so the deferred release does not double-write.
+		// Handle loop steps. Do NOT pre-release the claim here — if
+		// handleLoopAdvance errors out before writing state (e.g.
+		// gate command failure), the deferred releaseClaim must still
+		// run to clear Busy on disk. On the happy path the helper
+		// writes with Busy=false, and the defer's follow-up write is
+		// a harmless no-op.
 		if currentStep.Loop != nil {
-			claimReleased = true
 			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
 		}
 
@@ -403,13 +398,20 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		}
 
 		if nextIndex >= len(wf.Steps) {
-			claimReleased = true // completeWorkflow clears the whole state
+			// Do NOT pre-release the claim — if completeWorkflow's
+			// initial WriteSessionJSON fails the session file still
+			// has Busy=true on disk and we need the deferred release
+			// to clean it up. On the success path completeWorkflow
+			// removes session.json via ClearSessionJSON, so the
+			// defer's UpdateSessionJSON finds nil and no-ops.
 			return s.completeWorkflow(state)
 		}
 
 		// Write next step state. Clear the claim as part of this same
-		// write so hooks observing session.json mid-transition never
-		// see Busy=true with a stale step index.
+		// write so the common case is a single atomic transition; the
+		// deferred releaseClaim will then observe Busy=false and
+		// no-op. We do NOT set claimReleased=true here so the defer
+		// still runs on subsequent panics or added return paths.
 		nextStep := wf.Steps[nextIndex]
 		state.CurrentStep = nextStep.ID
 		state.CurrentIndex = nextIndex
@@ -418,7 +420,6 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
 		}
-		claimReleased = true
 
 		response := s.formatStepResponse(wf, state, &nextStep, state.Input)
 		return mcpmcp.NewToolResultText(response), nil

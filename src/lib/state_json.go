@@ -26,10 +26,9 @@ type SessionState struct {
 	StartedAt    time.Time         `json:"started_at"`
 	Outputs      map[string]string `json:"outputs"`
 	Status       string            `json:"status"` // "running" | "done" | "failed"
-	// Busy is a claim flag set by devkit_advance while it is executing.
-	// A second concurrent devkit_advance seeing Busy=true rejects with a
-	// "step already in progress" error rather than racing the first
-	// writer. Written under the cross-process session.json.lock.
+	// Busy is a claim flag held for the duration of an in-flight step
+	// advance. Written under the session lock; a concurrent claimant
+	// seeing it set must abort instead of racing the current writer.
 	Busy          bool `json:"busy,omitempty"`
 	LoopIteration int  `json:"loop_iteration,omitempty"` // current loop count for loop steps
 	LoopMax       int  `json:"loop_max,omitempty"`       // max iterations for current loop
@@ -46,11 +45,8 @@ func sessionLockPath(dataDir string) string {
 }
 
 // withSessionLock acquires an exclusive advisory lock on a sibling .lock
-// file for the duration of fn. The lock is cross-process (flock) so two
-// MCP server instances or a racing hook cannot observe torn
-// read-modify-write sequences on session.json. The lock file itself is
-// created on first use and never removed; the lock is released by
-// closing the descriptor.
+// file for the duration of fn. Cross-process (flock); the lock file
+// persists and is released on fd close.
 func withSessionLock(dataDir string, fn func() error) error {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return fmt.Errorf("create data dir: %w", err)
@@ -64,15 +60,14 @@ func withSessionLock(dataDir string, fn func() error) error {
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
 		return fmt.Errorf("acquire session lock: %w", err)
 	}
+	// Register LOCK_UN only after LOCK_EX succeeds. If the lock
+	// acquisition failed we already returned above, so this defer
+	// never runs on an unlocked fd.
 	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
 	return fn()
 }
 
-// WriteSessionJSON atomically writes session state to the hot-path JSON file.
-// Serialized across processes via a sibling .lock file to prevent two
-// concurrent devkit_advance calls from clobbering each other's updates.
-// Uses a per-writer temp file name so temp collisions between racing
-// writers are impossible.
+// WriteSessionJSON atomically writes session state under the session lock.
 func WriteSessionJSON(dataDir string, state *SessionState) error {
 	return withSessionLock(dataDir, func() error {
 		return writeSessionJSONLocked(dataDir, state)
@@ -85,9 +80,8 @@ func writeSessionJSONLocked(dataDir string, state *SessionState) error {
 		return fmt.Errorf("marshal session: %w", err)
 	}
 	path := SessionJSONPath(dataDir)
-	// Per-writer temp name so two concurrent writers within the same
-	// process (or across processes between flock grants) never target
-	// the same temp path. CreateTemp uses O_EXCL so it is collision-free.
+	// CreateTemp uses O_EXCL so the tmp name is collision-free even if
+	// a caller ever writes without holding the session lock.
 	tmp, err := os.CreateTemp(dataDir, "session.json.tmp-*")
 	if err != nil {
 		return fmt.Errorf("create session tmp: %w", err)
@@ -152,11 +146,11 @@ func ClearSessionJSON(dataDir string) error {
 	})
 }
 
-// UpdateSessionJSON runs fn under an exclusive lock with the current
-// state, then writes whatever fn returns (unless fn returns nil, which
-// means "no change"). This gives callers a true read-modify-write
-// primitive so multiple devkit_advance calls never race on the same
-// session index.
+// UpdateSessionJSON runs fn under the session lock with the current
+// state. fn returning a non-nil state saves it; fn returning nil means
+// "no change" and the on-disk state is left untouched. This is a true
+// read-modify-write primitive — use it for any state mutation that
+// must be atomic against concurrent readers or writers.
 func UpdateSessionJSON(dataDir string, fn func(*SessionState) (*SessionState, error)) (*SessionState, error) {
 	var result *SessionState
 	err := withSessionLock(dataDir, func() error {
