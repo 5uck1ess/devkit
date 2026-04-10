@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -211,6 +212,30 @@ func TestSweepStaleEngines(t *testing.T) {
 	}
 }
 
+// TestExecEngineRemovesCorruptCache covers the self-heal path in
+// execEngine: when cmd.Run returns a non-ExitError (CreateProcess /
+// execve rejection — wrong architecture, truncated PE, ENOEXEC),
+// the cached binary must be removed so the next launch re-downloads.
+// A regression that moves the os.Remove inside the ExitError branch
+// would quietly recreate the stuck-cache class this fix exists for.
+func TestExecEngineRemovesCorruptCache(t *testing.T) {
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.exe")
+	// Non-binary contents with exec permission. execve/CreateProcess
+	// reject this before the child ever runs, which is the non-ExitError
+	// path execEngine must self-heal.
+	if err := os.WriteFile(bad, []byte("not an executable"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := execEngine(bad, nil)
+	if err == nil {
+		t.Fatal("execEngine(non-binary) = nil, want error")
+	}
+	if _, statErr := os.Stat(bad); !os.IsNotExist(statErr) {
+		t.Fatalf("cached binary not removed: stat err = %v", statErr)
+	}
+}
+
 func TestEngineLooksCached(t *testing.T) {
 	dir := t.TempDir()
 
@@ -284,14 +309,66 @@ func TestReadPluginVersion(t *testing.T) {
 		t.Fatal("garbage: want error, got nil")
 	}
 
+	// Oversize rejection must catch a file that would parse correctly if
+	// we only read the first maxPluginJSONBytes. Use a legitimately large
+	// JSON: a valid object at the head, then whitespace padding that
+	// pushes total size past the cap. A buggy size guard (e.g. a naive
+	// LimitReader) would silently truncate the padding and parse the
+	// head, returning "2.1.6" instead of an error.
 	oversized := filepath.Join(dir, "huge.json")
-	// maxPluginJSONBytes + 1 bytes of `{` — guaranteed to exhaust the
-	// LimitReader without producing a valid object.
-	big := strings.Repeat("{", maxPluginJSONBytes+1)
-	if err := writeFile(oversized, big); err != nil {
+	head := `{"name":"devkit","version":"2.1.6"}`
+	padding := strings.Repeat(" ", maxPluginJSONBytes)
+	if err := writeFile(oversized, head+padding); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readPluginVersion(oversized); err == nil {
-		t.Fatal("oversized: want error, got nil")
+	v, err = readPluginVersion(oversized)
+	if err == nil {
+		t.Fatalf("oversized: got %q, want error", v)
+	}
+
+	// Boundary: a manifest under the cap with some slack must still parse.
+	slack := 4096
+	boundary := filepath.Join(dir, "boundary.json")
+	extra := strings.Repeat(" ", maxPluginJSONBytes-len(head)-slack)
+	if err := writeFile(boundary, head+extra); err != nil {
+		t.Fatal(err)
+	}
+	v, err = readPluginVersion(boundary)
+	if err != nil || v != "2.1.6" {
+		t.Fatalf("boundary: got %q err=%v, want 2.1.6 nil", v, err)
+	}
+}
+
+// TestValidateVersionDefenseInDepth exercises the explicit Contains("..")
+// and ContainsAny(`/\`) guards independently of the regex. The current
+// regex already rejects these inputs, so a refactor that widens the regex
+// must still hit the guards — this test lets that change fail fast.
+func TestValidateVersionDefenseInDepth(t *testing.T) {
+	// Temporarily widen the pattern to one that admits any printable
+	// ASCII so we can prove the guards are doing load-bearing work. We
+	// restore the original at the end.
+	original := versionPattern
+	defer func() { versionPattern = original }()
+	versionPattern = regexp.MustCompile(`^[ -~]+$`)
+
+	badInputs := []string{
+		"1.2..3",
+		"1/2/3",
+		`1\2\3`,
+		"..",
+		"../etc/passwd",
+		`..\windows\system32`,
+	}
+	for _, in := range badInputs {
+		if err := validateVersion(in); err == nil {
+			t.Errorf("widened-regex + guard: validateVersion(%q) = nil, want error", in)
+		}
+	}
+
+	// Sanity: plain versions still pass under the widened regex.
+	for _, in := range []string{"1.2.3", "2.1.7-rc.1"} {
+		if err := validateVersion(in); err != nil {
+			t.Errorf("widened-regex: validateVersion(%q) = %v, want nil", in, err)
+		}
 	}
 }

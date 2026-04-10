@@ -36,6 +36,8 @@ const (
 	releaseOwner = "5uck1ess"
 	releaseRepo  = "devkit"
 
+	// Cap a single HTTP fetch; past this ceiling a slow connection is a
+	// stuck one.
 	httpTimeout = 5 * time.Minute
 
 	// Cap plugin.json reads. A legitimate manifest is under a kilobyte;
@@ -91,7 +93,7 @@ func run() error {
 
 	cached, err := engineLooksCached(enginePath)
 	if err != nil {
-		logf("warning: stat %s: %v", enginePath, err)
+		return fmt.Errorf("checking engine cache at %s: %w", enginePath, err)
 	}
 	if !cached {
 		logf("first-run: downloading engine v%s (%s)...", version, platform)
@@ -140,12 +142,18 @@ func validateVersion(version string) error {
 }
 
 func readPluginVersion(path string) (string, error) {
-	f, err := os.Open(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxPluginJSONBytes))
+	// Reject oversize before reading. io.LimitReader would silently
+	// truncate, leaving a prefix that may happen to parse as valid JSON
+	// and return the wrong version — stat-first makes truncation a hard
+	// fail instead of a silent prefix parse.
+	if info.Size() > maxPluginJSONBytes {
+		return "", fmt.Errorf("plugin.json is %d bytes, max %d", info.Size(), maxPluginJSONBytes)
+	}
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -237,10 +245,17 @@ func downloadTo(url, destPath string) (retErr error) {
 	}
 	// Capture a late Close error so antivirus quarantine-on-close, disk
 	// quota, and SMB sync-on-close failures don't manifest only as a
-	// mysterious checksum mismatch later.
+	// mysterious checksum mismatch later. Must join with an existing
+	// retErr so we don't mask the primary failure — io.Copy or Sync
+	// errors win the "root cause" slot, Close errors are appended.
 	defer func() {
-		if cerr := out.Close(); cerr != nil && retErr == nil {
-			retErr = fmt.Errorf("closing %s: %w", destPath, cerr)
+		if cerr := out.Close(); cerr != nil {
+			cerr = fmt.Errorf("closing %s: %w", destPath, cerr)
+			if retErr == nil {
+				retErr = cerr
+			} else {
+				retErr = errors.Join(retErr, cerr)
+			}
 		}
 	}()
 
@@ -248,8 +263,18 @@ func downloadTo(url, destPath string) (retErr error) {
 	if err != nil {
 		return err
 	}
-	if resp.ContentLength > 0 && n != resp.ContentLength {
+	// A server advertising Content-Length must deliver it; a silent
+	// short read would otherwise only surface as a SHA-256 mismatch
+	// downstream (and for checksums.txt there is no SHA to verify
+	// against, so truncation would masquerade as "no entry").
+	if resp.ContentLength >= 0 && n != resp.ContentLength {
 		return fmt.Errorf("short read from %s: got %d bytes, expected %d", url, n, resp.ContentLength)
+	}
+	// Chunked / identity responses with no Content-Length fall through
+	// to the engine's SHA-256 verify, but an empty body from either is
+	// always wrong — reject it up front.
+	if n == 0 {
+		return fmt.Errorf("empty response from %s", url)
 	}
 	if err := out.Sync(); err != nil {
 		return err
@@ -327,10 +352,11 @@ func sweepStaleEngines(binDir, currentEngineName string) error {
 // STARTUPINFO handles — no pipe, no goroutine copy, no buffering. MCP
 // JSON-RPC framing is untouched by the launcher.
 //
-// On a non-ExitError failure (CreateProcess rejected the binary, the cached
-// file turned out to be corrupt, antivirus intercepted), the cached engine
-// is removed so the next launch self-heals by re-downloading instead of
-// getting stuck in a loop against a bad file.
+// On a non-ExitError failure (CreateProcess rejected the cached binary —
+// wrong architecture, truncated PE, missing dependent DLL), the cached
+// engine is removed so the next launch self-heals by re-downloading
+// instead of getting stuck in a loop. A failing os.Remove is surfaced in
+// the error so "cache purged" is never a lie.
 func execEngine(enginePath string, args []string) error {
 	cmd := exec.Command(enginePath, args...)
 	cmd.Stdin = os.Stdin
@@ -350,6 +376,8 @@ func execEngine(enginePath string, args []string) error {
 		}
 		os.Exit(code)
 	}
-	_ = os.Remove(enginePath)
+	if rmErr := os.Remove(enginePath); rmErr != nil {
+		return fmt.Errorf("executing engine %s (cache purge also failed: %v): %w", enginePath, rmErr, err)
+	}
 	return fmt.Errorf("executing engine %s (cache purged for next run): %w", enginePath, err)
 }

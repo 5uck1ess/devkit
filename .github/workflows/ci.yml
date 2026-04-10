@@ -189,11 +189,20 @@ jobs:
 
       - name: Source file hashes must match sidecar
         run: |
+          set -eo pipefail
           stale=0
+          # Read the tracked file list from the sidecar itself so there's
+          # one source of truth — bin/mcpb-build defines what's tracked,
+          # CI re-verifies each entry.
+          files=$(jq -r 'keys[]' devkit.mcpb.sources.json)
+          if [ -z "$files" ]; then
+            echo "FATAL: devkit.mcpb.sources.json is empty or invalid"
+            exit 1
+          fi
           while IFS= read -r file; do
             want=$(jq -r --arg f "$file" '.[$f]' devkit.mcpb.sources.json)
-            if [ "$want" = "null" ] || [ -z "$want" ]; then
-              echo "FATAL: devkit.mcpb.sources.json has no entry for $file"
+            if [ ! -f "$file" ]; then
+              echo "FATAL: sidecar references $file but the file is missing"
               stale=1
               continue
             fi
@@ -204,13 +213,7 @@ jobs:
               echo "  current sha256: $have"
               stale=1
             fi
-          done <<'EOF'
-          mcpb/launcher/main.go
-          mcpb/launcher/go.mod
-          mcpb/launcher/main_test.go
-          mcpb/manifest.json
-          mcpb/server/devkit
-          EOF
+          done <<< "$files"
           if [ "$stale" != "0" ]; then
             echo ""
             echo "Rebuild with: bin/mcpb-build"
