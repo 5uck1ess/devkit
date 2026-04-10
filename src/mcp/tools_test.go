@@ -157,6 +157,139 @@ func TestStatusWithSession(t *testing.T) {
 	}
 }
 
+func TestStart(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "review.yml"), `name: review
+description: Code review workflow
+steps:
+  - id: analyse
+    prompt: Analyse {{input}} and identify issues.
+  - id: report
+    prompt: Write a report based on the analysis.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "review",
+		"input":    "main.go",
+	}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result == nil || len(result.Content) == 0 {
+		t.Fatal("handler returned empty result")
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("handler returned tool error: %s", tc.Text)
+	}
+
+	tc, ok := result.Content[0].(mcpmcp.TextContent)
+	if !ok {
+		t.Fatalf("unexpected content type: %T", result.Content[0])
+	}
+	out := tc.Text
+
+	// Response should mention step 1
+	if !strings.Contains(out, "STEP 1/2") {
+		t.Errorf("expected 'STEP 1/2' in response, got:\n%s", out)
+	}
+	if !strings.Contains(out, "analyse") {
+		t.Errorf("expected step id 'analyse' in response, got:\n%s", out)
+	}
+	if !strings.Contains(out, "main.go") {
+		t.Errorf("expected interpolated input 'main.go' in response, got:\n%s", out)
+	}
+	if !strings.Contains(out, "devkit_advance") {
+		t.Errorf("expected 'devkit_advance' call-to-action in response, got:\n%s", out)
+	}
+
+	// session.json should exist
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil {
+		t.Fatalf("read session: %v", err)
+	}
+	if state == nil {
+		t.Fatal("session.json was not created")
+	}
+	if state.Workflow != "review" {
+		t.Errorf("expected workflow 'review', got %q", state.Workflow)
+	}
+	if state.CurrentStep != "analyse" {
+		t.Errorf("expected current_step 'analyse', got %q", state.CurrentStep)
+	}
+	if state.CurrentIndex != 0 {
+		t.Errorf("expected current_index 0, got %d", state.CurrentIndex)
+	}
+	if state.TotalSteps != 2 {
+		t.Errorf("expected total_steps 2, got %d", state.TotalSteps)
+	}
+	if state.Status != "running" {
+		t.Errorf("expected status 'running', got %q", state.Status)
+	}
+	if state.Input != "main.go" {
+		t.Errorf("expected input 'main.go', got %q", state.Input)
+	}
+	if state.StepType != "prompt" {
+		t.Errorf("expected step_type 'prompt', got %q", state.StepType)
+	}
+}
+
+func TestStartAlreadyRunning(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "review.yml"), `name: review
+description: Code review workflow
+steps:
+  - id: analyse
+    prompt: Analyse {{input}} and identify issues.
+`)
+
+	// Pre-seed a running session
+	existing := &lib.SessionState{
+		ID:       "abc123",
+		Workflow: "review",
+		Status:   "running",
+		StartedAt: time.Now(),
+		Outputs:  map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dataDir, existing); err != nil {
+		t.Fatalf("write session: %v", err)
+	}
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "review",
+		"input":    "main.go",
+	}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected IsError=true when session already running")
+	}
+	tc, ok := result.Content[0].(mcpmcp.TextContent)
+	if !ok {
+		t.Fatalf("unexpected content type: %T", result.Content[0])
+	}
+	if !strings.Contains(tc.Text, "already running") {
+		t.Errorf("expected 'already running' in error, got: %s", tc.Text)
+	}
+}
+
 // writeFile is a test helper that creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
