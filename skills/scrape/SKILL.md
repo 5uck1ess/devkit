@@ -1,6 +1,6 @@
 ---
 name: scrape
-description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Firecrawl, or WebFetch.
+description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Playwright, Firecrawl, or WebFetch.
 ---
 
 # Web Scrape to Markdown
@@ -13,7 +13,7 @@ Fetch a URL and convert it to clean, LLM-ready Markdown. Supports multiple backe
 /devkit:scrape https://example.com
 /devkit:scrape https://example.com --json
 /devkit:scrape https://example.com https://other.com
-/devkit:scrape https://example.com --backend firecrawl
+/devkit:scrape https://example.com --backend playwright
 ```
 
 ## Arguments
@@ -24,9 +24,10 @@ Fetch a URL and convert it to clean, LLM-ready Markdown. Supports multiple backe
 
 ## Backends (in priority order)
 
-1. **Jina Reader** — prepend `https://r.jina.ai/` to the URL. Returns Markdown by default. Use if `JINA_API_KEY` is set (higher rate limits) or anonymously (~20 RPM).
-2. **Firecrawl** — use if `FIRECRAWL_API_KEY` is set. Best for JS-heavy sites and anti-bot bypass.
-3. **WebFetch fallback** — use Claude's built-in `WebFetch` tool. No API key needed, but returns raw content (less clean).
+1. **Jina Reader** — prepend `https://r.jina.ai/` to the URL. Returns Markdown by default. Use if `JINA_API_KEY` is set (higher rate limits) or anonymously (~20 RPM). Best for articles and docs.
+2. **Playwright** — use if `npx playwright --version` succeeds (optional dep, install with `npx playwright install chromium`). Best for JS-heavy SPAs, paywalled content, and sites that block headless scrapers. Free and local — no API keys.
+3. **Firecrawl** — use if `FIRECRAWL_API_KEY` is set. Paid API. Good for anti-bot bypass when Playwright isn't enough.
+4. **WebFetch fallback** — use Claude's built-in `WebFetch` tool. No API key needed, but returns raw content (less clean).
 
 ## Execution
 
@@ -43,6 +44,29 @@ If --json flag is set, instead fetch with:
   Accept: application/json
 This returns: { "url": "...", "title": "...", "content": "..." }
 where "content" is the Markdown.
+```
+
+**Playwright (if installed and --backend playwright, or as auto-fallback for JS-heavy sites):**
+```
+Check availability first: npx playwright --version
+If not installed, tell the user: "Playwright not installed. Run: npx playwright install chromium"
+  and fall through to the next backend.
+
+Extract HTML + convert to markdown using Playwright's CLI + a small inline script:
+  npx playwright cr -e "
+    const page = await context.newPage();
+    await page.goto({url}, { waitUntil: 'networkidle' });
+    const title = await page.title();
+    const html = await page.content();
+    console.log(JSON.stringify({ title, html }));
+    await browser.close();
+  "
+
+Then convert HTML → Markdown. Prefer using a local converter if available (pandoc, turndown).
+If none available, strip script/style/nav/footer tags and extract text from article/main/body.
+
+For simpler cases, use: npx playwright screenshot --full-page {url} /tmp/page.png
+  (screenshots only, not markdown)
 ```
 
 **Firecrawl (if FIRECRAWL_API_KEY is set and --backend firecrawl):**
@@ -72,7 +96,8 @@ When given multiple URLs, scrape them in parallel:
 
 ### Error Handling
 
-- If Jina Reader returns an error or empty content, fall back to WebFetch
+- If Jina Reader returns an error or empty content, fall back to Playwright (if installed), then WebFetch
+- If Playwright fails or isn't installed, fall back to Firecrawl (if API key set), then WebFetch
 - If a URL is unreachable, report the error and continue with remaining URLs
 - Never silently drop a URL — always report what happened
 
