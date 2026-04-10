@@ -1,0 +1,27 @@
+#!/bin/sh
+# POSIX entry point for the devkit MCPB bundle.
+#
+# Intentionally a thin proxy: re-execs the existing bin/devkit wrapper that
+# lives at the plugin root. CC exports CLAUDE_PLUGIN_ROOT to every MCP child,
+# so we use it to locate the real wrapper. This keeps the POSIX behavior
+# 100% identical to the pre-MCPB architecture — all download, checksum,
+# resume, and exec logic stays in bin/devkit where it's already been tested.
+#
+# This file exists inside devkit.mcpb so plugin.json's
+# mcpServers: "./devkit.mcpb" wiring resolves. Windows bypasses this entirely
+# and runs server/devkit.exe via platform_overrides.win32.
+
+set -eu
+
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    printf 'devkit mcpb proxy: CLAUDE_PLUGIN_ROOT is not set; cannot locate bin/devkit\n' >&2
+    exit 1
+fi
+
+REAL_WRAPPER="$CLAUDE_PLUGIN_ROOT/bin/devkit"
+if [ ! -x "$REAL_WRAPPER" ]; then
+    printf 'devkit mcpb proxy: expected wrapper at %s (not found or not executable)\n' "$REAL_WRAPPER" >&2
+    exit 1
+fi
+
+exec "$REAL_WRAPPER" "$@"
