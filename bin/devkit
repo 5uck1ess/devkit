@@ -133,63 +133,75 @@ run_downloader() {
 # any existing partial is overwritten. The outer checksum-verify loop
 # catches corruption and the network cost of re-fetching the ~10MB
 # engine binary on the rare retry is acceptable.
+# Underscore-prefixed locals. POSIX /bin/sh has no `local`, so every
+# bare assignment is global and can silently clobber a caller's variable
+# of the same name. In particular, ensure_engine() has its own $asset,
+# and an earlier revision of this function used plain $asset as a param,
+# which rewrote the outer $asset to "checksums.txt" after the first call
+# and broke the awk lookup that followed. The `_` prefix namespaces
+# these so a future refactor in either function stays safe.
 download_release_asset() {
-    tag=$1
-    asset=$2
-    out=$3
-    resumable=$4
-    url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}/${asset}"
+    _tag=$1
+    _asset=$2
+    _out=$3
+    _resumable=$4
+    _url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${_tag}/${_asset}"
+
+    # Convert the output path to a native Windows path once up front.
+    # gh.exe and powershell.exe are both native binaries, and MSYS2 only
+    # auto-converts POSIX paths to Windows paths for top-level args that
+    # *look* like paths. Values passed to a flag (`-O <path>`) or
+    # embedded inside a quoted `-Command` string are just characters to
+    # MSYS — no conversion — so both tools would see `/c/Users/…` and
+    # resolve it against the current drive root as `C:\c\Users\…`.
+    # gh silently no-ops in that case (exit 0, no file); PowerShell
+    # fails with DirectoryNotFoundException. Resolve via cygpath so
+    # both get a real Windows path. Harmless on macOS / Linux where
+    # cygpath does not exist.
+    _winout=$_out
+    if command -v cygpath >/dev/null 2>&1; then
+        _winout=$(cygpath -w "$_out") || _winout=$_out
+    fi
 
     if command -v gh >/dev/null 2>&1; then
-        if run_downloader gh release download "$tag" \
+        if run_downloader gh release download "$_tag" \
                 -R "${RELEASE_OWNER}/${RELEASE_REPO}" \
-                -p "$asset" -O "$out" --clobber; then
+                -p "$_asset" -O "$_winout" --clobber; then
             return 0
         fi
         log "gh release download failed; falling back to curl/wget"
-        # A failed gh run may have written partial bytes to $out. On the
-        # resumable path the next downloader is `curl -C -`, which would
-        # resume from gh's offset and splice the two byte streams into
-        # one file; the outer checksum-verify loop catches the corruption
-        # on the next invocation but wastes a round-trip. Dropping the
-        # partial here forces curl to start fresh on this attempt.
-        rm -f "$out" 2>/dev/null || true
+        # A failed gh run may have written partial bytes to $_out. On
+        # the resumable path the next downloader is `curl -C -`, which
+        # would resume from gh's offset and splice the two byte streams
+        # into one file; the outer checksum-verify loop catches the
+        # corruption on the next invocation but wastes a round-trip.
+        # Dropping the partial here forces curl to start fresh on this
+        # attempt.
+        rm -f "$_out" 2>/dev/null || true
     fi
 
     if command -v curl >/dev/null 2>&1; then
-        if [ -n "$resumable" ]; then
-            run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$out" "$url" && return 0
+        if [ -n "$_resumable" ]; then
+            run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$_out" "$_url" && return 0
         else
-            run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url" && return 0
+            run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$_out" "$_url" && return 0
         fi
     fi
 
     if command -v wget >/dev/null 2>&1; then
-        if [ -n "$resumable" ]; then
-            run_downloader wget -q -c -O "$out" "$url" && return 0
+        if [ -n "$_resumable" ]; then
+            run_downloader wget -q -c -O "$_out" "$_url" && return 0
         else
-            run_downloader wget -q -O "$out" "$url" && return 0
+            run_downloader wget -q -O "$_out" "$_url" && return 0
         fi
     fi
 
     case "${PLATFORM-}" in
         windows-*)
             if command -v powershell.exe >/dev/null 2>&1; then
-                # MSYS2/Git Bash only auto-converts POSIX paths to
-                # Windows paths when they are standalone arguments to a
-                # native .exe. Paths embedded inside a quoted -Command
-                # string are just characters to MSYS — no conversion —
-                # so PowerShell would see `/c/Users/…` and resolve it
-                # against the current drive root as `C:\c\Users\…`,
-                # failing with DirectoryNotFoundException. Convert the
-                # output path explicitly via cygpath before embedding.
-                winout=$out
-                if command -v cygpath >/dev/null 2>&1; then
-                    winout=$(cygpath -w "$out") || winout=$out
-                fi
                 log "trying PowerShell Invoke-WebRequest fallback"
                 run_downloader powershell.exe -NoProfile -Command \
-                    "Invoke-WebRequest -UseBasicParsing -Uri '$url' -OutFile '$winout'" \
+                    "Invoke-WebRequest -UseBasicParsing -Uri '$_url' -OutFile '$_winout'" \
                     && return 0
             fi
             ;;
