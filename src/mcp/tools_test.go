@@ -509,6 +509,220 @@ steps:
 	}
 }
 
+func TestLoopMaxIterations(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "loop-wf.yml"), `name: loop-wf
+description: Loop workflow
+steps:
+  - id: iterate
+    prompt: Do iteration work.
+    loop:
+      max: 3
+  - id: finish
+    prompt: Finish up.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start workflow
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "loop-wf",
+		"input":    "test input",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil || startResult.IsError {
+		t.Fatalf("start failed")
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+
+	advReq := func() mcpmcp.CallToolRequest {
+		r := mcpmcp.CallToolRequest{}
+		r.Params.Arguments = map[string]interface{}{
+			"session": sessionID,
+			"output":  "did some work",
+		}
+		return r
+	}
+
+	// Advance 1: still on iterate (iteration 1/3)
+	result, err := advHandler(context.Background(), advReq())
+	if err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance 1 error: %s", tc.Text)
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "LOOP ITERATION 1/3") {
+		t.Errorf("advance 1: expected LOOP ITERATION 1/3, got:\n%s", tc.Text)
+	}
+	if !strings.Contains(tc.Text, "iterate") {
+		t.Errorf("advance 1: expected step 'iterate' still active, got:\n%s", tc.Text)
+	}
+
+	// Advance 2: still on iterate (iteration 2/3)
+	result2, err := advHandler(context.Background(), advReq())
+	if err != nil {
+		t.Fatalf("advance 2: %v", err)
+	}
+	tc2, _ := result2.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc2.Text, "LOOP ITERATION 2/3") {
+		t.Errorf("advance 2: expected LOOP ITERATION 2/3, got:\n%s", tc2.Text)
+	}
+
+	// Advance 3: max reached — should advance to finish
+	result3, err := advHandler(context.Background(), advReq())
+	if err != nil {
+		t.Fatalf("advance 3: %v", err)
+	}
+	if result3.IsError {
+		tc3, _ := result3.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance 3 error: %s", tc3.Text)
+	}
+	tc3, _ := result3.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc3.Text, "finish") {
+		t.Errorf("advance 3: expected step 'finish', got:\n%s", tc3.Text)
+	}
+	if strings.Contains(tc3.Text, "LOOP ITERATION") {
+		t.Errorf("advance 3: should have left loop, got:\n%s", tc3.Text)
+	}
+
+	// Loop state should be reset
+	state, _ = lib.ReadSessionJSON(dataDir)
+	if state.LoopIteration != 0 {
+		t.Errorf("expected LoopIteration reset to 0, got %d", state.LoopIteration)
+	}
+	if state.LoopMax != 0 {
+		t.Errorf("expected LoopMax reset to 0, got %d", state.LoopMax)
+	}
+}
+
+func TestLoopGatePass(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "gate-pass.yml"), `name: gate-pass
+description: Gate pass workflow
+steps:
+  - id: check
+    prompt: Do the check.
+    loop:
+      max: 5
+      gate: "true"
+  - id: next
+    prompt: Next step.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "gate-pass",
+		"input":    "test",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil || startResult.IsError {
+		t.Fatalf("start failed")
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+		"output":  "check output",
+	}
+
+	// First advance: gate "true" exits 0 — should pass and advance to next
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance error: %s", tc.Text)
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "next") {
+		t.Errorf("expected 'next' step after gate pass, got:\n%s", tc.Text)
+	}
+	if strings.Contains(tc.Text, "LOOP ITERATION") {
+		t.Errorf("should not see LOOP ITERATION header when gate passes, got:\n%s", tc.Text)
+	}
+}
+
+func TestLoopGateFail(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "gate-fail.yml"), `name: gate-fail
+description: Gate fail workflow
+steps:
+  - id: retry
+    prompt: Try again.
+    loop:
+      max: 5
+      gate: "false"
+  - id: done
+    prompt: Done.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "gate-fail",
+		"input":    "test",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil || startResult.IsError {
+		t.Fatalf("start failed")
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+		"output":  "attempt output",
+	}
+
+	// Advance: gate "false" exits 1 — should stay on loop step
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance error: %s", tc.Text)
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "LOOP ITERATION 1/5") {
+		t.Errorf("expected LOOP ITERATION 1/5 (still looping), got:\n%s", tc.Text)
+	}
+	if !strings.Contains(tc.Text, "retry") {
+		t.Errorf("expected step 'retry' still active, got:\n%s", tc.Text)
+	}
+	if strings.Contains(tc.Text, "done") && !strings.Contains(tc.Text, "retry") {
+		t.Errorf("should not have advanced to 'done', got:\n%s", tc.Text)
+	}
+}
+
 // writeFile is a test helper that creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()

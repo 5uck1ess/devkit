@@ -244,10 +244,21 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("session mismatch: active is %s", state.ID)), nil
 		}
 
-		// Re-parse workflow to get step definitions
+		// Re-parse workflow to get step definitions.
+		// Guard: resolved path must stay inside workflowDir — state.Workflow comes
+		// from the YAML name field which may differ from the validated filename.
+		absWorkflowDir, _ := filepath.Abs(s.workflowDir)
 		wfPath := filepath.Join(s.workflowDir, state.Workflow+".yml")
+		absWfPath, _ := filepath.Abs(wfPath)
+		if !strings.HasPrefix(absWfPath, absWorkflowDir+string(filepath.Separator)) {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name in session %q: resolves outside workflow directory", state.Workflow)), nil
+		}
 		if _, statErr := os.Stat(wfPath); os.IsNotExist(statErr) {
 			wfPath = filepath.Join(s.workflowDir, state.Workflow+".yaml")
+			absWfPath, _ = filepath.Abs(wfPath)
+			if !strings.HasPrefix(absWfPath, absWorkflowDir+string(filepath.Separator)) {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name in session %q: resolves outside workflow directory", state.Workflow)), nil
+			}
 		}
 		wf, err := engine.ParseFile(wfPath)
 		if err != nil {
@@ -354,6 +365,72 @@ func (s *Server) runCommand(ctx context.Context, command string) (string, int, e
 }
 
 func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-	// TODO: Task 9 — loop iteration tracking, gate checking, until detection
-	return mcpmcp.NewToolResultError("loop advance not yet implemented"), nil
+	// Initialize loop tracking on first call
+	if state.LoopMax == 0 {
+		state.LoopMax = step.Loop.Max
+		if state.LoopMax == 0 {
+			state.LoopMax = 10 // default max
+		}
+	}
+	state.LoopIteration++
+
+	// Check gate command if present
+	if step.Loop.Gate != "" {
+		gateCmd := engine.Interpolate(step.Loop.Gate, state.Input, state.Outputs)
+		_, exitCode, err := s.runCommand(ctx, gateCmd)
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("gate command failed: %v", err)), nil
+		}
+		if exitCode == 0 {
+			// Gate passed — advance past loop
+			return s.advancePastLoop(wf, state), nil
+		}
+		// Gate failed — continue loop
+	}
+
+	// Check "until" condition
+	if step.Loop.Until != "" {
+		if output, ok := state.Outputs[step.ID]; ok {
+			if strings.Contains(strings.ToLower(output), strings.ToLower(step.Loop.Until)) {
+				return s.advancePastLoop(wf, state), nil
+			}
+		}
+	}
+
+	// Check max iterations
+	if state.LoopIteration >= state.LoopMax {
+		return s.advancePastLoop(wf, state), nil
+	}
+
+	// Continue loop — return same step for another iteration
+	lib.WriteSessionJSON(s.dataDir, state)
+	response := fmt.Sprintf("=== LOOP ITERATION %d/%d: %s ===\n", state.LoopIteration, state.LoopMax, step.ID)
+	response += s.formatStepResponse(wf, state, step, state.Input)
+	return mcpmcp.NewToolResultText(response), nil
+}
+
+func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) *mcpmcp.CallToolResult {
+	nextIndex := state.CurrentIndex + 1
+	// Reset loop state
+	state.LoopIteration = 0
+	state.LoopMax = 0
+
+	if nextIndex >= len(wf.Steps) {
+		state.Status = "done"
+		lib.WriteSessionJSON(s.dataDir, state)
+		if s.db != nil {
+			s.db.UpdateSessionStatus(state.ID, "done")
+		}
+		lib.ClearSessionJSON(s.dataDir)
+		return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps))
+	}
+
+	nextStep := wf.Steps[nextIndex]
+	state.CurrentStep = nextStep.ID
+	state.CurrentIndex = nextIndex
+	state.StepType = stepType(nextStep)
+	lib.WriteSessionJSON(s.dataDir, state)
+
+	response := s.formatStepResponse(wf, state, &nextStep, state.Input)
+	return mcpmcp.NewToolResultText(response)
 }

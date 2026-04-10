@@ -23,7 +23,9 @@ type SessionState struct {
 	SpentUSD     float64           `json:"spent_usd"`
 	StartedAt    time.Time         `json:"started_at"`
 	Outputs      map[string]string `json:"outputs"`
-	Status       string            `json:"status"` // "running" | "done" | "failed"
+	Status        string            `json:"status"`         // "running" | "done" | "failed"
+	LoopIteration int               `json:"loop_iteration,omitempty"` // current loop count for loop steps
+	LoopMax       int               `json:"loop_max,omitempty"`       // max iterations for current loop
 }
 
 // SessionJSONPath returns the path to the hot-state session file.
