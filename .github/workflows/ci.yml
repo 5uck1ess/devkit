@@ -69,19 +69,54 @@ jobs:
             exit 1
           fi
 
-      - name: plugin.json MCP command must match wrapper path
+      - name: plugin.json mcpServers must point at MCPB bundle
         run: |
-          cmd=$(jq -r '.mcpServers["devkit-engine"].command' .claude-plugin/plugin.json)
-          expected='${CLAUDE_PLUGIN_ROOT}/bin/devkit'
-          if [ "$cmd" != "$expected" ]; then
-            echo "FATAL: plugin.json mcpServers.devkit-engine.command is '$cmd', expected '$expected'"
+          ref=$(jq -r '.mcpServers' .claude-plugin/plugin.json)
+          expected='./devkit.mcpb'
+          if [ "$ref" != "$expected" ]; then
+            echo "FATAL: plugin.json mcpServers is '$ref', expected '$expected'"
             exit 1
           fi
 
-      - name: shellcheck wrapper
+      - name: MCPB bundle must exist and contain launcher stubs
+        run: |
+          test -f devkit.mcpb || { echo "FATAL: devkit.mcpb bundle missing from repo root"; exit 1; }
+          entries=$(unzip -Z1 devkit.mcpb)
+          for required in manifest.json server/devkit server/devkit.exe; do
+            if ! printf '%s\n' "$entries" | grep -qx "$required"; then
+              echo "FATAL: devkit.mcpb missing required entry '$required'"
+              printf 'bundle contents:\n%s\n' "$entries"
+              exit 1
+            fi
+          done
+          unzip -p devkit.mcpb manifest.json | jq -e \
+            '.server.mcp_config.platform_overrides.win32.command == "${__dirname}/server/devkit.exe"' \
+            > /dev/null || {
+              echo "FATAL: mcpb manifest.json platform_overrides.win32.command is not the expected Windows launcher"
+              exit 1
+            }
+
+      - name: Bundled server/devkit.exe must be a real PE binary
+        run: |
+          magic=$(unzip -p devkit.mcpb server/devkit.exe | head -c 2 | xxd -p)
+          if [ "$magic" != "4d5a" ]; then
+            echo "FATAL: server/devkit.exe in bundle is not a PE binary (MZ header missing; got '$magic')"
+            echo "Did a probe stub or wrong-architecture binary get committed?"
+            exit 1
+          fi
+
+      - name: Bundled server/devkit must have a shell shebang
+        run: |
+          first=$(unzip -p devkit.mcpb server/devkit | head -c 2)
+          if [ "$first" != "#!" ]; then
+            echo "FATAL: server/devkit in bundle has no shebang; got '$first'"
+            exit 1
+          fi
+
+      - name: shellcheck wrappers
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/devkit
+          shellcheck bin/devkit bin/mcpb-build mcpb/server/devkit
 
       - name: Wrapper --help must exit with a download attempt (no local engine)
         run: |
@@ -99,6 +134,105 @@ jobs:
           # failure class we're guarding against.
           if [ $exit_code -eq 0 ] && [ -z "$output" ]; then
             echo "FATAL: wrapper exited 0 with no output — silent failure class bug"
+            exit 1
+          fi
+
+  mcpb-launcher-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcpb/launcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mcpb/launcher/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -v -count=1
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  # Guards against the class of bug where mcpb/launcher/main.go,
+  # mcpb/manifest.json, or mcpb/server/devkit are edited but devkit.mcpb is
+  # not rebuilt — CI would otherwise greenlight a shipped bundle with stale
+  # runtime behavior.
+  #
+  # devkit.mcpb.sources.json is a sidecar manifest that records the sha256
+  # of each source file at bundle-build time. This job re-computes each
+  # hash and compares. We don't byte-compare the cross-compiled .exe
+  # because Go cross-builds aren't byte-identical across host OSes even
+  # with -trimpath (linker build ID leaks host state) — the sidecar is
+  # the portable equivalent.
+  mcpb-bundle-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sources sidecar must exist
+        run: |
+          test -f devkit.mcpb.sources.json || {
+            echo "FATAL: devkit.mcpb.sources.json is missing; did you rebuild the bundle with bin/mcpb-build?"
+            exit 1
+          }
+
+      - name: Source file hashes must match sidecar
+        run: |
+          set -eo pipefail
+          stale=0
+          # Read the tracked file list from the sidecar itself so there's
+          # one source of truth — bin/mcpb-build defines what's tracked,
+          # CI re-verifies each entry.
+          files=$(jq -r 'keys[]' devkit.mcpb.sources.json)
+          if [ -z "$files" ]; then
+            echo "FATAL: devkit.mcpb.sources.json is empty or invalid"
+            exit 1
+          fi
+          while IFS= read -r file; do
+            want=$(jq -r --arg f "$file" '.[$f]' devkit.mcpb.sources.json)
+            if [ ! -f "$file" ]; then
+              echo "FATAL: sidecar references $file but the file is missing"
+              stale=1
+              continue
+            fi
+            have=$(sha256sum "$file" | awk '{print $1}')
+            if [ "$want" != "$have" ]; then
+              echo "FATAL: $file has been edited since devkit.mcpb was built"
+              echo "  sidecar sha256: $want"
+              echo "  current sha256: $have"
+              stale=1
+            fi
+          done <<< "$files"
+          if [ "$stale" != "0" ]; then
+            echo ""
+            echo "Rebuild with: bin/mcpb-build"
+            exit 1
+          fi
+
+      - name: Bundled manifest.json must match source
+        run: |
+          unzip -p devkit.mcpb manifest.json > /tmp/bundled-manifest.json
+          if ! diff -u mcpb/manifest.json /tmp/bundled-manifest.json; then
+            echo "FATAL: devkit.mcpb manifest.json has drifted from mcpb/manifest.json"
+            exit 1
+          fi
+
+      - name: Bundled server/devkit must match source
+        run: |
+          unzip -p devkit.mcpb server/devkit > /tmp/bundled-proxy.sh
+          if ! diff -u mcpb/server/devkit /tmp/bundled-proxy.sh; then
+            echo "FATAL: devkit.mcpb server/devkit has drifted from mcpb/server/devkit"
             exit 1
           fi
 

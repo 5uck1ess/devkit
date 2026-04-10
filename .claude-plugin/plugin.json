@@ -5,12 +5,5 @@
   "author": {
     "name": "5uck1ess"
   },
-  "mcpServers": {
-    "devkit-engine": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/devkit",
-      "args": [
-        "mcp"
-      ]
-    }
-  }
+  "mcpServers": "./devkit.mcpb"
 }

@@ -1,0 +1,21 @@
+{
+  "manifest_version": "0.3",
+  "name": "devkit-engine",
+  "version": "0.0.0",
+  "description": "devkit MCP engine launcher — POSIX proxies to bin/devkit, Windows spawns a native PE stub to bypass CreateProcess + CVE-2024-27980 constraints",
+  "author": { "name": "5uck1ess" },
+  "server": {
+    "type": "binary",
+    "entry_point": "server/devkit",
+    "mcp_config": {
+      "command": "${__dirname}/server/devkit",
+      "args": ["mcp"],
+      "platform_overrides": {
+        "win32": {
+          "command": "${__dirname}/server/devkit.exe",
+          "args": ["mcp"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# Rebuild devkit.mcpb from mcpb/ sources.
+#
+# Cross-compiles mcpb/launcher/main.go into mcpb/server/devkit.exe,
+# rezips devkit.mcpb, and regenerates devkit.mcpb.sources.json with
+# sha256s of every source file the bundle depends on. Dev and CI both
+# call this so there's one definition of "bundle rebuild."
+#
+# Must be run from the repo root. Writes the bundle and sidecar via
+# tempfile-then-rename so a failing step can't leave half-written
+# artifacts behind.
+
+set -euo pipefail
+
+if [ ! -f mcpb/launcher/main.go ]; then
+    printf 'mcpb-build: must be run from repo root (mcpb/launcher/main.go not found)\n' >&2
+    exit 1
+fi
+
+# Pick a sha256 frontend. macOS ships shasum, Linux ships sha256sum.
+if command -v sha256sum >/dev/null 2>&1; then
+    HASHER="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+    HASHER="shasum -a 256"
+else
+    printf 'mcpb-build: neither sha256sum nor shasum available on PATH\n' >&2
+    exit 1
+fi
+
+sha256_of() {
+    # Use a real failure path: if the file is unreadable or missing,
+    # $HASHER prints an error to stderr and exits non-zero, which
+    # pipefail + errexit will bubble up.
+    $HASHER "$1" | awk '{print $1}'
+}
+
+printf 'mcpb-build: cross-compiling Windows launcher\n'
+(
+    cd mcpb/launcher
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+        go build -trimpath -ldflags='-s -w' -o ../server/devkit.exe .
+)
+
+printf 'mcpb-build: rebuilding devkit.mcpb\n'
+rm -f devkit.mcpb.tmp
+(
+    cd mcpb
+    zip -q -r ../devkit.mcpb.tmp manifest.json server/devkit server/devkit.exe
+)
+
+printf 'mcpb-build: regenerating devkit.mcpb.sources.json\n'
+rm -f devkit.mcpb.sources.json.tmp
+{
+    printf '{\n'
+    first=1
+    for f in \
+        mcpb/launcher/main.go \
+        mcpb/launcher/go.mod \
+        mcpb/launcher/go.sum \
+        mcpb/launcher/main_test.go \
+        mcpb/manifest.json \
+        mcpb/server/devkit \
+        mcpb/server/devkit.exe
+    do
+        if [ ! -f "$f" ]; then
+            # go.sum is optional when the launcher has no external deps;
+            # skip silently so an empty-dep module doesn't force a stub
+            # file. Everything else is required.
+            if [ "$f" = "mcpb/launcher/go.sum" ]; then
+                continue
+            fi
+            printf 'mcpb-build: FATAL: required source %s is missing\n' "$f" >&2
+            exit 1
+        fi
+        hash=$(sha256_of "$f")
+        if [ -z "$hash" ]; then
+            printf 'mcpb-build: FATAL: empty hash for %s\n' "$f" >&2
+            exit 1
+        fi
+        if [ "$first" = "1" ]; then
+            first=0
+        else
+            printf ',\n'
+        fi
+        printf '  "%s": "%s"' "$f" "$hash"
+    done
+    printf '\n}\n'
+} > devkit.mcpb.sources.json.tmp
+
+# Atomic-ish install: both files land together or neither does. The
+# tempfiles survive on a failing step above so the prior bundle + sidecar
+# stay untouched.
+mv devkit.mcpb.tmp devkit.mcpb
+mv devkit.mcpb.sources.json.tmp devkit.mcpb.sources.json
+
+printf 'mcpb-build: done\n'
+printf '  devkit.mcpb                  %s bytes\n' "$(wc -c < devkit.mcpb | tr -d ' ')"
+printf '  mcpb/server/devkit.exe       %s bytes\n' "$(wc -c < mcpb/server/devkit.exe | tr -d ' ')"
