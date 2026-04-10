@@ -949,8 +949,12 @@ func TestRunWorkflowExpectFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected success for non-zero exit with expect:failure, got: %v", err)
 	}
-	if _, ok := res.Outputs["repro"]; !ok {
+	output, ok := res.Outputs["repro"]
+	if !ok {
 		t.Fatal("repro output missing")
+	}
+	if !strings.Contains(output, "exit code: 1") {
+		t.Errorf("output should contain exit code, got %q", output)
 	}
 }
 
@@ -977,7 +981,53 @@ func TestRunWorkflowExpectFailureButGotZero(t *testing.T) {
 	}
 }
 
-func TestRunWorkflowExpectSuccessDefault(t *testing.T) {
+func TestRunWorkflowExpectSuccessPass(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// expect: success — exit 0 should succeed
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "check", Command: "exit 0", Expect: "success"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("expected success for exit 0 with expect:success, got: %v", err)
+	}
+	if !strings.Contains(res.Outputs["check"], "exit code: 0") {
+		t.Error("exit code not in output")
+	}
+}
+
+func TestRunWorkflowExpectSuccessButGotNonZero(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// expect: success — non-zero exit should FAIL
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "check", Command: "exit 1", Expect: "success"},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err == nil {
+		t.Fatal("expected error for exit 1 with expect:success, got nil")
+	}
+	if !strings.Contains(err.Error(), "expected success") {
+		t.Errorf("error = %q, want it to contain 'expected success'", err.Error())
+	}
+}
+
+func TestRunWorkflowNoExpectDefault(t *testing.T) {
 	db := tempDB(t)
 	dir, git := initGitRepo(t)
 	runner := newMockRunner(nil, nil)
@@ -993,7 +1043,7 @@ func TestRunWorkflowExpectSuccessDefault(t *testing.T) {
 
 	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
 	if err != nil {
-		t.Fatalf("default expect should not fail on non-zero exit: %v", err)
+		t.Fatalf("default (no expect) should not fail on non-zero exit: %v", err)
 	}
 	if !strings.Contains(res.Outputs["check"], "exit code: 1") {
 		t.Error("exit code not in output")
