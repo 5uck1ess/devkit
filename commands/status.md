@@ -64,7 +64,7 @@ List all commands, marking which ones need external CLIs:
 |-----|--------|------------|
 | codex | ✓ installed (v1.2.0) | tri:* commands (fallback) |
 | gemini | ✗ not installed | tri:* commands (fallback) |
-| gh | ✓ installed (v2.40.0) | devkit:pr-ready |
+| gh | ✓ installed (v2.40.0) | pr-ready skill |
 | rtk | ✓ installed (v0.34.2) | token optimization (optional) |
 
 ### Commands

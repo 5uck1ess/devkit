@@ -68,7 +68,7 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 
 ```bash
 brew install rtk       # Token optimization (60-90% savings on Bash output)
-brew install ast-grep  # AST-based repo mapping (devkit workflow run repo-map)
+brew install ast-grep  # AST-based repo mapping (used by onboard skill)
 ```
 
 ### Verify
@@ -91,8 +91,8 @@ This shows which CLIs are installed, which agents are available, and which comma
 # "research the best auth library for Node"
 
 # Slash commands for complex workflows:
-/devkit:pr-ready              # Full PR pipeline
 /tri:review                   # Multi-agent code review
+# Or just describe: "submit a PR", "ship this" → pr-ready skill auto-activates
 ```
 
 ---
@@ -188,7 +188,7 @@ Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `
 | PreToolUse | **safety-check** | `rm -rf /`, `DROP TABLE`, force push, editing secrets |
 | PreToolUse | **security-patterns** | `eval()`, XSS, shell injection, weak hashes, hardcoded secrets |
 | PreToolUse | **audit-trail** | Logs every command to `.devkit/audit.log` |
-| PreToolUse | **pr-gate** | Prompts to run `/devkit:pr-ready` before `gh pr create` |
+| PreToolUse | **pr-gate** | Prompts to run the pr-ready skill before `gh pr create` |
 | PreToolUse | **rtk-rewrite** | Compresses Bash output via RTK (no-op if not installed) |
 | PreToolUse | **devkit-guard** | Blocks out-of-step tools during workflow command steps |
 | PostToolUse | **post-validate** | Suppressed errors, leaked secrets, writes outside repo |
@@ -273,7 +273,6 @@ devkit/
 │   ├── mcp/           # MCP server (tools, principles loader, session management)
 │   ├── engine/        # YAML workflow engine (parser, executor, tests)
 │   ├── runners/       # Codex, Gemini interfaces (terminal fallback)
-│   ├── loops/         # Improve, feature, bugfix, refactor, testgen
 │   ├── lib/           # DB, git, metrics, session state, reporting
 │   └── cmd/           # CLI entry points (including `devkit mcp`)
 ├── bin/               # Auto-PATH binary (built by make install-plugin)

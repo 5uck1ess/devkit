@@ -33,7 +33,7 @@ jq -n '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "ask",
-    permissionDecisionReason: "PR creation detected — want to run /devkit:pr-ready first? (lint, test, security, DRY review, changelog). Say yes to run the pipeline, or approve to skip and create the PR directly."
+    permissionDecisionReason: "PR creation detected — want to run the pr-ready pipeline first? (lint, test, security, DRY review, changelog, monitor). Say yes to run it, or approve to skip and create the PR directly."
   }
 }'
 exit 0

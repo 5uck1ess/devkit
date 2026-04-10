@@ -2,7 +2,7 @@
 
 ## Adding a Workflow
 
-Most command logic lives in YAML workflows executed by the Go engine. Only 8 slash commands remain as tab-completable entry points.
+Most command logic lives in YAML workflows executed by the Go engine. Only 6 slash commands remain as tab-completable entry points — everything else is context-activated via skills.
 
 1. Create `workflows/my-workflow.yml` with steps, model assignments, and loop/gate definitions
 2. Test with `devkit_start` MCP tool or `devkit workflow run my-workflow "input"` from terminal
