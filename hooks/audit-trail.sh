@@ -15,19 +15,34 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 LOG_DIR=".devkit"
 LOG_FILE="${LOG_DIR}/audit.log"
 
-# First-run only: self-install .devkit/ in the host repo's root .gitignore.
-# Without this, users who install devkit into a repo whose .gitignore doesn't
-# already cover .devkit/ end up tracking audit.log, which then conflicts on
-# stash/pull/merge because the hook rewrites it on every Bash call.
-if [[ ! -d "$LOG_DIR" ]]; then
-  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-  if [[ -n "$REPO_ROOT" ]]; then
-    GITIGNORE="${REPO_ROOT}/.gitignore"
-    if [[ ! -f "$GITIGNORE" ]] || ! grep -qE '^\.devkit($|/)' "$GITIGNORE" 2>/dev/null; then
-      if [[ -f "$GITIGNORE" ]] && [[ -n "$(tail -c 1 "$GITIGNORE" 2>/dev/null)" ]]; then
-        printf '\n' >> "$GITIGNORE"
+# First-run only: self-install .devkit/ in the nearest git repo's .gitignore
+# so devkit's audit log never gets accidentally tracked. Without this, users
+# whose project .gitignore doesn't already cover .devkit/ end up tracking
+# audit.log, which then conflicts on stash/pull/merge because the hook
+# rewrites it on every Bash call.
+#
+# Race safety: Claude Code can fire PreToolUse hooks in parallel when the
+# model issues parallel Bash calls. We use an atomic noclobber marker inside
+# .devkit/ as the init lock so only the first process does the gitignore
+# work; concurrent callers fail the noclobber and skip it cleanly.
+#
+# Submodule note: git rev-parse --show-toplevel intentionally returns the
+# submodule root when cwd is inside one — this is correct because .devkit/
+# is created relative to cwd and therefore lives inside the submodule, so
+# the submodule's own .gitignore is the right file to update.
+INIT_MARKER="${LOG_DIR}/.gitignore-installed"
+if [[ ! -f "$INIT_MARKER" ]]; then
+  mkdir -p "$LOG_DIR"
+  if ( set -C; : > "$INIT_MARKER" ) 2>/dev/null; then
+    REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$REPO_ROOT" ]]; then
+      GITIGNORE="${REPO_ROOT}/.gitignore"
+      if [[ ! -f "$GITIGNORE" ]] || ! grep -qE '^\.devkit($|/)' "$GITIGNORE" 2>/dev/null; then
+        if [[ -f "$GITIGNORE" ]] && [[ -n "$(tail -c 1 "$GITIGNORE" 2>/dev/null)" ]]; then
+          printf '\n' >> "$GITIGNORE"
+        fi
+        printf '.devkit/\n' >> "$GITIGNORE"
       fi
-      printf '.devkit/\n' >> "$GITIGNORE"
     fi
   fi
 fi
