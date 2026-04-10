@@ -5,12 +5,19 @@ on:
     types: [closed]
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
-  release:
+  # ===========================================================================
+  # Step 1: Determine version and commit bump
+  # ===========================================================================
+  version:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit_sha: ${{ steps.bump.outputs.commit_sha }}
 
     steps:
       - uses: actions/checkout@v4
@@ -67,30 +74,46 @@ jobs:
           jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
 
       - name: Commit version bump
+        id: bump
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .claude-plugin/plugin.json
-          # Only commit if there are changes
           if git diff --cached --quiet; then
             echo "Version files already at $VERSION — no commit needed"
           else
             git commit -m "bump to v${VERSION}"
             git push
           fi
+          echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Step 2: Create draft release (tag + release atomically)
+  # ===========================================================================
+  create-release:
+    needs: version
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.create_release.outputs.release_created }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
 
       - name: Generate release notes
         id: notes
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
           NOTES=$(awk "/^## ${VERSION}$/,/^## /{if(/^## ${VERSION}$/)next; if(/^## /)exit; print}" CHANGELOG.md 2>/dev/null)
           if [ -z "$NOTES" ]; then
-            # Try with v prefix
             NOTES=$(awk "/^## v${VERSION}$/,/^## /{if(/^## v${VERSION}$/)next; if(/^## /)exit; print}" CHANGELOG.md 2>/dev/null)
           fi
           if [ -z "$NOTES" ]; then
-            NOTES="Merged: ${{ github.event.pull_request.title }}"
+            NOTES="Merged: ${PR_TITLE}"
           fi
           {
             echo "notes<<EOF"
@@ -98,15 +121,115 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Create tag and release
+      - name: Create draft release
+        id: create_release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.notes }}
+        run: |
+          TAG="v${{ needs.version.outputs.version }}"
+          COMMIT="${{ needs.version.outputs.commit_sha }}"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "Tag $TAG already exists — skipping release"
+            echo "release_created=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Tag the version-bumped commit, not the stale checkout
+          git tag "$TAG" "$COMMIT"
+          git push origin "$TAG"
+          # Create release; clean up tag on failure
+          if ! gh release create "$TAG" --title "$TAG" --draft --notes "$RELEASE_NOTES"; then
+            echo "::warning::Release creation failed — cleaning up orphaned tag"
+            git push origin --delete "$TAG" || true
+            echo "release_created=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "release_created=true" >> "$GITHUB_OUTPUT"
+
+  # ===========================================================================
+  # Step 3: Build binaries (parallel matrix)
+  # ===========================================================================
+  binaries:
+    needs: [version, create-release]
+    if: needs.create-release.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    strategy:
+      matrix:
+        os: [linux, darwin, windows]
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
+      - name: Build binary
+        run: make build-for GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }}
+
+      - name: Upload release asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v${{ steps.version.outputs.version }}"
-          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
-            echo "Tag $TAG already exists — skipping release"
-            exit 0
-          fi
-          git tag "$TAG"
-          git push origin "$TAG"
-          gh release create "$TAG" --title "$TAG" --notes "${{ steps.notes.outputs.notes }}"
+          EXT=""
+          if [ "${{ matrix.os }}" = "windows" ]; then EXT=".exe"; fi
+          ASSET="bin/devkit-${{ matrix.os }}-${{ matrix.arch }}${EXT}"
+          echo "Uploading ${ASSET}"
+          gh release upload "v${{ needs.version.outputs.version }}" \
+            "$ASSET" \
+            --clobber
+        working-directory: src
+
+  # ===========================================================================
+  # Step 4: Generate checksums and publish release
+  # ===========================================================================
+  publish:
+    needs: [version, create-release, binaries]
+    if: needs.create-release.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all release assets and generate checksums
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.version.outputs.version }}"
+          mkdir -p /tmp/release-assets
+          gh release download "$TAG" --dir /tmp/release-assets
+          cd /tmp/release-assets
+          sha256sum devkit-* > checksums.txt
+          cat checksums.txt
+          gh release upload "$TAG" checksums.txt --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "v${{ needs.version.outputs.version }}" --draft=false
+
+  # ===========================================================================
+  # Cleanup on failure
+  # ===========================================================================
+  cleanup-on-failure:
+    needs: [version, create-release, binaries, publish]
+    if: >-
+      always() &&
+      needs.create-release.outputs.release_created == 'true' &&
+      (needs.binaries.result == 'failure' || needs.binaries.result == 'cancelled' ||
+       needs.publish.result == 'failure' || needs.publish.result == 'cancelled')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Delete draft release on failure
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.version.outputs.version }}"
+          echo "::warning::Cleaning up draft release $TAG due to workflow failure"
+          gh release delete "$TAG" --yes || echo "::warning::Failed to delete release $TAG — manual cleanup required"
+          git push origin --delete "$TAG" || echo "::warning::Failed to delete tag $TAG — manual cleanup required"
