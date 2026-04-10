@@ -77,7 +77,7 @@ steps:
 	_, startHandler := srv.startTool()
 	out, isErr := callToolHandler(t, startHandler, map[string]interface{}{
 		"workflow": "test",
-		"input":   "test input",
+		"input":    "test input",
 	})
 	if isErr {
 		t.Fatalf("start returned error: %s", out)
@@ -177,7 +177,7 @@ steps:
 	_, startHandler := srv.startTool()
 	out, isErr := callToolHandler(t, startHandler, map[string]interface{}{
 		"workflow": "test",
-		"input":   "bug fix",
+		"input":    "bug fix",
 	})
 	if isErr {
 		t.Fatalf("start returned error: %s", out)
@@ -234,7 +234,7 @@ yagni:
 	_, startHandler := srv.startTool()
 	out, isErr := callToolHandler(t, startHandler, map[string]interface{}{
 		"workflow": "test",
-		"input":   "test input",
+		"input":    "test input",
 	})
 	if isErr {
 		t.Fatalf("start returned error: %s", out)
@@ -273,7 +273,7 @@ steps:
 	_, startHandler := srv.startTool()
 	out, isErr := callToolHandler(t, startHandler, map[string]interface{}{
 		"workflow": "test",
-		"input":   "test input",
+		"input":    "test input",
 	})
 	if isErr {
 		t.Fatalf("start returned error: %s", out)

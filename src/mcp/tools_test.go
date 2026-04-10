@@ -255,11 +255,11 @@ steps:
 
 	// Pre-seed a running session
 	existing := &lib.SessionState{
-		ID:       "abc123",
-		Workflow: "review",
-		Status:   "running",
+		ID:        "abc123",
+		Workflow:  "review",
+		Status:    "running",
 		StartedAt: time.Now(),
-		Outputs:  map[string]string{},
+		Outputs:   map[string]string{},
 	}
 	if err := lib.WriteSessionJSON(dataDir, existing); err != nil {
 		t.Fatalf("write session: %v", err)

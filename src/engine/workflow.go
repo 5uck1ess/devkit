@@ -17,9 +17,9 @@ type Workflow struct {
 	Description string   `yaml:"description"`
 	Budget      Budget   `yaml:"budget"`
 	Steps       []WfStep `yaml:"steps"`
-	Enforce     string   `yaml:"enforce"`     // "hard" (default) | "soft"
-	BranchMode  bool     `yaml:"branch"`      // create git branch per session
-	Principles  []string `yaml:"principles"`  // principle keys to inject
+	Enforce     string   `yaml:"enforce"`    // "hard" (default) | "soft"
+	BranchMode  bool     `yaml:"branch"`     // create git branch per session
+	Principles  []string `yaml:"principles"` // principle keys to inject
 }
 
 // Budget controls token spending limits.

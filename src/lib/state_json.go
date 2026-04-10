@@ -10,20 +10,20 @@ import (
 
 // SessionState is the hot-path state file read by hooks on every tool call.
 type SessionState struct {
-	ID           string            `json:"id"`
-	Workflow     string            `json:"workflow"`
-	Input        string            `json:"input"`
-	CurrentStep  string            `json:"current_step"`
-	CurrentIndex int               `json:"current_index"`
-	TotalSteps   int               `json:"total_steps"`
-	StepType     string            `json:"step_type"` // "prompt" | "command" | "parallel"
-	Enforce      string            `json:"enforce"`
-	Branch       bool              `json:"branch"`
-	BudgetUSD    float64           `json:"budget_usd"`
-	SpentUSD     float64           `json:"spent_usd"`
-	StartedAt    time.Time         `json:"started_at"`
-	Outputs      map[string]string `json:"outputs"`
-	Status        string            `json:"status"`         // "running" | "done" | "failed"
+	ID            string            `json:"id"`
+	Workflow      string            `json:"workflow"`
+	Input         string            `json:"input"`
+	CurrentStep   string            `json:"current_step"`
+	CurrentIndex  int               `json:"current_index"`
+	TotalSteps    int               `json:"total_steps"`
+	StepType      string            `json:"step_type"` // "prompt" | "command" | "parallel"
+	Enforce       string            `json:"enforce"`
+	Branch        bool              `json:"branch"`
+	BudgetUSD     float64           `json:"budget_usd"`
+	SpentUSD      float64           `json:"spent_usd"`
+	StartedAt     time.Time         `json:"started_at"`
+	Outputs       map[string]string `json:"outputs"`
+	Status        string            `json:"status"`                   // "running" | "done" | "failed"
 	LoopIteration int               `json:"loop_iteration,omitempty"` // current loop count for loop steps
 	LoopMax       int               `json:"loop_max,omitempty"`       // max iterations for current loop
 }

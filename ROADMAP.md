@@ -6,7 +6,7 @@
 - **Deterministic workflow conversion** — All command logic moved from LLM-interpreted markdown to Go-engine-driven YAML workflows; ~3,600 lines of inline logic removed
 - **19 context-activated skills** — 9 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, deep-research, scrape, autoloop, adr) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad) + 1 orchestration (mega-pr)
 - **6 agents** — Scoped tool access, worktree isolation, model assignment
-- **10 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression)
+- **12 hooks** — Safety (destructive command blocking, edit-time security patterns, PR gate), observability (audit trail, slop detection, post-validation, subagent verification, language-aware code review), optimization (RTK token compression), workflow enforcement (devkit-guard, devkit-stop-guard)
 - **Graceful degradation** — tri:* commands work with 1-3 agents depending on installed CLIs
 - **Goal decomposition** — Task DAG with dependency ordering and parallel execution
 - **Concurrency limits** — Max 3 parallel agents in multi-agent commands
