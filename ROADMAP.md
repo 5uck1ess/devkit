@@ -2,7 +2,8 @@
 
 ## Implemented
 
-- **8 slash commands** — Tab-completable entry points (tri-review, tri-debug, tri-security, pr-ready, pr-monitor, status, setup-rules, workflow); 16 former commands now context-activated via skills or invoked directly via `devkit workflow run`
+- **MCP engine** — Go server exposes `devkit_start`, `devkit_advance`, `devkit_status`, `devkit_list` tools inside Claude Code. Step ordering enforced via MCP tool scoping + PreToolUse hook exit 2. Session state in session.json (hot path, <50ms hook reads) + SQLite (cold history). ~65% token reduction vs old monolithic prompts.
+- **8 slash commands** — Tab-completable entry points (tri-review, tri-debug, tri-security, pr-ready, pr-monitor, status, setup-rules, workflow); 16 former commands now context-activated via skills or invoked via MCP tools
 - **Deterministic workflow conversion** — All command logic moved from LLM-interpreted markdown to Go-engine-driven YAML workflows; ~3,600 lines of inline logic removed
 - **19 context-activated skills** — 9 auto-trigger workflows (test-gen, doc-gen, changelog, onboard, research, deep-research, scrape, autoloop, adr) + 6 coding principles (executing, clean-code, DRY, YAGNI, dont-reinvent, stuck) + 2 tools (gcli, creating-workflows) + 1 iteration memory (scratchpad) + 1 orchestration (mega-pr)
 - **6 agents** — Scoped tool access, worktree isolation, model assignment

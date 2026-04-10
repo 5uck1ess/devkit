@@ -1,6 +1,6 @@
 # Devkit
 
-A deterministic development harness for AI agents. The Go engine controls orchestration (loops, branches, gates, budgets). The agent handles creativity. Every change is measured, gated, and auditable.
+A deterministic development harness for AI agents. The MCP engine controls workflow execution (step ordering, gates, loops, branches). The agent handles creativity. Every step is enforced, measured, and auditable.
 
 Works with just Claude. Optionally adds Codex and Gemini for multi-agent consensus.
 
@@ -93,14 +93,34 @@ This shows which CLIs are installed, which agents are available, and which comma
 # Slash commands for complex workflows:
 /devkit:pr-ready              # Full PR pipeline
 /tri:review                   # Multi-agent code review
-devkit workflow run self-lint "npm run lint"  # Fix all lint errors
 ```
+
+---
+
+## How It Works
+
+Devkit runs as an **MCP server** inside Claude Code. When a workflow starts, the engine takes control:
+
+```
+devkit_start("research", "best Go testing frameworks")
+  → Engine creates session, returns Step 1 + condensed principles
+  → Claude executes the step using standard tools
+  → Claude calls devkit_advance(session_id)
+  → Engine validates, records output, returns Step 2
+  → ...repeat until WORKFLOW COMPLETE
+
+Enforcement (runs automatically):
+  PreToolUse hook → blocks out-of-step actions during command steps
+  Stop hook → prevents session end during active workflows
+```
+
+**Why MCP?** Claude can't skip steps because the engine controls what comes next. Claude can't call tools that aren't valid for the current step. The engine holds state — Claude doesn't self-report.
 
 ---
 
 ## Commands
 
-8 tab-completable slash commands. All other workflows are context-activated via skills or invoked directly with `devkit workflow run <name>`.
+8 tab-completable slash commands. All other workflows are context-activated via skills or invoked via MCP tools.
 
 | Command | What it does |
 |---|---|
@@ -113,9 +133,9 @@ devkit workflow run self-lint "npm run lint"  # Fix all lint errors
 | `/devkit:status` | Health check |
 | `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` |
 
-### Workflows (via `devkit workflow run <name>`)
+### Workflows
 
-All 18 YAML workflows can be invoked directly. Skills auto-activate for common triggers (e.g., "research X", "fix this bug", "add a feature").
+All 18 YAML workflows are invoked via the MCP engine. Skills auto-activate for common triggers (e.g., "research X", "fix this bug", "add a feature").
 
 | Workflow | What it does |
 |---|---|
@@ -155,13 +175,13 @@ Skills activate automatically based on context. No slash command needed.
 | "scrape this URL" | `scrape` |
 | "create an ADR" | `adr` |
 
-Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `stuck`, `scratchpad`) load as reference when relevant.
+Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `stuck`, `scratchpad`) are injected as condensed rules (~120 tokens) per workflow step — not loaded as full skill files.
 
 ---
 
 ## Hooks
 
-10 hooks across 4 lifecycle events. All installed automatically with the plugin.
+12 hooks across 4 lifecycle events. All installed automatically with the plugin.
 
 | Event | Hook | What it catches |
 |---|---|---|
@@ -170,11 +190,13 @@ Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `
 | PreToolUse | **audit-trail** | Logs every command to `.devkit/audit.log` |
 | PreToolUse | **pr-gate** | Prompts to run `/devkit:pr-ready` before `gh pr create` |
 | PreToolUse | **rtk-rewrite** | Compresses Bash output via RTK (no-op if not installed) |
+| PreToolUse | **devkit-guard** | Blocks out-of-step tools during workflow command steps |
 | PostToolUse | **post-validate** | Suppressed errors, leaked secrets, writes outside repo |
 | PostToolUse | **slop-detect** | AI code patterns — doc/code imbalance, restating comments |
 | PostToolUse | **lang-review** | Language-aware checks: Go, TypeScript, Rust, Python, Shell |
 | SubagentStop | **subagent-stop** | Verifies subagent work before accepting |
 | Stop | **stop-gate** | Merge conflicts, cross-domain test gaps, linter pass |
+| Stop | **devkit-stop-guard** | Blocks session end during active workflows |
 
 ---
 
@@ -211,78 +233,28 @@ Language-specific rules that auto-activate when Claude reads matching files. Ins
 
 ---
 
-## Go CLI Harness
-
-The compiled Go binary handles deterministic orchestration — the machine controls the loop, the agent is the body.
-
-### Build
-
-```bash
-cd src && make install
-```
-
-### What it does that plugins can't
-
-- **Exact iteration counts** — Go owns the loop, not the LLM
-- **Command steps** — run shell commands directly in workflows, $0 cost
-- **Loop gates** — shell command after each iteration, auto-revert on failure
-- **YAML workflows** — branching, loops, parallel dispatch, budget enforcement
-- **Triage-based skipping** — typo fix doesn't run a 14-step pipeline
-- **Crash recovery** — SQLite state survives crashes
-- **Hard budget caps** — stops at your dollar limit
-- **True parallel dispatch** — goroutines, not sequential prompts
-
-### Examples
-
-```bash
-# Run 50 improvement iterations, stop at $20
-devkit improve --metric "npm test" --iterations 50 --budget 20.00
-
-# Implement a feature with test verification
-devkit feature "add JWT auth" --target src/auth/ --test "npm test"
-
-# Multi-agent review
-devkit review
-
-# Run any YAML workflow
-devkit workflow feature "add JWT auth"
-
-# Check session history
-devkit status
-```
-
-### Testing
-
-```bash
-cd src && go test ./... -v
-```
-
-140+ tests across 6 packages. All use mock runners — no API calls needed.
-
----
-
 ## Architecture
 
 ```
-Workflow Engine (Go binary)
+MCP Server (bin/devkit mcp — auto-started by plugin)
+  ├── Tools: devkit_start, devkit_advance, devkit_status, devkit_list
+  ├── State: session.json (hot, <50ms reads) + SQLite (cold history)
   ├── Parse YAML → validate steps, branches, budget
-  ├── Create session + git branch
   ├── Walk steps:
-  │   ├── Command steps → shell execution (deterministic, $0)
-  │   ├── Prompt steps → LLM runner (Claude/Codex/Gemini)
+  │   ├── Command steps → engine executes shell directly ($0 cost)
+  │   ├── Prompt steps → Claude works, calls devkit_advance when done
   │   ├── Loop with gate → run, verify, keep or revert
   │   ├── Branch → case-insensitive substring match → goto
-  │   ├── Parallel → goroutines with mutex
-  │   └── Budget check every step
-  └── Commit, report, clean up
+  │   └── Parallel → Agent tool dispatch (Claude/Codex/Gemini)
+  └── Principles injected per step (~120 tokens, not full skill files)
 
-Multi-Agent (tri-* workflows)
-  ├── Claude  → native background agent (always)
-  ├── Codex   → plugin or CLI (optional)
-  └── Gemini  → plugin or CLI (optional)
+Enforcement:
+  ├── MCP tool scoping — Claude can only call devkit_advance to progress
+  ├── PreToolUse hook — exit 2 blocks tools during command steps
+  └── Stop hook — blocks session end during active workflows
 
-Self-Improvement (self-* workflows)
-  └── Loop: propose → measure → keep/revert → repeat
+Terminal fallback (devkit workflow run <name>):
+  └── Subprocess runners for Codex/Gemini CLI usage
 ```
 
 ---
@@ -292,17 +264,18 @@ Self-Improvement (self-* workflows)
 ```
 devkit/
 ├── commands/          # 8 slash commands (tab-completable entry points)
-├── skills/            # 19 context-activated skills
+├── skills/            # 19 context-activated skills + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
-├── hooks/             # 10 hooks (safety, security, quality gates)
+├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 18 YAML workflow definitions
 ├── resources/rules/   # Language-specific coding rules
-├── presets/            # Reserved for future use
-├── src/               # Go CLI harness
+├── src/               # Go engine + MCP server
+│   ├── mcp/           # MCP server (tools, principles loader, session management)
 │   ├── engine/        # YAML workflow engine (parser, executor, tests)
-│   ├── runners/       # Claude, Codex, Gemini interfaces
+│   ├── runners/       # Codex, Gemini interfaces (terminal fallback)
 │   ├── loops/         # Improve, feature, bugfix, refactor, testgen
-│   ├── lib/           # DB, git, metrics, reporting
-│   └── cmd/           # CLI entry points
-└── .github/workflows/ # CI (build+test+vet) + auto-release
+│   ├── lib/           # DB, git, metrics, session state, reporting
+│   └── cmd/           # CLI entry points (including `devkit mcp`)
+├── bin/               # Auto-PATH binary (built by make install-plugin)
+└── .github/workflows/ # CI (build+test+vet) + auto-release (6 platforms)
 ```

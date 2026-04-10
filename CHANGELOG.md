@@ -1,5 +1,35 @@
 # Changelog
 
+## 2.1.0
+
+### MCP Engine — Deterministic Workflow Enforcement (PR #52)
+
+Replaces the broken subprocess-spawning engine with an MCP server that runs inside Claude Code. Step skipping is now structurally impossible.
+
+#### Added
+- **MCP server** (`src/mcp/`) — Go server exposes 4 tools: `devkit_start`, `devkit_advance`, `devkit_status`, `devkit_list`. Registered via `mcpServers` in plugin.json.
+- **PreToolUse guard hook** (`hooks/devkit-guard.sh`) — reads `session.json`, blocks Bash/Edit/Write/Read/Glob/Grep/Agent/WebFetch/WebSearch/NotebookEdit/Skill during command steps (exit 2).
+- **Stop guard hook** (`hooks/devkit-stop-guard.sh`) — blocks session end if workflow is incomplete.
+- **Condensed principles** (`skills/_principles.yml`) — ~120 tokens of DRY/YAGNI/clean-code/dont-reinvent/executing/scratchpad/stuck/test-gen rules injected per workflow step instead of loading full skill files.
+- **Hot session state** (`src/lib/state_json.go`) — atomic write to `$CLAUDE_PLUGIN_DATA/session.json` for fast hook reads (<50ms).
+- **Workflow YAML extensions** — `enforce` (hard/soft), `branch` (git branch per session), `principles` (per-workflow and per-step override).
+- **New MCP tools** — 6 integration tests covering lifecycle, loops with gates, principle injection, expect-failure, path traversal rejection.
+
+#### Changed
+- **Engine role** — CLI that spawned subprocesses → MCP server + state machine
+- **Claude runner** — `claude -p` subprocess (broken with OAuth) → Claude Code IS the runner
+- **Enforcement** — None (markdown honor system) → MCP tool scoping + PreToolUse exit 2
+- **Principle skills** — Loaded if Claude decided to → injected by engine per step
+- **Token usage** — ~50k+ for 8-step workflow → ~17k (~65% reduction)
+- **Skills and commands** — All 8 entry points (research, deep-research, autoloop, tri-review, tri-debug, tri-security, pr-ready, status) now use MCP tools instead of `ensure-engine.sh` + `devkit workflow run`
+
+#### Removed
+- `scripts/ensure-engine.sh` — no longer needed (binary ships in `bin/`, auto-PATH)
+- `scripts/install-engine.sh` — installed by plugin manifest
+
+#### Fixed
+- Engine can now run inside Claude Code (was impossible with OAuth tokens and `claude -p` subprocess)
+
 ## 2.0.34
 
 ### Deterministic Workflow Conversion (PRs #38–#45)
