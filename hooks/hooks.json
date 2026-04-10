@@ -139,6 +139,17 @@
             "timeout": 90
           }
         ]
+      },
+      {
+        "matcher": "Stop",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/devkit-stop-guard.sh",
+            "statusMessage": "Workflow check...",
+            "timeout": 2
+          }
+        ]
       }
     ]
   }
