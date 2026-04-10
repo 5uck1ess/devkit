@@ -5,6 +5,13 @@
 # This wrapper downloads the matching release asset from GitHub on first
 # run, verifies its SHA256, caches it alongside this script, and execs it.
 #
+# Downloads are resumable and crash-safe: the partial file lives next to
+# the final engine path (no TERM trap removes it), so if Claude Code's
+# MCP initialize timeout kills the wrapper mid-download, the next run
+# picks up where the last one stopped via `curl -C -` instead of
+# restarting from zero. A corrupt partial (checksum mismatch) is purged
+# so the next run starts fresh instead of resuming bad bytes.
+#
 # All log output goes to stderr. Stdout stays clean because the MCP stdio
 # protocol runs over it when Claude Code invokes `devkit mcp`.
 
@@ -18,6 +25,24 @@ RELEASE_REPO="devkit"
 
 log() { printf 'devkit: %s\n' "$*" >&2; }
 die() { log "$*"; exit 1; }
+
+# Track the currently-running downloader PID so our INT/TERM trap can
+# kill it explicitly. Without this, /bin/sh's default SIGTERM handler
+# exits the wrapper but leaves curl orphaned and still writing to the
+# partial file. A subsequent wrapper run then starts its own curl on
+# the same file, the two writers clobber each other, and the partial
+# fails checksum — forcing a restart-from-zero on every run. Explicit
+# PID tracking (vs `kill 0`) avoids nuking whatever process group we
+# happen to share with the caller (e.g. test harnesses).
+DL_PID=
+cleanup_downloader() {
+    if [ -n "$DL_PID" ]; then
+        kill "$DL_PID" 2>/dev/null
+        wait "$DL_PID" 2>/dev/null
+        DL_PID=
+    fi
+}
+trap 'cleanup_downloader; exit 143' INT TERM
 
 # Fast path: developer-built binary next to this script (from `make install-plugin`).
 LOCAL_DEV="$SCRIPT_DIR/devkit-engine"
@@ -61,13 +86,43 @@ sha256_of() {
     fi
 }
 
-download() {
+# run_downloader runs the chosen downloader in the background and
+# parks its PID in DL_PID so the INT/TERM trap can kill it cleanly.
+# Returns the downloader's exit code.
+run_downloader() {
+    "$@" &
+    DL_PID=$!
+    wait "$DL_PID"
+    rc=$?
+    DL_PID=
+    return $rc
+}
+
+# download_resume: idempotent, resumable HTTP download to $out. Uses
+# `curl -C -` (or `wget -c`) to continue from the current file size. If
+# the server doesn't support range requests, both fall back to a full
+# re-download automatically.
+download_resume() {
     url=$1
     out=$2
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
+        run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$out" "$url"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$out" "$url"
+        run_downloader wget -q -c -O "$out" "$url"
+    else
+        die "need curl or wget to download engine binary"
+    fi
+}
+
+# download_fresh: non-resumable download for tiny files (checksums)
+# where resume offers no benefit and a stale file would be a hazard.
+download_fresh() {
+    url=$1
+    out=$2
+    if command -v curl >/dev/null 2>&1; then
+        run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        run_downloader wget -q -O "$out" "$url"
     else
         die "need curl or wget to download engine binary"
     fi
@@ -89,42 +144,55 @@ ensure_engine() {
         return 0
     fi
 
-    # Remove stale cached engines from old versions in the same directory.
-    find "$SCRIPT_DIR" -maxdepth 1 -name 'devkit-engine-v*' ! -name "$engine_name" \
+    # Staging paths live next to the final engine on the same filesystem
+    # so mv(2) is atomic and the partial survives SIGTERM (no trap
+    # removes it). A subsequent wrapper invocation resumes via curl -C -.
+    partial="$SCRIPT_DIR/${engine_name}.partial"
+    sums_file="$SCRIPT_DIR/devkit-checksums-v${VERSION}.txt"
+
+    # Remove stale cached engines, partials, and checksum files from old
+    # versions. Current version's partial and checksums are preserved so
+    # an interrupted download can resume.
+    find "$SCRIPT_DIR" -maxdepth 1 \
+        \( -name 'devkit-engine-v*' -o -name 'devkit-checksums-v*' \) \
+        ! -name "$engine_name" \
+        ! -name "${engine_name}.partial" \
+        ! -name "devkit-checksums-v${VERSION}.txt" \
         -type f -exec rm -f {} + 2>/dev/null || true
 
     tag="v${VERSION}"
     asset="devkit-${PLATFORM}${ext}"
     base_url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}"
 
-    log "first-run: downloading engine ${tag} (${PLATFORM})…"
+    if [ -f "$partial" ]; then
+        log "resuming download of engine ${tag} (${PLATFORM})…"
+    else
+        log "first-run: downloading engine ${tag} (${PLATFORM})…"
+    fi
 
-    # Per-invocation temp dir so two simultaneous first runs never
-    # share tmp paths. Each process cleans up its own dir on exit;
-    # the final mv(2) is atomic within a filesystem, so whichever
-    # writer lands last produces the correct (bit-identical) binary.
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/devkit-engine-XXXXXX") \
-        || die "mktemp -d failed"
-    tmp_bin="$tmp_dir/${engine_name}"
-    tmp_sums="$tmp_dir/checksums.txt"
-    trap 'rm -rf "$tmp_dir"' EXIT INT TERM
-
-    download "${base_url}/${asset}" "$tmp_bin" \
+    download_resume "${base_url}/${asset}" "$partial" \
         || die "download failed: ${base_url}/${asset}"
-    download "${base_url}/checksums.txt" "$tmp_sums" \
+    download_fresh "${base_url}/checksums.txt" "$sums_file" \
         || die "checksum file download failed from ${base_url}/checksums.txt"
 
-    expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$tmp_sums")
-    [ -n "$expected" ] || die "no checksum entry for $asset in release $tag"
+    expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$sums_file")
+    if [ -z "$expected" ]; then
+        rm -f "$sums_file"
+        die "no checksum entry for $asset in release $tag"
+    fi
 
-    actual=$(sha256_of "$tmp_bin")
-    [ "$actual" = "$expected" ] \
-        || die "checksum mismatch for $asset (expected $expected, got $actual)"
+    actual=$(sha256_of "$partial")
+    if [ "$actual" != "$expected" ]; then
+        # Partial is corrupt (bad resume, disk issue, MITM). Remove it
+        # so the next run starts from zero instead of looping on a bad
+        # resume offset.
+        rm -f "$partial" "$sums_file"
+        die "checksum mismatch for $asset (expected $expected, got $actual)"
+    fi
 
-    chmod +x "$tmp_bin"
-    mv -f "$tmp_bin" "$ENGINE_PATH"
-    rm -rf "$tmp_dir"
-    trap - EXIT INT TERM
+    chmod +x "$partial"
+    mv -f "$partial" "$ENGINE_PATH"
+    rm -f "$sums_file"
 
     log "installed engine at $ENGINE_PATH"
 }
