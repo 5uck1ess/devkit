@@ -1,9 +1,12 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -222,11 +225,135 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 }
 
 func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
-	tool := mcpmcp.NewTool("workflow_advance",
-		mcpmcp.WithDescription("Advance a workflow step (stub)"),
+	tool := mcpmcp.NewTool("devkit_advance",
+		mcpmcp.WithDescription("Complete current step and get next"),
+		mcpmcp.WithString("session", mcpmcp.Required(), mcpmcp.Description("Session ID")),
+		mcpmcp.WithString("output", mcpmcp.Description("Summary of step output (for prompt steps)")),
 	)
-	handler := func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		return mcpmcp.NewToolResultText("not implemented"), nil
+	return tool, func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
+		sessionID, err := req.RequireString("session")
+		if err != nil {
+			return mcpmcp.NewToolResultError("missing session argument"), nil
+		}
+
+		state, err := lib.ReadSessionJSON(s.dataDir)
+		if err != nil || state == nil {
+			return mcpmcp.NewToolResultError("no active session"), nil
+		}
+		if state.ID != sessionID {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("session mismatch: active is %s", state.ID)), nil
+		}
+
+		// Re-parse workflow to get step definitions
+		wfPath := filepath.Join(s.workflowDir, state.Workflow+".yml")
+		if _, statErr := os.Stat(wfPath); os.IsNotExist(statErr) {
+			wfPath = filepath.Join(s.workflowDir, state.Workflow+".yaml")
+		}
+		wf, err := engine.ParseFile(wfPath)
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("parse workflow: %v", err)), nil
+		}
+
+		currentStep := wf.Steps[state.CurrentIndex]
+
+		// Handle command steps — engine executes them
+		if currentStep.Command != "" {
+			cmd := engine.Interpolate(currentStep.Command, state.Input, state.Outputs)
+			output, exitCode, cmdErr := s.runCommand(ctx, cmd)
+			if cmdErr != nil {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("command failed: %v", cmdErr)), nil
+			}
+
+			// Check expect
+			if currentStep.Expect == "failure" && exitCode == 0 {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("step %s: expected failure but got exit 0", currentStep.ID)), nil
+			}
+			if currentStep.Expect == "success" && exitCode != 0 {
+				return mcpmcp.NewToolResultError(fmt.Sprintf("step %s: expected success but got exit %d\n%s", currentStep.ID, exitCode, output)), nil
+			}
+
+			state.Outputs[currentStep.ID] = output
+		} else {
+			// Prompt/parallel step — record output from Claude
+			args := req.GetArguments()
+			if outputArg, ok := args["output"]; ok && outputArg != nil {
+				if outputStr, ok := outputArg.(string); ok {
+					state.Outputs[currentStep.ID] = outputStr
+				}
+			}
+		}
+
+		// Handle loop steps — delegate to handleLoopAdvance (Task 9)
+		if currentStep.Loop != nil {
+			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
+		}
+
+		// Advance to next step
+		nextIndex := state.CurrentIndex + 1
+
+		// Check branch conditions
+		if len(currentStep.Branch) > 0 {
+			if output, ok := state.Outputs[currentStep.ID]; ok {
+				target := engine.EvalBranch(output, currentStep.Branch)
+				if target != "" {
+					for i, step := range wf.Steps {
+						if step.ID == target {
+							nextIndex = i
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if nextIndex >= len(wf.Steps) {
+			// Workflow complete
+			state.Status = "done"
+			lib.WriteSessionJSON(s.dataDir, state)
+			if s.db != nil {
+				s.db.UpdateSessionStatus(state.ID, "done")
+			}
+
+			if state.Branch && s.git != nil {
+				s.git.CommitAll(fmt.Sprintf("%s(%s): complete", state.Workflow, state.ID))
+			}
+
+			lib.ClearSessionJSON(s.dataDir)
+			return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps)), nil
+		}
+
+		// Write next step state
+		nextStep := wf.Steps[nextIndex]
+		state.CurrentStep = nextStep.ID
+		state.CurrentIndex = nextIndex
+		state.StepType = stepType(nextStep)
+		lib.WriteSessionJSON(s.dataDir, state)
+
+		response := s.formatStepResponse(wf, state, &nextStep, state.Input)
+		return mcpmcp.NewToolResultText(response), nil
 	}
-	return tool, handler
+}
+
+func (s *Server) runCommand(ctx context.Context, command string) (string, int, error) {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	cmd.Dir = s.repoRoot
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &out
+	err := cmd.Run()
+	exitCode := 0
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			exitCode = exitErr.ExitCode()
+		} else {
+			return "", 1, fmt.Errorf("command execution failed: %w", err)
+		}
+	}
+	return out.String(), exitCode, nil
+}
+
+func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
+	// TODO: Task 9 — loop iteration tracking, gate checking, until detection
+	return mcpmcp.NewToolResultError("loop advance not yet implemented"), nil
 }

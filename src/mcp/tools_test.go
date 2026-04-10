@@ -290,6 +290,225 @@ steps:
 	}
 }
 
+func TestAdvancePromptSteps(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "three-step.yml"), `name: three-step
+description: Three prompt steps
+steps:
+  - id: plan
+    prompt: Plan the work for {{input}}.
+  - id: implement
+    prompt: Implement the plan.
+  - id: verify
+    prompt: Verify everything works.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start workflow to seed session.json
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "three-step",
+		"input":    "widget feature",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if startResult.IsError {
+		t.Fatalf("start returned error")
+	}
+
+	// Read session to get ID
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after start: %v", err)
+	}
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+
+	// Advance 1: plan -> implement
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+		"output":  "plan output here",
+	}
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("advance 1: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance 1 error: %s", tc.Text)
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "STEP 2/3") {
+		t.Errorf("advance 1: expected STEP 2/3, got:\n%s", tc.Text)
+	}
+	if !strings.Contains(tc.Text, "implement") {
+		t.Errorf("advance 1: expected step id 'implement', got:\n%s", tc.Text)
+	}
+
+	// Verify output was captured
+	state, _ = lib.ReadSessionJSON(dataDir)
+	if state.Outputs["plan"] != "plan output here" {
+		t.Errorf("expected plan output captured, got %q", state.Outputs["plan"])
+	}
+
+	// Advance 2: implement -> verify
+	advReq2 := mcpmcp.CallToolRequest{}
+	advReq2.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+		"output":  "implementation done",
+	}
+	result2, err := advHandler(context.Background(), advReq2)
+	if err != nil {
+		t.Fatalf("advance 2: %v", err)
+	}
+	if result2.IsError {
+		tc2, _ := result2.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance 2 error: %s", tc2.Text)
+	}
+	tc2, _ := result2.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc2.Text, "STEP 3/3") {
+		t.Errorf("advance 2: expected STEP 3/3, got:\n%s", tc2.Text)
+	}
+
+	// Advance 3: verify -> complete
+	advReq3 := mcpmcp.CallToolRequest{}
+	advReq3.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+		"output":  "all verified",
+	}
+	result3, err := advHandler(context.Background(), advReq3)
+	if err != nil {
+		t.Fatalf("advance 3: %v", err)
+	}
+	if result3.IsError {
+		tc3, _ := result3.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance 3 error: %s", tc3.Text)
+	}
+	tc3, _ := result3.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc3.Text, "WORKFLOW COMPLETE") {
+		t.Errorf("advance 3: expected WORKFLOW COMPLETE, got:\n%s", tc3.Text)
+	}
+	if !strings.Contains(tc3.Text, sessionID) {
+		t.Errorf("advance 3: expected session ID in output, got:\n%s", tc3.Text)
+	}
+
+	// session.json should be cleared
+	cleared, _ := lib.ReadSessionJSON(dataDir)
+	if cleared != nil {
+		t.Errorf("expected session.json cleared after completion, but state still exists")
+	}
+}
+
+func TestAdvanceCommandStep(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "cmd-wf.yml"), `name: cmd-wf
+description: Command workflow
+steps:
+  - id: greet
+    command: echo hello
+    expect: success
+  - id: done
+    prompt: Summarise.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "cmd-wf",
+		"input":    "test",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if startResult.IsError {
+		tc, _ := startResult.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("start error: %s", tc.Text)
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	// Advance: should execute "echo hello" and move to next step
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": sessionID,
+	}
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("advance error: %s", tc.Text)
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "STEP 2/2") {
+		t.Errorf("expected STEP 2/2, got:\n%s", tc.Text)
+	}
+
+	// Verify command output was captured
+	state, _ = lib.ReadSessionJSON(dataDir)
+	if !strings.Contains(state.Outputs["greet"], "hello") {
+		t.Errorf("expected 'hello' in command output, got %q", state.Outputs["greet"])
+	}
+}
+
+func TestAdvanceSessionMismatch(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "simple.yml"), `name: simple
+description: Simple workflow
+steps:
+  - id: one
+    prompt: Do something.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start workflow
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "simple",
+		"input":    "test",
+	}
+	startHandler(context.Background(), startReq)
+
+	// Advance with wrong session ID
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": "wrong-session-id",
+	}
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected IsError=true for session mismatch")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "session mismatch") {
+		t.Errorf("expected 'session mismatch' in error, got: %s", tc.Text)
+	}
+}
+
 // writeFile is a test helper that creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
