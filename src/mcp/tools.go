@@ -201,9 +201,13 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 	fmt.Fprintf(&b, "=== STEP %d/%d: %s ===\n", state.CurrentIndex+1, state.TotalSteps, step.ID)
 
 	if step.Command != "" {
-		cmd := engine.Interpolate(step.Command, input, state.Outputs)
 		fmt.Fprintf(&b, "TYPE: command (engine will execute automatically on devkit_advance)\n")
-		fmt.Fprintf(&b, "COMMAND: %s\n", cmd)
+		fmt.Fprintf(&b, "COMMAND: %s\n", step.Command)
+		fmt.Fprintf(&b, "ENV: DEVKIT_INPUT=%q", input)
+		for id, out := range state.Outputs {
+			fmt.Fprintf(&b, ", DEVKIT_OUT_%s=<%d bytes>", sanitizeEnvKey(id), len(out))
+		}
+		fmt.Fprintln(&b)
 		if step.Expect != "" {
 			fmt.Fprintf(&b, "EXPECT: %s\n", step.Expect)
 		}
@@ -291,10 +295,13 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 
 		currentStep := wf.Steps[state.CurrentIndex]
 
-		// Handle command steps — engine executes them
+		// Handle command steps — engine executes them. Command strings
+		// are run literally (no {{...}} expansion); values are passed
+		// through env vars DEVKIT_INPUT and DEVKIT_OUT_<step_id> to
+		// avoid shell injection via LLM-chosen input or contaminated
+		// prior-step output.
 		if currentStep.Command != "" {
-			cmd := engine.Interpolate(currentStep.Command, state.Input, state.Outputs)
-			output, exitCode, cmdErr := s.runCommand(ctx, cmd)
+			output, exitCode, cmdErr := s.runCommand(ctx, currentStep.Command, state)
 			if cmdErr != nil {
 				return mcpmcp.NewToolResultError(fmt.Sprintf("command failed: %v", cmdErr)), nil
 			}
@@ -360,33 +367,58 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 }
 
 // completeWorkflow marks a session as done, updates DB, and clears hot state.
+// Any warnings (DB update failure, commit failure, state clear failure)
+// are collected and surfaced in the user-visible response so silent
+// post-completion failures are observable.
 func (s *Server) completeWorkflow(state *lib.SessionState) (*mcpmcp.CallToolResult, error) {
 	state.Status = "done"
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write final state: %v", err)), nil
 	}
+
+	var warnings []string
 	if s.db != nil {
 		if err := s.db.UpdateSessionStatus(state.ID, "done"); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: db update session: %v\n", err)
+			warnings = append(warnings, fmt.Sprintf("db session status update failed: %v", err))
 		}
 	}
 
 	if state.Branch && s.git != nil {
-		s.git.CommitAll(fmt.Sprintf("%s(%s): complete", state.Workflow, state.ID))
+		if err := s.git.CommitAll(fmt.Sprintf("%s(%s): complete", state.Workflow, state.ID)); err != nil {
+			// Don't swallow — the user's branch work may not be
+			// persisted. Report prominently.
+			warnings = append(warnings, fmt.Sprintf("final git commit failed: %v (your working tree may have uncommitted changes)", err))
+		}
 	}
 
 	if err := lib.ClearSessionJSON(s.dataDir); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: clear session: %v\n", err)
+		warnings = append(warnings, fmt.Sprintf("clear session state failed: %v (the hot state file at %s may be stale)", err, s.dataDir))
 	}
-	return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps)), nil
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps)
+	if len(warnings) > 0 {
+		fmt.Fprintf(&b, "\n\n=== WARNINGS (non-fatal) ===")
+		for _, w := range warnings {
+			fmt.Fprintf(&b, "\n- %s", w)
+			fmt.Fprintf(os.Stderr, "devkit completeWorkflow: %s\n", w)
+		}
+	}
+	return mcpmcp.NewToolResultText(b.String()), nil
 }
 
-func (s *Server) runCommand(ctx context.Context, command string) (string, int, error) {
+// runCommand executes a workflow command string under sh -c, passing the
+// session's Input and prior step Outputs as environment variables rather
+// than interpolating them into the shell string. This eliminates shell
+// injection via LLM-chosen input or contaminated prior-step output — the
+// command text is always the literal YAML value.
+func (s *Server) runCommand(ctx context.Context, command string, state *lib.SessionState) (string, int, error) {
 	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = s.repoRoot
+	cmd.Env = append(os.Environ(), commandEnv(state)...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -397,10 +429,45 @@ func (s *Server) runCommand(ctx context.Context, command string) (string, int, e
 		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return "", 1, fmt.Errorf("command execution failed: %w", err)
+			// Surface whatever the command produced on its combined
+			// stream so the user can see the real cause (missing
+			// binary, permission denied, timeout), not just the Go
+			// error wrapper.
+			if ctx.Err() == context.DeadlineExceeded {
+				return out.String(), 124, fmt.Errorf("command timed out after %s: %w", commandTimeout, err)
+			}
+			return out.String(), 1, fmt.Errorf("command execution failed: %w", err)
 		}
 	}
 	return out.String(), exitCode, nil
+}
+
+// commandEnv returns the DEVKIT_INPUT and DEVKIT_OUT_<id> env vars that
+// command steps can read via $DEVKIT_INPUT / $DEVKIT_OUT_<id>.
+func commandEnv(state *lib.SessionState) []string {
+	env := []string{"DEVKIT_INPUT=" + state.Input}
+	for id, out := range state.Outputs {
+		env = append(env, "DEVKIT_OUT_"+sanitizeEnvKey(id)+"="+out)
+	}
+	return env
+}
+
+// sanitizeEnvKey maps a workflow step ID to a valid env var suffix.
+// POSIX allows [A-Za-z_][A-Za-z0-9_]*; step IDs may contain hyphens.
+func sanitizeEnvKey(id string) string {
+	b := make([]byte, 0, len(id))
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			b = append(b, c-32) // upper
+		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
+			b = append(b, c)
+		default:
+			b = append(b, '_')
+		}
+	}
+	return string(b)
 }
 
 func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
@@ -413,12 +480,12 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 	}
 	state.LoopIteration++
 
-	// Check gate command if present
+	// Check gate command if present. Gate strings are also literal —
+	// values come via env vars DEVKIT_INPUT / DEVKIT_OUT_<step_id>.
 	if step.Loop.Gate != "" {
-		gateCmd := engine.Interpolate(step.Loop.Gate, state.Input, state.Outputs)
-		_, exitCode, err := s.runCommand(ctx, gateCmd)
+		gateOut, exitCode, err := s.runCommand(ctx, step.Loop.Gate, state)
 		if err != nil {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("gate command failed: %v", err)), nil
+			return mcpmcp.NewToolResultError(fmt.Sprintf("gate command failed: %v\n%s", err, gateOut)), nil
 		}
 		if exitCode == 0 {
 			// Gate passed — advance past loop
@@ -427,10 +494,11 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 		// Gate failed — continue loop
 	}
 
-	// Check "until" condition
+	// Check "until" condition. Line-anchored match (see engine.MatchUntil)
+	// so sentinels like "DONE" do not match prose mentions.
 	if step.Loop.Until != "" {
 		if output, ok := state.Outputs[step.ID]; ok {
-			if strings.Contains(strings.ToLower(output), strings.ToLower(step.Loop.Until)) {
+			if engine.MatchUntil(output, step.Loop.Until) {
 				return s.advancePastLoop(wf, state)
 			}
 		}

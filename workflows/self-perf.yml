@@ -3,7 +3,7 @@ description: Profile performance, optimize hot paths deterministically, verify i
 
 steps:
   - id: baseline
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: optimize
     model: smart
@@ -20,10 +20,10 @@ steps:
     loop:
       max: 5
       until: DONE
-      gate: "{{input}}"
+      gate: '$DEVKIT_INPUT'
 
   - id: verify
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: summary
     model: fast

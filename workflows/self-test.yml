@@ -2,8 +2,11 @@ name: Self-Test
 description: Run tests, fix failures deterministically, repeat until all pass
 
 steps:
+  # $DEVKIT_INPUT is the shell command provided by the caller (e.g.
+  # "npm test"). The outer sh expands it, running it as-is. Inherently
+  # trusts whatever the caller passes — document in the workflow README.
   - id: baseline
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: fix
     model: smart
@@ -20,10 +23,10 @@ steps:
     loop:
       max: 8
       until: DONE
-      gate: "{{input}}"
+      gate: '$DEVKIT_INPUT'
 
   - id: verify
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: summary
     model: fast

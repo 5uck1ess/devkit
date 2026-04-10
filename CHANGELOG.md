@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.1.2
+
+### Make the MCP engine actually work + tighten enforcement (PR #54)
+
+Ships the critical fix that 2.1.0 missed, plus the determinism gaps that a full mega-pr review on #52 uncovered. Restores the engine to a state where step enforcement is not bypassable and command steps are not shell-injectable.
+
+#### Fixed (CRITICAL)
+- **Engine binary now actually ships with the plugin.** 2.1.0/2.1.1 set `mcpServers.devkit-engine.command` to `${CLAUDE_PLUGIN_ROOT}/bin/devkit` but `bin/` was gitignored, so the marketplace install had no binary. MCP server silently failed to start and every workflow silently fell back to direct agent dispatch. Fixed by committing a POSIX shell wrapper at `bin/devkit` that downloads the matching release asset on first run, verifies SHA256, caches it next to itself, and execs it. Local dev builds (`make install-plugin`) are used directly via a fast path.
+- **Shell injection in command steps.** `runCommand` interpolated `{{input}}` and `{{step-id}}` into `sh -c <command>`. LLM-chosen input or contaminated prior-step output could execute arbitrary shell. Fixed: command and gate strings are now literal YAML; values are passed via `$DEVKIT_INPUT` and `$DEVKIT_OUT_<step_id>` env vars. Workflow validator rejects `{{...}}` in command/gate strings at parse time with an explicit "shell injection mitigation" error. The 5 self-* workflows were updated to use `$DEVKIT_INPUT`.
+- **PreToolUse guard was trivially bypassable.** The blocklist only matched 11 hardcoded tool names (Bash, Edit, Write, ...) and missed Task, SlashCommand, TodoWrite, mcp__*, and any new tools Claude Code adds. Fixed: guard now uses an allowlist — during command steps, only `mcp__devkit*` tools and `TodoWrite` are permitted. Everything else returns exit 2.
+- **Stop guard failed open on corrupt session.json, guard failed closed.** Opposite policies on the same condition meant workflow completion could be silently approved on a corrupt state file. Fixed: both hooks now fail closed with a clear diagnostic when JSON parsing fails.
+- **Loop `until` matched substrings.** `strings.Contains("no failures found", "fail")` returned true, silently terminating loops. Same bug in branch `when:` matching. Fixed: both now use word-boundary matching (grep -w semantics) — `fail` won't match `failures`.
+
+#### Fixed (HIGH)
+- `completeWorkflow` ignored `git.CommitAll` errors — users saw "WORKFLOW COMPLETE" while their branch work was unpersisted. Now surfaces warnings in the result text and on stderr.
+- `runCommand` threw away command output on non-`*exec.ExitError` failures. Now returns the combined stream alongside the error, and distinguishes `context.DeadlineExceeded` (5-minute timeout) from "command crashed" with exit 124.
+- Hook fail-silent when `CLAUDE_PLUGIN_DATA` is unset. Now emits a stderr warning so the degraded state is observable.
+- TOCTOU race between hook `[[ -f session.json ]]` check and python `open()`: if the engine cleared the file between those two, hooks spuriously failed closed. Python code now handles `FileNotFoundError` explicitly as "no session".
+
+#### Fixed (MEDIUM)
+- YAML workflow parsing now uses `KnownFields(true)` — typos like `commnd:` fail loudly instead of silently dropping the field.
+- `make sync-version` no longer downgrades `plugin.json`. It only writes when the git tag is strictly higher than the current version, which prevents local dev builds on feature branches from clobbering manual version bumps.
+- `bin/devkit` wrapper emits `devkit:` diagnostics to stderr on download, checksum, install, and failure paths. Stdout stays clean so it doesn't corrupt the MCP stdio protocol.
+
+#### Added
+- **CI `fresh-install-smoke` job.** Runs on every PR in a clean checkout. Asserts `bin/devkit` exists and is executable, that `bin/devkit-engine` is not tracked, that `plugin.json`'s MCP command matches the wrapper path, runs `shellcheck bin/devkit`, and runs `./bin/devkit --version` to confirm it either succeeds or fails loudly — never exits 0 with empty output. This is the check that would have caught the v2.1.0 binary-shipping bug before merge.
+- Regression tests: `TestRunWorkflowCommandRejectsInterpolation`, `TestRunWorkflowCommandEnvInput`, `TestRunWorkflowCommandEnvPriorOutput`, `TestLoopUntilRejectsSubstring`.
+
+#### Removed
+- `presets/` — empty v1 directory with only `.gitkeep`, no references anywhere.
+
 ## 2.1.0
 
 ### MCP Engine — Deterministic Workflow Enforcement (PR #52)
@@ -21,10 +52,10 @@ Replaces the broken subprocess-spawning engine with an MCP server that runs insi
 - **Enforcement** — None (markdown honor system) → MCP tool scoping + PreToolUse exit 2
 - **Principle skills** — Loaded if Claude decided to → injected by engine per step
 - **Token usage** — ~50k+ for 8-step workflow → ~17k (~65% reduction)
-- **Skills and commands** — All 8 entry points (research, deep-research, autoloop, tri-review, tri-debug, tri-security, pr-ready, status) now use MCP tools instead of `ensure-engine.sh` + `devkit workflow run`
+- **Skills and commands** — All 8 entry points (research, deep-research, autoloop, tri-review, tri-debug, tri-security, pr-ready, status) now use MCP tools instead of `ensure-engine.sh` + `devkit workflow`
 
 #### Removed
-- `scripts/ensure-engine.sh` — no longer needed (binary ships in `bin/`, auto-PATH)
+- `scripts/ensure-engine.sh` — no longer needed; replaced by the committed `bin/devkit` wrapper in 2.1.2 (see below), which downloads the engine binary on first run and caches it next to itself. In 2.1.0 the wrapper was missing entirely, which shipped a broken plugin — 2.1.2 fixes that and adds CI smoke tests to prevent regression.
 - `scripts/install-engine.sh` — installed by plugin manifest
 
 #### Fixed
@@ -37,7 +68,7 @@ Replaces the broken subprocess-spawning engine with an MCP server that runs insi
 Major architectural shift: all command logic moved from LLM-interpreted markdown to Go-engine-driven YAML workflows.
 
 #### Changed
-- **24 → 8 slash commands** — 16 commands deleted, logic now in YAML workflows invoked via `devkit workflow run <name>` or context-activated skills
+- **24 → 8 slash commands** — 16 commands deleted, logic now in YAML workflows invoked via `devkit workflow <name> "<description>"` or context-activated skills
 - **4 ultra-thin wrappers** — tri-review, tri-debug, tri-security, pr-ready (one-liner pointing to workflow)
 - **4 kept as-is** — pr-monitor, status, setup-rules, workflow
 - **~3,600 lines removed** across PRs 1–5

@@ -934,16 +934,56 @@ steps:
 		t.Errorf("expected loop iteration, got:\n%s", tc.Text)
 	}
 
-	// Second advance — output contains "all clear", should exit loop
+	// Second advance — output has "all clear" as its own trimmed line,
+	// which matches the line-anchored until sentinel.
 	advReq2 := mcpmcp.CallToolRequest{}
 	advReq2.Params.Arguments = map[string]interface{}{
 		"session": state.ID,
-		"output":  "All Clear now",
+		"output":  "fixed the issue\nall clear\n",
 	}
 	result2, _ := advHandler(context.Background(), advReq2)
 	tc2, _ := result2.Content[0].(mcpmcp.TextContent)
 	if !strings.Contains(tc2.Text, "done") {
 		t.Errorf("expected to advance past loop to 'done', got:\n%s", tc2.Text)
+	}
+}
+
+func TestLoopUntilRejectsSubstring(t *testing.T) {
+	// Regression: an until sentinel must NOT match when it appears only
+	// inside another word. Prior behavior used strings.Contains which
+	// made "fail" match "no failures found". Word-boundary match now.
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "test.yml"), `name: test
+steps:
+  - id: fix
+    prompt: "Fix the issue"
+    loop:
+      max: 3
+      until: "FAIL"
+  - id: end
+    prompt: end
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "test", "input": "x"}
+	startHandler(context.Background(), startReq)
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "no failures found; classification succeeded",
+	}
+	result, _ := advHandler(context.Background(), advReq)
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "LOOP ITERATION") {
+		t.Errorf("expected to remain in loop (FAIL must not match inside 'failures'), got:\n%s", tc.Text)
 	}
 }
 

@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"strings"
@@ -63,10 +64,14 @@ func ParseFile(path string) (*Workflow, error) {
 	return Parse(data)
 }
 
-// Parse parses workflow YAML bytes.
+// Parse parses workflow YAML bytes with strict field checking so typos
+// like "commnd:" fail loudly instead of silently producing a step that
+// never runs the intended command.
 func Parse(data []byte) (*Workflow, error) {
 	var wf Workflow
-	if err := yaml.Unmarshal(data, &wf); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&wf); err != nil {
 		return nil, fmt.Errorf("parse yaml: %w", err)
 	}
 	if err := validate(&wf); err != nil {
@@ -127,6 +132,17 @@ func validate(wf *Workflow) error {
 		if len(s.Parallel) > 0 && s.Loop != nil {
 			return fmt.Errorf("step %q has both parallel and loop — these are mutually exclusive", s.ID)
 		}
+		// Command strings are never interpolated — values are passed
+		// through env vars ($DEVKIT_INPUT, $DEVKIT_OUT_<id>) to avoid
+		// shell injection. Reject {{...}} in command/gate strings so
+		// the author gets a clear error instead of a silently broken
+		// step or, worse, a shell injection.
+		if s.Command != "" && strings.Contains(s.Command, "{{") {
+			return fmt.Errorf("step %q command must not use {{...}} — pass values via $DEVKIT_INPUT or $DEVKIT_OUT_<step_id> instead (shell injection mitigation)", s.ID)
+		}
+		if s.Loop != nil && s.Loop.Gate != "" && strings.Contains(s.Loop.Gate, "{{") {
+			return fmt.Errorf("step %q loop.gate must not use {{...}} — pass values via $DEVKIT_INPUT or $DEVKIT_OUT_<step_id> instead (shell injection mitigation)", s.ID)
+		}
 	}
 
 	// Validate branch targets exist
@@ -164,12 +180,73 @@ func Interpolate(prompt string, input string, outputs map[string]string) string 
 
 // EvalBranch checks step output against branch conditions.
 // Returns the goto target step ID, or "" if no match.
+//
+// Matching is word-boundary (case-insensitive): the sentinel must
+// appear as a whole word in the output, bounded on both sides by a
+// non-alphanumeric character or string edge. This is the same
+// semantics as grep -w. It accepts idiomatic patterns like "TINY: short
+// fix" and "attempt 2: ALL_PASSING" while rejecting accidental
+// substrings — `fail` won't match inside `failures`, and `small` won't
+// match inside `smaller`.
+//
+// Note: workflow authors should still pick distinctive sentinels.
+// `until: done` will match any sentence containing the standalone word
+// "done" (e.g. a prose reply "I'm done reviewing"). Prefer sentinels
+// like `ALL_DONE`, `DONE_FIXING`, or `===DONE===` for robustness.
 func EvalBranch(output string, branches []Branch) string {
-	lower := strings.ToLower(output)
 	for _, b := range branches {
-		if strings.Contains(lower, strings.ToLower(b.When)) {
+		want := strings.ToLower(strings.TrimSpace(b.When))
+		if want == "" {
+			continue
+		}
+		if containsWord(output, want) {
 			return b.Goto
 		}
 	}
 	return ""
+}
+
+// MatchUntil checks whether a step's output satisfies its loop `until`
+// sentinel. Same word-boundary semantics as EvalBranch.
+func MatchUntil(output, sentinel string) bool {
+	want := strings.ToLower(strings.TrimSpace(sentinel))
+	if want == "" {
+		return false
+	}
+	return containsWord(output, want)
+}
+
+// containsWord returns true when `want` (already lowercased and
+// trimmed) appears in `text` as a whole word — bounded on both sides
+// by a non-alphanumeric character, underscore, or string edge. Matches
+// grep -w semantics.
+func containsWord(text, want string) bool {
+	lower := strings.ToLower(text)
+	for i := 0; ; {
+		idx := strings.Index(lower[i:], want)
+		if idx < 0 {
+			return false
+		}
+		start := i + idx
+		end := start + len(want)
+		if isWordBoundary(lower, start, end) {
+			return true
+		}
+		i = start + 1
+		if i >= len(lower) {
+			return false
+		}
+	}
+}
+
+// isWordBoundary returns true when the characters just outside [start,
+// end) in s are not alphanumeric/underscore (or the edge of the string).
+func isWordBoundary(s string, start, end int) bool {
+	leftOK := start == 0 || !isWordChar(s[start-1])
+	rightOK := end == len(s) || !isWordChar(s[end])
+	return leftOK && rightOK
+}
+
+func isWordChar(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'
 }

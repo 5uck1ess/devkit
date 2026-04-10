@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 # devkit PR gate hook — prompts to run pr-ready pipeline before creating a PR
 # Runs on PreToolUse for Bash tool
 #
@@ -6,27 +7,29 @@
 # the full pr-ready pipeline first.
 
 INPUT=$(cat)
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+COMMAND=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // empty')
 
 # Only trigger on gh pr create
-echo "$COMMAND" | grep -qE 'gh\s+pr\s+create' || exit 0
+printf '%s' "$COMMAND" | grep -qE 'gh[[:space:]]+pr[[:space:]]+create' || exit 0
 
-# Check if pr-ready already ran this session (cooldown file)
-PR_GATE_FILE="/tmp/devkit-pr-gate-done"
-if [ -f "$PR_GATE_FILE" ]; then
-  LAST=$(cat "$PR_GATE_FILE" 2>/dev/null)
-  NOW=$(date +%s 2>/dev/null)
-  if [ -n "$LAST" ] && [ -n "$NOW" ]; then
-    ELAPSED=$(( NOW - LAST )) 2>/dev/null || ELAPSED=0
-    if [ "$ELAPSED" -lt 600 ] 2>/dev/null; then
-      # Pipeline already ran recently, allow the PR creation
-      exit 0
-    fi
+# Check if pr-ready already ran recently (cooldown file). Per-user
+# rather than /tmp-global so concurrent projects don't share state.
+COOLDOWN_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/devkit"
+PR_GATE_FILE="${COOLDOWN_DIR}/pr-gate-done"
+mkdir -p "$COOLDOWN_DIR" 2>/dev/null || true
+
+if [[ -f "$PR_GATE_FILE" ]]; then
+  LAST=$(cat "$PR_GATE_FILE" 2>/dev/null || printf '0')
+  NOW=$(date +%s)
+  # Only arithmetic-compare if both values are numeric, else treat as expired.
+  if [[ "$LAST" =~ ^[0-9]+$ ]] && (( NOW - LAST < 600 )); then
+    # Pipeline already ran recently; skip the prompt.
+    exit 0
   fi
 fi
 
-# Set cooldown so this only fires once
-date +%s > "$PR_GATE_FILE" 2>/dev/null
+# Set cooldown so this only fires once per 10 minutes.
+date +%s > "$PR_GATE_FILE" 2>/dev/null || true
 
 # Ask the user
 jq -n '{

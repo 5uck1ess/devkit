@@ -845,7 +845,33 @@ func TestRunWorkflowCommandStep(t *testing.T) {
 	}
 }
 
-func TestRunWorkflowCommandInterpolation(t *testing.T) {
+func TestRunWorkflowCommandEnvInput(t *testing.T) {
+	// Regression: command steps must NOT interpolate {{input}} — values
+	// come via $DEVKIT_INPUT to prevent shell injection.
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "greet", Command: `printf '%s' "$DEVKIT_INPUT"`},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "howdy"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if !strings.Contains(res.Outputs["greet"], "howdy") {
+		t.Errorf("input not passed via env: %q", res.Outputs["greet"])
+	}
+}
+
+func TestRunWorkflowCommandRejectsInterpolation(t *testing.T) {
+	// Validation must reject {{...}} in command strings (shell injection
+	// mitigation). Authors must use $DEVKIT_INPUT / $DEVKIT_OUT_<id>.
 	db := tempDB(t)
 	dir, git := initGitRepo(t)
 	runner := newMockRunner(nil, nil)
@@ -858,12 +884,39 @@ func TestRunWorkflowCommandInterpolation(t *testing.T) {
 		},
 	}
 
-	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "howdy"})
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "howdy"})
+	if err == nil {
+		t.Fatal("expected validation error for {{...}} in command string, got nil")
+	}
+	if !strings.Contains(err.Error(), "shell injection mitigation") {
+		t.Errorf("error = %q, want it to mention shell injection mitigation", err.Error())
+	}
+}
+
+func TestRunWorkflowCommandEnvPriorOutput(t *testing.T) {
+	// $DEVKIT_OUT_<step_id> exposes prior step outputs to later command
+	// steps without interpolation.
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner([]runners.RunResult{
+		result("review-body: approved"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "review", Prompt: "review the code"},
+			{ID: "publish", Command: `printf '%s' "$DEVKIT_OUT_REVIEW"`},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"})
 	if err != nil {
 		t.Fatalf("RunWorkflow: %v", err)
 	}
-	if !strings.Contains(res.Outputs["greet"], "howdy") {
-		t.Errorf("input not interpolated in command output: %q", res.Outputs["greet"])
+	if !strings.Contains(res.Outputs["publish"], "approved") {
+		t.Errorf("prior step output not passed via env: %q", res.Outputs["publish"])
 	}
 }
 
@@ -1192,10 +1245,11 @@ func TestRunWorkflowLoopGateRecovery(t *testing.T) {
 	db := tempDB(t)
 	dir, git := initGitRepo(t)
 
-	// First attempt fails gate, second passes and hits until
+	// First attempt fails gate, second passes gate and its output has
+	// ALL_DONE on its own line so the line-anchored until matches.
 	runner := newMockRunner([]runners.RunResult{
 		result("attempt 1"),
-		result("attempt 2 ALL_DONE"),
+		result("attempt 2\nALL_DONE"),
 	}, nil)
 	eng := mustEngine(t, db, git, runner, dir)
 

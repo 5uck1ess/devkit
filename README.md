@@ -244,14 +244,21 @@ Language-specific rules that auto-activate when Claude reads matching files. Ins
 
 ```
 MCP Server (bin/devkit mcp — auto-started by plugin)
+  ├── bin/devkit = POSIX shell wrapper (committed to git)
+  │   └── On first run, downloads matching release asset from GitHub,
+  │       verifies SHA256, caches as bin/devkit-engine-v<ver>-<os>-<arch>,
+  │       then execs it. Local dev builds (make install-plugin) are used
+  │       directly via the fast path.
   ├── Tools: devkit_start, devkit_advance, devkit_status, devkit_list
   ├── State: session.json (hot, <50ms reads) + SQLite (cold history)
   ├── Parse YAML → validate steps, branches, budget
   ├── Walk steps:
   │   ├── Command steps → engine executes shell directly ($0 cost)
+  │   │   Values passed via $DEVKIT_INPUT / $DEVKIT_OUT_<step_id>
+  │   │   env vars — never interpolated into the command string.
   │   ├── Prompt steps → Claude works, calls devkit_advance when done
   │   ├── Loop with gate → run, verify, keep or revert
-  │   ├── Branch → case-insensitive substring match → goto
+  │   ├── Branch → case-insensitive word-boundary match → goto
   │   └── Parallel → Agent tool dispatch (Claude/Codex/Gemini)
   └── Principles injected per step (~120 tokens, not full skill files)
 
@@ -260,7 +267,7 @@ Enforcement:
   ├── PreToolUse hook — exit 2 blocks tools during command steps
   └── Stop hook — blocks session end during active workflows
 
-Terminal fallback (devkit workflow run <name>):
+Terminal usage (devkit workflow <name> "<description>"):
   └── Subprocess runners for Codex/Gemini CLI usage
 ```
 
@@ -282,6 +289,6 @@ devkit/
 │   ├── runners/       # Codex, Gemini interfaces (terminal fallback)
 │   ├── lib/           # DB, git, metrics, session state, reporting
 │   └── cmd/           # CLI entry points (including `devkit mcp`)
-├── bin/               # Auto-PATH binary (built by make install-plugin)
+├── bin/               # devkit wrapper (committed) + downloaded engine binaries (gitignored)
 └── .github/workflows/ # CI (build+test+vet) + auto-release (6 platforms)
 ```

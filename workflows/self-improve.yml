@@ -3,7 +3,7 @@ description: Metric-gated improvement loop — run command, fix issues, repeat u
 
 steps:
   - id: baseline
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: improve
     model: smart
@@ -20,10 +20,10 @@ steps:
     loop:
       max: 10
       until: DONE
-      gate: "{{input}}"
+      gate: '$DEVKIT_INPUT'
 
   - id: verify
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: summary
     model: fast

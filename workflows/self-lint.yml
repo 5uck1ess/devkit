@@ -3,7 +3,7 @@ description: Run linter, fix violations deterministically, repeat until clean
 
 steps:
   - id: baseline
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: fix
     model: smart
@@ -21,10 +21,10 @@ steps:
     loop:
       max: 20
       until: DONE
-      gate: "{{input}}"
+      gate: '$DEVKIT_INPUT'
 
   - id: verify
-    command: "{{input}} 2>&1 || true"
+    command: '$DEVKIT_INPUT 2>&1 || true'
 
   - id: summary
     model: fast
