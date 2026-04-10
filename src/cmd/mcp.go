@@ -32,6 +32,7 @@ var mcpCmd = &cobra.Command{
 		if err != nil {
 			return fmt.Errorf("create MCP server: %w", err)
 		}
+		defer srv.Close()
 
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()

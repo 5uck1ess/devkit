@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# devkit-stop-guard: Stop hook that blocks session end during active workflows.
+# Outputs JSON: {"decision":"approve"} or {"decision":"block","reason":"..."}.
+
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-}"
 if [[ -z "$DATA_DIR" ]]; then
   printf '{"decision":"approve"}'
@@ -13,16 +16,23 @@ if [[ ! -f "$SESSION_FILE" ]]; then
   exit 0
 fi
 
-STATUS=$(python3 -c "import json; d=json.load(open('$SESSION_FILE')); print(d.get('status',''))" 2>/dev/null || echo "")
-WORKFLOW=$(python3 -c "import json; d=json.load(open('$SESSION_FILE')); print(d.get('workflow',''))" 2>/dev/null || echo "")
-CURRENT=$(python3 -c "import json; d=json.load(open('$SESSION_FILE')); print(d.get('current_index',0))" 2>/dev/null || echo "0")
-TOTAL=$(python3 -c "import json; d=json.load(open('$SESSION_FILE')); print(d.get('total_steps',0))" 2>/dev/null || echo "0")
+# Parse all fields in a single python3 call. Passes path via sys.argv
+# to prevent shell injection. Outputs valid JSON directly.
+python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+if d.get('status') == 'running':
+    remaining = d.get('total_steps', 0) - d.get('current_index', 0)
+    wf = d.get('workflow', 'unknown')
+    print(json.dumps({
+        'decision': 'block',
+        'reason': f'Workflow {wf} incomplete — {remaining} steps remaining. Call devkit_advance to continue.'
+    }))
+else:
+    print(json.dumps({'decision': 'approve'}))
+" "$SESSION_FILE" 2>/dev/null || {
+  # Cannot parse — approve to avoid trapping the user
+  printf '{"decision":"approve"}'
+}
 
-if [[ "$STATUS" == "running" ]]; then
-  REMAINING=$((TOTAL - CURRENT))
-  printf '{"decision":"block","reason":"Workflow %s incomplete — %d steps remaining. Call devkit_advance to continue."}' "$WORKFLOW" "$REMAINING"
-  exit 0
-fi
-
-printf '{"decision":"approve"}'
 exit 0

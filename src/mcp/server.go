@@ -22,6 +22,10 @@ type Server struct {
 
 // NewServer creates a devkit MCP server.
 func NewServer(repoRoot, dataDir, workflowDir string) (*Server, error) {
+	if repoRoot == "" || dataDir == "" || workflowDir == "" {
+		return nil, fmt.Errorf("repoRoot, dataDir, and workflowDir must be non-empty")
+	}
+
 	dbPath := filepath.Join(dataDir, "devkit.db")
 	db, err := lib.OpenDB(dbPath)
 	if err != nil {
@@ -44,7 +48,15 @@ func NewServer(repoRoot, dataDir, workflowDir string) (*Server, error) {
 	}, nil
 }
 
-// Serve starts the MCP server on stdio.
+// Close releases server resources (database connection).
+func (s *Server) Close() error {
+	if s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}
+
+// Serve starts the MCP server on stdio, respecting ctx for graceful shutdown.
 func (s *Server) Serve(ctx context.Context) error {
 	srv := mcpgo.NewMCPServer("devkit-engine", "1.0.0")
 
@@ -60,7 +72,6 @@ func (s *Server) Serve(ctx context.Context) error {
 	tool, handler = s.listTool()
 	srv.AddTool(tool, handler)
 
-	return mcpgo.ServeStdio(srv)
+	stdio := mcpgo.NewStdioServer(srv)
+	return stdio.Listen(ctx, os.Stdin, os.Stdout)
 }
-
-

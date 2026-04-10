@@ -723,6 +723,230 @@ steps:
 	}
 }
 
+// --- Security and edge-case tests ---
+
+func TestStartPathTraversal(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	cases := []struct {
+		name string
+		wf   string
+	}{
+		{"dot-dot", "../etc/passwd"},
+		{"slash", "foo/bar"},
+		{"backslash", `foo\bar`},
+		{"dot-dot-no-slash", "..secret"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := mcpmcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{
+				"workflow": tc.wf,
+				"input":    "test",
+			}
+			result, err := handler(context.Background(), req)
+			if err != nil {
+				t.Fatalf("handler error: %v", err)
+			}
+			if !result.IsError {
+				t.Error("expected tool error for path traversal attempt")
+			}
+		})
+	}
+}
+
+func TestStartWorkflowNotFound(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "nonexistent",
+		"input":    "test",
+	}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected tool error for nonexistent workflow")
+	}
+}
+
+func TestAdvanceNoSession(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.advanceTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"session": "nonexistent",
+	}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected tool error for no active session")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "no active session") {
+		t.Errorf("expected 'no active session' error, got: %s", tc.Text)
+	}
+}
+
+func TestAdvanceExpectSuccessWithFailure(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "test.yml"), `name: test
+steps:
+  - id: check
+    command: "exit 1"
+    expect: success
+  - id: done
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start the workflow
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "test",
+		"input":    "test",
+	}
+	startResult, _ := startHandler(context.Background(), startReq)
+	if startResult.IsError {
+		t.Fatalf("start failed: %v", startResult.Content)
+	}
+
+	// Read session to get ID
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	// Advance — command exits 1 but expect is "success", should error
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+	}
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected tool error for expect:success with exit 1")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "expected success") {
+		t.Errorf("expected 'expected success' in error, got: %s", tc.Text)
+	}
+}
+
+func TestAdvanceExpectFailureWithSuccess(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "test.yml"), `name: test
+steps:
+  - id: check
+    command: "exit 0"
+    expect: failure
+  - id: done
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "test",
+		"input":    "test",
+	}
+	startHandler(context.Background(), startReq)
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+	}
+	result, err := advHandler(context.Background(), advReq)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected tool error for expect:failure with exit 0")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "expected failure") {
+		t.Errorf("expected 'expected failure' in error, got: %s", tc.Text)
+	}
+}
+
+func TestLoopUntilCondition(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "test.yml"), `name: test
+steps:
+  - id: fix
+    prompt: "Fix the issue"
+    loop:
+      max: 10
+      until: "all clear"
+  - id: done
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	// Start
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "test",
+		"input":    "test",
+	}
+	startHandler(context.Background(), startReq)
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+
+	// First advance — output does NOT contain "all clear", should stay in loop
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "still broken",
+	}
+	result, _ := advHandler(context.Background(), advReq)
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "LOOP ITERATION") {
+		t.Errorf("expected loop iteration, got:\n%s", tc.Text)
+	}
+
+	// Second advance — output contains "all clear", should exit loop
+	advReq2 := mcpmcp.CallToolRequest{}
+	advReq2.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "All Clear now",
+	}
+	result2, _ := advHandler(context.Background(), advReq2)
+	tc2, _ := result2.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc2.Text, "done") {
+		t.Errorf("expected to advance past loop to 'done', got:\n%s", tc2.Text)
+	}
+}
+
 // writeFile is a test helper that creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()

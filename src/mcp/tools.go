@@ -17,6 +17,9 @@ import (
 	mcpgo "github.com/mark3labs/mcp-go/server"
 )
 
+// commandTimeout is the maximum duration for workflow command execution.
+const commandTimeout = 5 * time.Minute
+
 func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 	tool := mcpmcp.NewTool("devkit_list",
 		mcpmcp.WithDescription("List available workflows"),
@@ -73,8 +76,11 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		mcpmcp.WithString("input", mcpmcp.Required(), mcpmcp.Description("Workflow input/description")),
 	)
 	return tool, func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		// Check no active session
-		existing, _ := lib.ReadSessionJSON(s.dataDir)
+		// Check no active session — propagate read errors
+		existing, err := lib.ReadSessionJSON(s.dataDir)
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("read session state: %v", err)), nil
+		}
 		if existing != nil && existing.Status == "running" {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %s already running (session %s). Call devkit_advance to continue or devkit_status to check.", existing.Workflow, existing.ID)), nil
 		}
@@ -88,36 +94,32 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("missing argument: %v", err)), nil
 		}
 
-		// Reject workflow names that contain path separators or traversal sequences.
-		// The name must be a plain filename component — no slashes or dots that
-		// would escape the workflow directory.
+		// Reject workflow names with path separators or dot-dot traversal sequences.
 		if strings.ContainsAny(wfName, `/\`) || strings.Contains(wfName, "..") {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name %q: must not contain path separators", wfName)), nil
 		}
 
 		// Find and parse workflow — resolve and verify the path stays inside workflowDir.
-		wfPath := filepath.Join(s.workflowDir, wfName+".yml")
-		if _, err := os.Stat(wfPath); os.IsNotExist(err) {
-			wfPath = filepath.Join(s.workflowDir, wfName+".yaml")
-		}
-		// Guard: resolved path must be inside workflowDir (defense-in-depth).
-		absWorkflowDir, _ := filepath.Abs(s.workflowDir)
-		absWfPath, _ := filepath.Abs(wfPath)
-		if !strings.HasPrefix(absWfPath, absWorkflowDir+string(filepath.Separator)) {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name %q: resolves outside workflow directory", wfName)), nil
+		wfPath, err := s.resolveWorkflowPath(wfName)
+		if err != nil {
+			return mcpmcp.NewToolResultError(err.Error()), nil
 		}
 		wf, err := engine.ParseFile(wfPath)
 		if err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("parse workflow %q: %v", wfName, err)), nil
 		}
 
-		// Create session
+		if len(wf.Steps) == 0 {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q has no steps", wfName)), nil
+		}
+
+		// Create session — store the validated filename for safe re-parsing in advance
 		sessionID := lib.NewSessionID()
 		firstStep := wf.Steps[0]
 
 		state := &lib.SessionState{
 			ID:           sessionID,
-			Workflow:     wf.Name,
+			Workflow:     wfName, // store filename, not wf.Name, to prevent traversal in advance
 			Input:        input,
 			CurrentStep:  firstStep.ID,
 			CurrentIndex: 0,
@@ -135,13 +137,14 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 
 		// SQLite record
 		if s.db != nil {
-			dbSession := &lib.Session{
+			if err := s.db.CreateSession(&lib.Session{
 				ID:       sessionID,
 				Workflow: wf.Name,
 				Prompt:   input,
 				Status:   "running",
+			}); err != nil {
+				fmt.Fprintf(os.Stderr, "warning: db create session: %v\n", err)
 			}
-			s.db.CreateSession(dbSession)
 		}
 
 		// Git branch if configured
@@ -156,6 +159,30 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		response := s.formatStepResponse(wf, state, &firstStep, input)
 		return mcpmcp.NewToolResultText(response), nil
 	}
+}
+
+// resolveWorkflowPath finds and validates a workflow file path.
+// Returns an error if the name resolves outside workflowDir.
+func (s *Server) resolveWorkflowPath(name string) (string, error) {
+	absWorkflowDir, err := filepath.Abs(s.workflowDir)
+	if err != nil {
+		return "", fmt.Errorf("resolve workflow dir: %w", err)
+	}
+
+	for _, ext := range []string{".yml", ".yaml"} {
+		candidate := filepath.Join(s.workflowDir, name+ext)
+		absCandidate, err := filepath.Abs(candidate)
+		if err != nil {
+			return "", fmt.Errorf("resolve workflow path: %w", err)
+		}
+		if !strings.HasPrefix(absCandidate, absWorkflowDir+string(filepath.Separator)) {
+			return "", fmt.Errorf("invalid workflow name %q: resolves outside workflow directory", name)
+		}
+		if _, statErr := os.Stat(candidate); statErr == nil {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("workflow %q not found", name)
 }
 
 func stepType(step engine.WfStep) string {
@@ -237,32 +264,29 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		}
 
 		state, err := lib.ReadSessionJSON(s.dataDir)
-		if err != nil || state == nil {
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("read session: %v", err)), nil
+		}
+		if state == nil {
 			return mcpmcp.NewToolResultError("no active session"), nil
 		}
 		if state.ID != sessionID {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("session mismatch: active is %s", state.ID)), nil
 		}
 
-		// Re-parse workflow to get step definitions.
-		// Guard: resolved path must stay inside workflowDir — state.Workflow comes
-		// from the YAML name field which may differ from the validated filename.
-		absWorkflowDir, _ := filepath.Abs(s.workflowDir)
-		wfPath := filepath.Join(s.workflowDir, state.Workflow+".yml")
-		absWfPath, _ := filepath.Abs(wfPath)
-		if !strings.HasPrefix(absWfPath, absWorkflowDir+string(filepath.Separator)) {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name in session %q: resolves outside workflow directory", state.Workflow)), nil
-		}
-		if _, statErr := os.Stat(wfPath); os.IsNotExist(statErr) {
-			wfPath = filepath.Join(s.workflowDir, state.Workflow+".yaml")
-			absWfPath, _ = filepath.Abs(wfPath)
-			if !strings.HasPrefix(absWfPath, absWorkflowDir+string(filepath.Separator)) {
-				return mcpmcp.NewToolResultError(fmt.Sprintf("invalid workflow name in session %q: resolves outside workflow directory", state.Workflow)), nil
-			}
+		// Re-parse workflow using validated filename stored in state.Workflow
+		wfPath, err := s.resolveWorkflowPath(state.Workflow)
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("resolve workflow: %v", err)), nil
 		}
 		wf, err := engine.ParseFile(wfPath)
 		if err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("parse workflow: %v", err)), nil
+		}
+
+		// Bounds check against corrupted state
+		if state.CurrentIndex < 0 || state.CurrentIndex >= len(wf.Steps) {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("invalid step index %d (workflow has %d steps)", state.CurrentIndex, len(wf.Steps))), nil
 		}
 
 		currentStep := wf.Steps[state.CurrentIndex]
@@ -294,7 +318,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Handle loop steps — delegate to handleLoopAdvance (Task 9)
+		// Handle loop steps
 		if currentStep.Loop != nil {
 			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
 		}
@@ -318,19 +342,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		}
 
 		if nextIndex >= len(wf.Steps) {
-			// Workflow complete
-			state.Status = "done"
-			lib.WriteSessionJSON(s.dataDir, state)
-			if s.db != nil {
-				s.db.UpdateSessionStatus(state.ID, "done")
-			}
-
-			if state.Branch && s.git != nil {
-				s.git.CommitAll(fmt.Sprintf("%s(%s): complete", state.Workflow, state.ID))
-			}
-
-			lib.ClearSessionJSON(s.dataDir)
-			return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps)), nil
+			return s.completeWorkflow(state)
 		}
 
 		// Write next step state
@@ -338,14 +350,41 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		state.CurrentStep = nextStep.ID
 		state.CurrentIndex = nextIndex
 		state.StepType = stepType(nextStep)
-		lib.WriteSessionJSON(s.dataDir, state)
+		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
+		}
 
 		response := s.formatStepResponse(wf, state, &nextStep, state.Input)
 		return mcpmcp.NewToolResultText(response), nil
 	}
 }
 
+// completeWorkflow marks a session as done, updates DB, and clears hot state.
+func (s *Server) completeWorkflow(state *lib.SessionState) (*mcpmcp.CallToolResult, error) {
+	state.Status = "done"
+	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+		return mcpmcp.NewToolResultError(fmt.Sprintf("write final state: %v", err)), nil
+	}
+	if s.db != nil {
+		if err := s.db.UpdateSessionStatus(state.ID, "done"); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: db update session: %v\n", err)
+		}
+	}
+
+	if state.Branch && s.git != nil {
+		s.git.CommitAll(fmt.Sprintf("%s(%s): complete", state.Workflow, state.ID))
+	}
+
+	if err := lib.ClearSessionJSON(s.dataDir); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: clear session: %v\n", err)
+	}
+	return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps)), nil
+}
+
 func (s *Server) runCommand(ctx context.Context, command string) (string, int, error) {
+	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	defer cancel()
+
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = s.repoRoot
 	var out bytes.Buffer
@@ -383,7 +422,7 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 		}
 		if exitCode == 0 {
 			// Gate passed — advance past loop
-			return s.advancePastLoop(wf, state), nil
+			return s.advancePastLoop(wf, state)
 		}
 		// Gate failed — continue loop
 	}
@@ -392,45 +431,43 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 	if step.Loop.Until != "" {
 		if output, ok := state.Outputs[step.ID]; ok {
 			if strings.Contains(strings.ToLower(output), strings.ToLower(step.Loop.Until)) {
-				return s.advancePastLoop(wf, state), nil
+				return s.advancePastLoop(wf, state)
 			}
 		}
 	}
 
 	// Check max iterations
 	if state.LoopIteration >= state.LoopMax {
-		return s.advancePastLoop(wf, state), nil
+		return s.advancePastLoop(wf, state)
 	}
 
 	// Continue loop — return same step for another iteration
-	lib.WriteSessionJSON(s.dataDir, state)
+	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+		return mcpmcp.NewToolResultError(fmt.Sprintf("write loop state: %v", err)), nil
+	}
 	response := fmt.Sprintf("=== LOOP ITERATION %d/%d: %s ===\n", state.LoopIteration, state.LoopMax, step.ID)
 	response += s.formatStepResponse(wf, state, step, state.Input)
 	return mcpmcp.NewToolResultText(response), nil
 }
 
-func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) *mcpmcp.CallToolResult {
+func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (*mcpmcp.CallToolResult, error) {
 	nextIndex := state.CurrentIndex + 1
 	// Reset loop state
 	state.LoopIteration = 0
 	state.LoopMax = 0
 
 	if nextIndex >= len(wf.Steps) {
-		state.Status = "done"
-		lib.WriteSessionJSON(s.dataDir, state)
-		if s.db != nil {
-			s.db.UpdateSessionStatus(state.ID, "done")
-		}
-		lib.ClearSessionJSON(s.dataDir)
-		return mcpmcp.NewToolResultText(fmt.Sprintf("=== WORKFLOW COMPLETE ===\nSession: %s\nSteps completed: %d", state.ID, state.TotalSteps))
+		return s.completeWorkflow(state)
 	}
 
 	nextStep := wf.Steps[nextIndex]
 	state.CurrentStep = nextStep.ID
 	state.CurrentIndex = nextIndex
 	state.StepType = stepType(nextStep)
-	lib.WriteSessionJSON(s.dataDir, state)
+	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
+	}
 
 	response := s.formatStepResponse(wf, state, &nextStep, state.Input)
-	return mcpmcp.NewToolResultText(response)
+	return mcpmcp.NewToolResultText(response), nil
 }
