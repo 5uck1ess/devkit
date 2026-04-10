@@ -69,14 +69,32 @@ jobs:
             exit 1
           fi
 
-      - name: plugin.json MCP command must match wrapper path
+      - name: plugin.json mcpServers must point at MCPB bundle
         run: |
-          cmd=$(jq -r '.mcpServers["devkit-engine"].command' .claude-plugin/plugin.json)
-          expected='${CLAUDE_PLUGIN_ROOT}/bin/devkit'
-          if [ "$cmd" != "$expected" ]; then
-            echo "FATAL: plugin.json mcpServers.devkit-engine.command is '$cmd', expected '$expected'"
+          ref=$(jq -r '.mcpServers' .claude-plugin/plugin.json)
+          expected='./devkit.mcpb'
+          if [ "$ref" != "$expected" ]; then
+            echo "FATAL: plugin.json mcpServers is '$ref', expected '$expected'"
             exit 1
           fi
+
+      - name: MCPB bundle must exist and contain launcher stubs
+        run: |
+          test -f devkit.mcpb || { echo "FATAL: devkit.mcpb bundle missing from repo root"; exit 1; }
+          entries=$(unzip -Z1 devkit.mcpb)
+          for required in manifest.json server/devkit server/devkit.exe; do
+            if ! printf '%s\n' "$entries" | grep -qx "$required"; then
+              echo "FATAL: devkit.mcpb missing required entry '$required'"
+              printf 'bundle contents:\n%s\n' "$entries"
+              exit 1
+            fi
+          done
+          unzip -p devkit.mcpb manifest.json | jq -e \
+            '.server.mcp_config.platform_overrides.win32.command == "${__dirname}/server/devkit.exe"' \
+            > /dev/null || {
+              echo "FATAL: mcpb manifest.json platform_overrides.win32.command is not the expected Windows launcher"
+              exit 1
+            }
 
       - name: shellcheck wrapper
         run: |
