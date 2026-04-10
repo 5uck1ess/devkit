@@ -12,7 +12,7 @@ Deterministic research workflow: clarify → decompose → parallel search → s
 Ensure the devkit engine is installed, then run the workflow:
 
 ```bash
-bash "$(find ~/.claude/plugins -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"
+ENSURE="$(find ~/.claude/plugins ${APPDATA:+$APPDATA/.claude/plugins} ${LOCALAPPDATA:+$LOCALAPPDATA/.claude/plugins} -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"; [ -n "$ENSURE" ] && bash "$ENSURE" || { echo "devkit plugin not found — install from https://github.com/5uck1ess/devkit/releases"; exit 1; }
 ```
 
 ```bash

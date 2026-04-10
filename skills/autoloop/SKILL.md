@@ -51,7 +51,7 @@ If the user says "everything" or skips, leave scope open.
 Ensure the devkit engine is installed:
 
 ```bash
-bash "$(find ~/.claude/plugins -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"
+ENSURE="$(find ~/.claude/plugins ${APPDATA:+$APPDATA/.claude/plugins} ${LOCALAPPDATA:+$LOCALAPPDATA/.claude/plugins} -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"; [ -n "$ENSURE" ] && bash "$ENSURE" || { echo "devkit plugin not found — install from https://github.com/5uck1ess/devkit/releases"; exit 1; }
 ```
 
 Assemble the input as a single string and invoke:

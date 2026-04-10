@@ -54,10 +54,10 @@ TMPCHECKSUM="${TMPDIR_CLEAN}/checksums.txt"
 # Download binary — use -fSL (capital S keeps error messages visible)
 if command -v curl >/dev/null 2>&1; then
   curl -fSL "${BASE_URL}/${ASSET}" -o "$TMPFILE" || { printf "Download failed: %s/%s\nCheck network and that the release exists.\n" "$BASE_URL" "$ASSET"; exit 1; }
-  curl -fSL "${BASE_URL}/checksums.txt" -o "$TMPCHECKSUM" 2>/dev/null || TMPCHECKSUM=""
+  curl -fSL "${BASE_URL}/checksums.txt" -o "$TMPCHECKSUM" || { printf "Warning: could not download checksums.txt\n"; TMPCHECKSUM=""; }
 elif command -v wget >/dev/null 2>&1; then
   wget -q "${BASE_URL}/${ASSET}" -O "$TMPFILE" || { printf "Download failed: %s/%s\nCheck network and that the release exists.\n" "$BASE_URL" "$ASSET"; exit 1; }
-  wget -q "${BASE_URL}/checksums.txt" -O "$TMPCHECKSUM" 2>/dev/null || TMPCHECKSUM=""
+  wget -q "${BASE_URL}/checksums.txt" -O "$TMPCHECKSUM" || { printf "Warning: could not download checksums.txt\n"; TMPCHECKSUM=""; }
 else
   printf "Error: curl or wget required\n"
   exit 1
@@ -71,7 +71,7 @@ fi
 
 # Verify checksum if checksums.txt was downloaded
 if [[ -n "$TMPCHECKSUM" ]] && [[ -s "$TMPCHECKSUM" ]]; then
-  EXPECTED=$(grep "$ASSET" "$TMPCHECKSUM" | awk '{print $1}')
+  EXPECTED=$(awk -v asset="$ASSET" '$2 == asset || $2 == "./"asset {print $1}' "$TMPCHECKSUM" | head -1)
   if [[ -n "$EXPECTED" ]]; then
     if command -v sha256sum >/dev/null 2>&1; then
       ACTUAL=$(sha256sum "$TMPFILE" | awk '{print $1}')
