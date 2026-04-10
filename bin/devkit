@@ -106,35 +106,77 @@ run_downloader() {
     return "$rc"
 }
 
-# download_resume: resumable HTTP download to $out. Uses `curl -C -`
-# (or `wget -c`) to continue from the file's current size. GitHub
-# release assets honour Range requests; if that ever stops being true
-# the resume will surface as a download error or a checksum mismatch
-# on the next verification step, both of which purge the partial.
-download_resume() {
-    url=$1
-    out=$2
-    if command -v curl >/dev/null 2>&1; then
-        run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$out" "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        run_downloader wget -q -c -O "$out" "$url"
-    else
-        die "need curl or wget to download engine binary"
-    fi
-}
+# download_release_asset: fetch a GitHub release asset to $out, trying
+# downloaders in order of TLS-stack reliability. The preference order
+# exists to work around issue #58: on Windows, `curl.exe` is built with
+# the schannel TLS backend and aborts with CURLE_WRITE_ERROR (exit 23)
+# partway through responses from `release-assets.githubusercontent.com`
+# (the CDN that `github.com/.../releases/download/...` 302-redirects
+# to), due to a schannel renegotiation interaction on that host.
+#
+# Args: tag asset out resumable
+#   tag       — release tag (e.g. v2.1.5)
+#   asset     — asset filename (e.g. devkit-windows-amd64.exe)
+#   out       — destination path
+#   resumable — "1" if the downloader should resume from a partial file
+#               (large engine binary); "" for a fresh GET (tiny files
+#               like checksums.txt, where resume offers no benefit).
+#
+# Order:
+#   1. `gh release download` — Go crypto/tls, no schannel involvement.
+#   2. `curl` — works everywhere except the Windows+schannel+CDN combo.
+#   3. `wget` — rarely present on Windows but common on Linux.
+#   4. `powershell.exe Invoke-WebRequest` — Windows last resort, uses
+#      .NET's TLS stack, also sidesteps the curl+schannel bug.
+#
+# gh and powershell do not support HTTP range resume, so on those paths
+# any existing partial is overwritten. The outer checksum-verify loop
+# catches corruption and the network cost of re-fetching the ~10MB
+# engine binary on the rare retry is acceptable.
+download_release_asset() {
+    tag=$1
+    asset=$2
+    out=$3
+    resumable=$4
+    url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}/${asset}"
 
-# download_fresh: non-resumable download for tiny files (checksums)
-# where resume offers no benefit and a stale file would be a hazard.
-download_fresh() {
-    url=$1
-    out=$2
-    if command -v curl >/dev/null 2>&1; then
-        run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
-    elif command -v wget >/dev/null 2>&1; then
-        run_downloader wget -q -O "$out" "$url"
-    else
-        die "need curl or wget to download engine binary"
+    if command -v gh >/dev/null 2>&1; then
+        if run_downloader gh release download "$tag" \
+                -R "${RELEASE_OWNER}/${RELEASE_REPO}" \
+                -p "$asset" -O "$out" --clobber; then
+            return 0
+        fi
+        log "gh release download failed; falling back to curl/wget"
     fi
+
+    if command -v curl >/dev/null 2>&1; then
+        if [ -n "$resumable" ]; then
+            run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$out" "$url" && return 0
+        else
+            run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url" && return 0
+        fi
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        if [ -n "$resumable" ]; then
+            run_downloader wget -q -c -O "$out" "$url" && return 0
+        else
+            run_downloader wget -q -O "$out" "$url" && return 0
+        fi
+    fi
+
+    case "${PLATFORM-}" in
+        windows-*)
+            if command -v powershell.exe >/dev/null 2>&1; then
+                log "trying PowerShell Invoke-WebRequest fallback"
+                run_downloader powershell.exe -NoProfile -Command \
+                    "Invoke-WebRequest -UseBasicParsing -Uri '$url' -OutFile '$out'" \
+                    && return 0
+            fi
+            ;;
+    esac
+
+    return 1
 }
 
 # ensure_engine sets ENGINE_PATH as a side effect rather than echoing it,
@@ -174,7 +216,7 @@ ensure_engine() {
 
     # Fetch the checksums file first so we have a source of truth
     # before touching the binary. Tiny file, no resume benefit.
-    download_fresh "${base_url}/checksums.txt" "$sums_file" \
+    download_release_asset "$tag" "checksums.txt" "$sums_file" "" \
         || die "checksum file download failed from ${base_url}/checksums.txt"
 
     expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$sums_file")
@@ -195,7 +237,7 @@ ensure_engine() {
         else
             log "first-run: downloading engine ${tag} (${PLATFORM})…"
         fi
-        download_resume "${base_url}/${asset}" "$partial" \
+        download_release_asset "$tag" "$asset" "$partial" "1" \
             || die "download failed: ${base_url}/${asset}"
 
         actual=$(sha256_of "$partial")
