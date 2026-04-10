@@ -1,0 +1,30 @@
+dry:
+  - Don't abstract until 3rd duplication
+  - If one copy changes, must the other? If not, leave it
+  - Name abstractions for what they do, not where they came from
+yagni:
+  - Build what's needed now, not what might be needed
+  - Hardcode until configurability is actually requested
+  - Premature abstraction is worse than duplication
+clean-code:
+  - One function, one job — if you say "and", split it
+  - Names reveal intent. Booleans read as questions
+  - Early returns over nesting. Max 2 indent levels
+dont-reinvent:
+  - stdlib > framework > established package > custom
+  - Every custom solution is code you maintain forever
+  - Custom justified only when existing solutions don't fit
+executing:
+  - One step at a time. Verify before moving on
+  - Keep changes small. 20-line diff > 200-line diff
+scratchpad:
+  - Read .devkit/scratchpads/current.md before each iteration
+  - Record what was tried and why it failed
+  - 3+ failures = escalate to user
+stuck:
+  - Same error 2x = stop and diagnose
+  - 3+ failures = escalate, don't retry
+test-gen:
+  - Test behavior, not implementation
+  - One assertion per test. Name tests for what they prove
+  - Cover the happy path, one edge case, one error case
