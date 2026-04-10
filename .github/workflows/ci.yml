@@ -47,6 +47,61 @@ jobs:
       - name: Run hook smoke tests
         run: bash hooks/hooks_test.sh
 
+  # Catches the class of bug where the shipped marketplace tree is
+  # missing something the plugin needs at runtime. PR #52 shipped a
+  # plugin.json pointing at bin/devkit, but bin/ was gitignored — the
+  # plugin installed but the MCP server silently failed to start.
+  # This job runs in a clean dir with no local build artifacts.
+  fresh-install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Bootstrap wrapper must exist and be executable
+        run: |
+          test -f bin/devkit || { echo "FATAL: bin/devkit wrapper missing from repo"; exit 1; }
+          test -x bin/devkit || { echo "FATAL: bin/devkit not executable"; exit 1; }
+
+      - name: Wrapper must not contain devkit-engine binary (that is gitignored)
+        run: |
+          if [ -e bin/devkit-engine ]; then
+            echo "FATAL: bin/devkit-engine should not be tracked in git (it is the cached binary)"
+            exit 1
+          fi
+
+      - name: plugin.json MCP command must match wrapper path
+        run: |
+          cmd=$(jq -r '.mcpServers["devkit-engine"].command' .claude-plugin/plugin.json)
+          expected='${CLAUDE_PLUGIN_ROOT}/bin/devkit'
+          if [ "$cmd" != "$expected" ]; then
+            echo "FATAL: plugin.json mcpServers.devkit-engine.command is '$cmd', expected '$expected'"
+            exit 1
+          fi
+
+      - name: shellcheck wrapper
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck bin/devkit
+
+      - name: Wrapper --help must exit with a download attempt (no local engine)
+        run: |
+          # With no local bin/devkit-engine and no network cache, the wrapper
+          # should try to download and either succeed or fail loudly. It must
+          # NOT silently pass with exit 0 and no output.
+          set +e
+          output=$(./bin/devkit --version 2>&1)
+          exit_code=$?
+          set -e
+          echo "wrapper exit=$exit_code"
+          echo "wrapper output: $output"
+          # The wrapper must either succeed (downloaded + ran --version) or
+          # emit a clear error. An empty output with exit 0 would be the silent
+          # failure class we're guarding against.
+          if [ $exit_code -eq 0 ] && [ -z "$output" ]; then
+            echo "FATAL: wrapper exited 0 with no output — silent failure class bug"
+            exit 1
+          fi
+
   validate-counts:
     runs-on: ubuntu-latest
     steps:

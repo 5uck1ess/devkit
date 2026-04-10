@@ -1,0 +1,137 @@
+#!/bin/sh
+# devkit wrapper — resolves and execs the platform engine binary.
+#
+# The real Go binary is not committed to git (platform-specific, ~10MB).
+# This wrapper downloads the matching release asset from GitHub on first
+# run, verifies its SHA256, caches it alongside this script, and execs it.
+#
+# All log output goes to stderr. Stdout stays clean because the MCP stdio
+# protocol runs over it when Claude Code invokes `devkit mcp`.
+
+set -eu
+
+SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+PLUGIN_ROOT=$(CDPATH='' cd -- "$SCRIPT_DIR/.." && pwd)
+PLUGIN_JSON="$PLUGIN_ROOT/.claude-plugin/plugin.json"
+RELEASE_OWNER="5uck1ess"
+RELEASE_REPO="devkit"
+
+log() { printf 'devkit: %s\n' "$*" >&2; }
+die() { log "$*"; exit 1; }
+
+# Fast path: developer-built binary next to this script (from `make install-plugin`).
+LOCAL_DEV="$SCRIPT_DIR/devkit-engine"
+if [ -x "$LOCAL_DEV" ]; then
+    exec "$LOCAL_DEV" "$@"
+fi
+
+# Sets VERSION (global) so die() kills the parent shell on failure.
+read_version() {
+    [ -f "$PLUGIN_JSON" ] || die "plugin.json not found at $PLUGIN_JSON"
+    VERSION=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PLUGIN_JSON" | head -1)
+    [ -n "$VERSION" ] || die "could not read version from $PLUGIN_JSON"
+}
+
+# Sets PLATFORM (global) so die() kills the parent shell on failure.
+detect_platform() {
+    uname_s=$(uname -s 2>/dev/null || echo unknown)
+    uname_m=$(uname -m 2>/dev/null || echo unknown)
+    case "$uname_s" in
+        Linux)  os=linux ;;
+        Darwin) os=darwin ;;
+        MINGW*|MSYS*|CYGWIN*) os=windows ;;
+        *) die "unsupported OS: $uname_s" ;;
+    esac
+    case "$uname_m" in
+        x86_64|amd64)  arch=amd64 ;;
+        arm64|aarch64) arch=arm64 ;;
+        *) die "unsupported arch: $uname_m" ;;
+    esac
+    PLATFORM="${os}-${arch}"
+}
+
+sha256_of() {
+    f=$1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$f" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$f" | awk '{print $1}'
+    else
+        die "need sha256sum or shasum to verify downloads"
+    fi
+}
+
+download() {
+    url=$1
+    out=$2
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q -O "$out" "$url"
+    else
+        die "need curl or wget to download engine binary"
+    fi
+}
+
+# ensure_engine sets ENGINE_PATH as a side effect rather than echoing it,
+# so `die` inside this function can `exit 1` on the parent shell. Command
+# substitution would run it in a subshell, hiding the failure exit code.
+ensure_engine() {
+    read_version
+    detect_platform
+    ext=""
+    case "$PLATFORM" in windows-*) ext=".exe" ;; esac
+
+    engine_name="devkit-engine-v${VERSION}-${PLATFORM}${ext}"
+    ENGINE_PATH="$SCRIPT_DIR/$engine_name"
+
+    if [ -x "$ENGINE_PATH" ]; then
+        return 0
+    fi
+
+    # Remove stale cached engines from old versions in the same directory.
+    find "$SCRIPT_DIR" -maxdepth 1 -name 'devkit-engine-v*' ! -name "$engine_name" \
+        -type f -exec rm -f {} + 2>/dev/null || true
+
+    tag="v${VERSION}"
+    asset="devkit-${PLATFORM}${ext}"
+    base_url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}"
+
+    log "first-run: downloading engine ${tag} (${PLATFORM})…"
+
+    # Per-invocation temp dir so two simultaneous first runs never
+    # share tmp paths. Each process cleans up its own dir on exit;
+    # the final mv(2) is atomic within a filesystem, so whichever
+    # writer lands last produces the correct (bit-identical) binary.
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/devkit-engine-XXXXXX") \
+        || die "mktemp -d failed"
+    tmp_bin="$tmp_dir/${engine_name}"
+    tmp_sums="$tmp_dir/checksums.txt"
+    trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+
+    download "${base_url}/${asset}" "$tmp_bin" \
+        || die "download failed: ${base_url}/${asset}"
+    download "${base_url}/checksums.txt" "$tmp_sums" \
+        || die "checksum file download failed from ${base_url}/checksums.txt"
+
+    expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$tmp_sums")
+    [ -n "$expected" ] || die "no checksum entry for $asset in release $tag"
+
+    actual=$(sha256_of "$tmp_bin")
+    [ "$actual" = "$expected" ] \
+        || die "checksum mismatch for $asset (expected $expected, got $actual)"
+
+    chmod +x "$tmp_bin"
+    mv -f "$tmp_bin" "$ENGINE_PATH"
+    rm -rf "$tmp_dir"
+    trap - EXIT INT TERM
+
+    log "installed engine at $ENGINE_PATH"
+}
+
+ENGINE_PATH=""
+ensure_engine
+if [ -z "$ENGINE_PATH" ] || [ ! -x "$ENGINE_PATH" ]; then
+    die "engine path not resolved"
+fi
+exec "$ENGINE_PATH" "$@"

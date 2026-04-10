@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -934,16 +936,440 @@ steps:
 		t.Errorf("expected loop iteration, got:\n%s", tc.Text)
 	}
 
-	// Second advance — output contains "all clear", should exit loop
+	// Second advance — output has "all clear" as its own trimmed line,
+	// which matches the line-anchored until sentinel.
 	advReq2 := mcpmcp.CallToolRequest{}
 	advReq2.Params.Arguments = map[string]interface{}{
 		"session": state.ID,
-		"output":  "All Clear now",
+		"output":  "fixed the issue\nall clear\n",
 	}
 	result2, _ := advHandler(context.Background(), advReq2)
 	tc2, _ := result2.Content[0].(mcpmcp.TextContent)
 	if !strings.Contains(tc2.Text, "done") {
 		t.Errorf("expected to advance past loop to 'done', got:\n%s", tc2.Text)
+	}
+}
+
+func TestLoopUntilRejectsSubstring(t *testing.T) {
+	// Regression: an until sentinel must NOT match when it appears only
+	// inside another word. Prior behavior used strings.Contains which
+	// made "fail" match "no failures found". Word-boundary match now.
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "test.yml"), `name: test
+steps:
+  - id: fix
+    prompt: "Fix the issue"
+    loop:
+      max: 3
+      until: "FAIL"
+  - id: end
+    prompt: end
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "test", "input": "x"}
+	startHandler(context.Background(), startReq)
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "no failures found; classification succeeded",
+	}
+	result, _ := advHandler(context.Background(), advReq)
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "LOOP ITERATION") {
+		t.Errorf("expected to remain in loop (FAIL must not match inside 'failures'), got:\n%s", tc.Text)
+	}
+}
+
+// TestAdvanceConcurrentClaim verifies the cross-process Busy claim: when
+// one devkit_advance is mid-flight, a racing second call must be rejected
+// rather than both advancing and clobbering the session index.
+func TestAdvanceConcurrentClaim(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Seed state directly as if an advance is already in progress.
+	seeded := &lib.SessionState{
+		ID:           "race-sess",
+		Workflow:     "race",
+		CurrentStep:  "one",
+		CurrentIndex: 0,
+		TotalSteps:   2,
+		StepType:     "prompt",
+		Enforce:      "hard",
+		Status:       "running",
+		Busy:         true,
+		StartedAt:    time.Now(),
+		Outputs:      map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dataDir, seeded); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	wfDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "race.yml"), `name: race
+description: race test
+steps:
+  - id: one
+    prompt: first
+  - id: two
+    prompt: second
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, advHandler := srv.advanceTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"session": "race-sess",
+		"output":  "x",
+	}
+	result, err := advHandler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true when Busy claim is held")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "already in progress") {
+		t.Errorf("expected 'already in progress' message, got: %s", tc.Text)
+	}
+
+	// Busy must still be true — the rejected caller must not clear it.
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.Busy {
+		t.Error("rejected advance should not have cleared Busy")
+	}
+}
+
+// TestAdvanceClearsBusy verifies that a successful advance clears the
+// Busy claim so the next call can proceed.
+func TestAdvanceClearsBusy(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "clear.yml"), `name: clear
+description: clear busy test
+steps:
+  - id: a
+    prompt: first
+  - id: b
+    prompt: second
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "clear", "input": "x"}
+	if _, err := startHandler(context.Background(), startReq); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state.Busy {
+		t.Error("start should not leave Busy=true")
+	}
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "done with a",
+	}
+	if _, err := advHandler(context.Background(), advReq); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+
+	state2, _ := lib.ReadSessionJSON(dataDir)
+	if state2.Busy {
+		t.Error("advance should clear Busy before returning")
+	}
+	if state2.CurrentStep != "b" {
+		t.Errorf("expected CurrentStep=b, got %q", state2.CurrentStep)
+	}
+}
+
+// TestStartConcurrentRace verifies two simultaneous devkit_start calls
+// cannot both succeed. The previous read-then-write pattern let them
+// both see "no session" and both write, silently clobbering.
+func TestStartConcurrentRace(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "r.yml"), `name: r
+steps:
+  - id: one
+    prompt: first
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, startHandler := srv.startTool()
+
+	const N = 8
+	var wg sync.WaitGroup
+	var successes, alreadyRunning int64
+	start := make(chan struct{})
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			req := mcpmcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{"workflow": "r", "input": "x"}
+			result, err := startHandler(context.Background(), req)
+			if err != nil {
+				return
+			}
+			if result.IsError {
+				tc, _ := result.Content[0].(mcpmcp.TextContent)
+				if strings.Contains(tc.Text, "already") {
+					atomic.AddInt64(&alreadyRunning, 1)
+				}
+				return
+			}
+			atomic.AddInt64(&successes, 1)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if successes != 1 {
+		t.Errorf("successes = %d, want 1 (start/start race: claim is not atomic)", successes)
+	}
+	if alreadyRunning != N-1 {
+		t.Errorf("alreadyRunning = %d, want %d", alreadyRunning, N-1)
+	}
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state == nil || state.Status != "running" {
+		t.Errorf("final state should be running, got %+v", state)
+	}
+}
+
+// TestAdvanceRealRace launches N concurrent devkit_advance calls while
+// the first step (a sleeping command) holds the Busy claim. Under the
+// flock + Busy claim, exactly one must get through; every other racer
+// fired while Busy=true must be rejected with "already in progress".
+// Removing the lock or the Busy check should make this test flaky.
+func TestAdvanceRealRace(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	// Command step that sleeps long enough for racers to pile up while
+	// the winner is inside runCommand (and therefore holding Busy).
+	writeFile(t, filepath.Join(wfDir, "race.yml"), `name: race
+description: concurrent race test
+steps:
+  - id: one
+    command: "sleep 0.3"
+    expect: success
+  - id: two
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "race", "input": "x"}
+	if _, err := startHandler(context.Background(), startReq); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	state, _ := lib.ReadSessionJSON(dataDir)
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+
+	const N = 8
+	var wg sync.WaitGroup
+	var successes, rejections int64
+	start := make(chan struct{})
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			<-start // all goroutines released together
+			req := mcpmcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{"session": sessionID}
+			result, err := advHandler(context.Background(), req)
+			if err != nil {
+				return
+			}
+			if result.IsError {
+				tc, _ := result.Content[0].(mcpmcp.TextContent)
+				if strings.Contains(tc.Text, "already in progress") {
+					atomic.AddInt64(&rejections, 1)
+				}
+				return
+			}
+			atomic.AddInt64(&successes, 1)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if successes != 1 {
+		t.Errorf("successes = %d, want 1 (Busy claim is not mutually exclusive)", successes)
+	}
+	if rejections != N-1 {
+		t.Errorf("rejections = %d, want %d (losing racers should see 'already in progress')", rejections, N-1)
+	}
+
+	final, _ := lib.ReadSessionJSON(dataDir)
+	if final == nil {
+		t.Fatal("session unexpectedly cleared")
+	}
+	if final.CurrentIndex != 1 {
+		t.Errorf("CurrentIndex = %d, want 1 (exactly one advance)", final.CurrentIndex)
+	}
+	if final.Busy {
+		t.Error("Busy should be cleared after all goroutines return")
+	}
+}
+
+// TestAdvanceCommandFailClearsBusy verifies the defer releaseClaim runs
+// and clears Busy when a command step errors out (expect mismatch). A
+// regression that leaked the claim would wedge the session forever.
+func TestAdvanceCommandFailClearsBusy(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "f.yml"), `name: f
+steps:
+  - id: boom
+    command: "exit 1"
+    expect: success
+  - id: done
+    prompt: done
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "f", "input": "x"}
+	startHandler(context.Background(), startReq)
+	state, _ := lib.ReadSessionJSON(dataDir)
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{"session": state.ID}
+	result, _ := advHandler(context.Background(), advReq)
+	if !result.IsError {
+		t.Fatal("expected expect:success mismatch to return IsError")
+	}
+
+	after, err := lib.ReadSessionJSON(dataDir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if after == nil {
+		t.Fatal("session should still exist after failed advance")
+	}
+	if after.Busy {
+		t.Error("Busy leaked after command failure — defer releaseClaim did not run")
+	}
+}
+
+// TestStartBranchModeRollback verifies branch-mode failure does not
+// publish a session.json. Uses git=nil to force the "not available"
+// branch, which is the simplest injectable failure.
+func TestStartBranchModeRollback(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "b.yml"), `name: b
+branch: true
+steps:
+  - id: one
+    prompt: first
+`)
+
+	srv := newTestServer(t, dataDir, wfDir) // git: nil
+	_, handler := srv.startTool()
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{"workflow": "b", "input": "x"}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true when git is nil and branch: true")
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state != nil {
+		t.Errorf("session.json should not exist after branch-mode failure, got %+v", state)
+	}
+}
+
+// TestUpdateSessionJSONNoChange verifies fn returning nil leaves the
+// on-disk state untouched (mtime unchanged, content unchanged).
+func TestUpdateSessionJSONNoChange(t *testing.T) {
+	dir := t.TempDir()
+	seed := &lib.SessionState{
+		ID:      "nochange",
+		Status:  "running",
+		Outputs: map[string]string{"a": "b"},
+	}
+	if err := lib.WriteSessionJSON(dir, seed); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	path := lib.SessionJSONPath(dir)
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	// Ensure mtime resolution is crossed.
+	time.Sleep(10 * time.Millisecond)
+
+	got, err := lib.UpdateSessionJSON(dir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+		return nil, nil // no change
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if got == nil || got.ID != "nochange" {
+		t.Errorf("got %+v, want seeded state", got)
+	}
+
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat after: %v", err)
+	}
+	if !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("mtime changed (%v → %v) — no-change path must not write", before.ModTime(), after.ModTime())
+	}
+}
+
+// TestSessionFileMode verifies session.json is chmod 0600 (may contain
+// pasted secrets via workflow input/outputs).
+func TestSessionFileMode(t *testing.T) {
+	dir := t.TempDir()
+	state := &lib.SessionState{
+		ID:      "mode-test",
+		Status:  "running",
+		Outputs: map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dir, state); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	info, err := os.Stat(lib.SessionJSONPath(dir))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	got := info.Mode().Perm()
+	if got != 0o600 {
+		t.Errorf("session.json mode = %o, want 0600", got)
 	}
 }
 

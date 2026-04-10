@@ -1,5 +1,8 @@
-# Compiled binaries
-bin/
+# Compiled engine binaries (wrapper bin/devkit is committed)
+bin/devkit-engine
+bin/devkit-engine-*
+bin/.checksums.*
+src/bin/
 
 # Credentials — never commit
 *.token

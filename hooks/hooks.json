@@ -1,5 +1,5 @@
 {
-  "description": "Consolidated enforcement stack: PreToolUse safety + security, PostToolUse validation + language review, SubagentStop verification, Stop quality gate",
+  "description": "Consolidated enforcement stack: PreToolUse safety + security + workflow guard, PostToolUse validation + language review, SubagentStop verification, Stop quality gate + workflow completion guard",
   "hooks": {
     "PreToolUse": [
       {

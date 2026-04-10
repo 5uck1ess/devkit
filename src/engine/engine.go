@@ -251,9 +251,14 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 }
 
 // runCommand executes a shell command and returns its combined output.
-func (e *Engine) runCommand(ctx context.Context, command string) (string, int, error) {
+// The caller passes input and outputs through env vars (DEVKIT_INPUT and
+// DEVKIT_OUT_<id>) rather than interpolating them into the command string,
+// to eliminate shell injection via LLM-chosen input or contaminated
+// prior-step output.
+func (e *Engine) runCommand(ctx context.Context, command, input string, outputs map[string]string) (string, int, error) {
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = e.repoRoot
+	cmd.Env = append(os.Environ(), buildCommandEnv(input, outputs)...)
 
 	var out bytes.Buffer
 	cmd.Stdout = &out
@@ -266,11 +271,24 @@ func (e *Engine) runCommand(ctx context.Context, command string) (string, int, e
 		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
-			return "", 1, fmt.Errorf("command execution failed: %w", err)
+			return out.String(), 1, fmt.Errorf("command execution failed: %w", err)
 		}
 	}
 	return out.String(), exitCode, nil
 }
+
+// buildCommandEnv returns DEVKIT_INPUT and DEVKIT_OUT_<step_id> env vars
+// for use by command/gate steps.
+func buildCommandEnv(input string, outputs map[string]string) []string {
+	env := []string{"DEVKIT_INPUT=" + input}
+	for id, out := range outputs {
+		env = append(env, "DEVKIT_OUT_"+envKey(id)+"="+out)
+	}
+	return env
+}
+
+// envKey is a package-private alias to EnvKey for call-site brevity.
+func envKey(id string) string { return EnvKey(id) }
 
 // runStep executes a single step and records it in the database.
 func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, string, error) {
@@ -278,7 +296,6 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 	// Command step: run shell command directly, no LLM cost.
 	if step.Command != "" {
-		command := Interpolate(step.Command, input, outputs)
 		fmt.Printf("--- %s (step %d, command) ---\n", step.ID, *iterNum)
 
 		dbStep := &lib.Step{
@@ -289,7 +306,9 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 		}
 		e.db.CreateStep(dbStep)
 
-		output, exitCode, err := e.runCommand(ctx, command)
+		// Command string is literal — no {{...}} expansion. Values
+		// come via env vars ($DEVKIT_INPUT, $DEVKIT_OUT_<step_id>).
+		output, exitCode, err := e.runCommand(ctx, step.Command, input, outputs)
 		if err != nil {
 			dbStep.Status = "failed"
 			dbStep.ChangeSummary = err.Error()
@@ -405,10 +424,10 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		iterCost := result.CostUSD
 
 		// Gate check: run shell command, revert if non-zero exit.
+		// Gate string is literal — values come via env vars.
 		if step.Loop.Gate != "" {
-			gateCmd := Interpolate(step.Loop.Gate, input, outputs)
-			fmt.Printf("  gate: %s\n", runners.TruncStr(gateCmd, 80))
-			_, exitCode, gateErr := e.runCommand(ctx, gateCmd)
+			fmt.Printf("  gate: %s\n", runners.TruncStr(step.Loop.Gate, 80))
+			_, exitCode, gateErr := e.runCommand(ctx, step.Loop.Gate, input, outputs)
 
 			// Distinguish "gate couldn't execute" from "gate ran and returned non-zero".
 			// A startup/context error is fatal — the gate never validated anything.
@@ -474,8 +493,10 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			fmt.Printf("  → commit failed: %s\n", commitErr)
 		}
 
-		// Check until condition
-		if step.Loop.Until != "" && strings.Contains(strings.ToUpper(result.Output), strings.ToUpper(step.Loop.Until)) {
+		// Check until condition. Line-anchored (see MatchUntil) —
+		// sentinel must appear on its own line to avoid matching
+		// conversational text.
+		if step.Loop.Until != "" && MatchUntil(result.Output, step.Loop.Until) {
 			fmt.Printf("  → loop complete (%s found)\n\n", step.Loop.Until)
 			return totalCost, nil
 		}

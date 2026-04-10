@@ -31,7 +31,7 @@ func showAllSessions() error {
 		return fmt.Errorf("list sessions: %w", err)
 	}
 	if len(sessions) == 0 {
-		fmt.Println("No sessions found. Run `devkit workflow run <name>` to start one, or use the MCP tools inside Claude Code.")
+		fmt.Println("No sessions found. Run `devkit workflow <name> \"<description>\"` to start one, or use the MCP tools inside Claude Code.")
 		return nil
 	}
 
