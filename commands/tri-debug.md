@@ -2,14 +2,10 @@
 description: Triple-agent debugging — independent root-cause hypotheses from Claude, Codex, and Gemini, then consensus fix.
 ---
 
-Ensure the devkit engine is installed, then run the workflow:
+## Invoke
 
-```bash
-ENSURE="$(find ~/.claude/plugins ${APPDATA:+$APPDATA/.claude/plugins} ${LOCALAPPDATA:+$LOCALAPPDATA/.claude/plugins} -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"; [ -n "$ENSURE" ] && bash "$ENSURE" || { echo "devkit plugin not found — install from https://github.com/5uck1ess/devkit/releases"; exit 1; }
-```
+Start the workflow via the devkit engine:
 
-```bash
-devkit workflow run tri-debug
-```
+Use the `devkit_start` tool with workflow: "tri-debug" and input: "{input}".
 
-If the engine cannot be installed (no network, no write access), tell the user: "The devkit engine binary is required for deterministic workflow execution. Install manually from https://github.com/5uck1ess/devkit/releases" Do NOT fall back to manual steps.
+Then follow each step the engine returns. Call `devkit_advance` after completing each step. The engine controls step order, gates, and loops. Do NOT skip steps.

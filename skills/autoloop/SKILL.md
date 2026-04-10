@@ -48,19 +48,13 @@ If the user says "everything" or skips, leave scope open.
 
 ## Invoke the Workflow
 
-Ensure the devkit engine is installed:
+Start the workflow via the devkit engine:
 
-```bash
-ENSURE="$(find ~/.claude/plugins ${APPDATA:+$APPDATA/.claude/plugins} ${LOCALAPPDATA:+$LOCALAPPDATA/.claude/plugins} -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"; [ -n "$ENSURE" ] && bash "$ENSURE" || { echo "devkit plugin not found — install from https://github.com/5uck1ess/devkit/releases"; exit 1; }
-```
+Assemble the input as a single string: `"<objective> | metric: <command> | direction: <higher/lower>-is-better | iterations: <N> | scope: <constraint or 'all'>"`.
 
-Assemble the input as a single string and invoke:
+Use the `devkit_start` tool with workflow: "autoloop" and input: "{input}".
 
-```bash
-devkit workflow autoloop "<objective> | metric: <command> | direction: <higher/lower>-is-better | iterations: <N> | scope: <constraint or 'all'>"
-```
-
-If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Install manually from https://github.com/5uck1ess/devkit/releases" Do NOT fall back to manual steps — the engine is required for determinism.
+Then follow each step the engine returns. Call `devkit_advance` after completing each step. The engine controls step order, gates, and loops. Do NOT skip steps.
 
 ## Rules
 
