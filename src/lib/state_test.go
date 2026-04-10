@@ -96,3 +96,39 @@ func TestHandoffPath(t *testing.T) {
 		t.Errorf("path = %s, want %s", path, expected)
 	}
 }
+
+func TestSessionJSON(t *testing.T) {
+	dir := t.TempDir()
+	state := &SessionState{
+		ID:          "abc123",
+		Workflow:    "research",
+		CurrentStep: "clarify",
+		StepType:    "prompt",
+		Enforce:     "hard",
+		Status:      "running",
+		Outputs:     map[string]string{},
+	}
+
+	if err := WriteSessionJSON(dir, state); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	got, err := ReadSessionJSON(dir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if got.ID != "abc123" || got.CurrentStep != "clarify" {
+		t.Errorf("got %+v", got)
+	}
+
+	if err := ClearSessionJSON(dir); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	got, err = ReadSessionJSON(dir)
+	if err != nil {
+		t.Fatalf("read after clear: %v", err)
+	}
+	if got != nil {
+		t.Error("expected nil after clear")
+	}
+}
