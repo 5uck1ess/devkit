@@ -17,6 +17,9 @@ type Workflow struct {
 	Description string   `yaml:"description"`
 	Budget      Budget   `yaml:"budget"`
 	Steps       []WfStep `yaml:"steps"`
+	Enforce     string   `yaml:"enforce"`     // "hard" (default) | "soft"
+	BranchMode  bool     `yaml:"branch"`      // create git branch per session
+	Principles  []string `yaml:"principles"`  // principle keys to inject
 }
 
 // Budget controls token spending limits.
@@ -27,14 +30,15 @@ type Budget struct {
 
 // WfStep is a single step in a workflow.
 type WfStep struct {
-	ID       string   `yaml:"id"`
-	Model    string   `yaml:"model"`
-	Prompt   string   `yaml:"prompt"`
-	Command  string   `yaml:"command"`
-	Expect   string   `yaml:"expect"`
-	Parallel []string `yaml:"parallel"`
-	Loop     *Loop    `yaml:"loop"`
-	Branch   []Branch `yaml:"branch"`
+	ID         string   `yaml:"id"`
+	Model      string   `yaml:"model"`
+	Prompt     string   `yaml:"prompt"`
+	Command    string   `yaml:"command"`
+	Expect     string   `yaml:"expect"`
+	Parallel   []string `yaml:"parallel"`
+	Loop       *Loop    `yaml:"loop"`
+	Branch     []Branch `yaml:"branch"`
+	Principles []string `yaml:"principles"` // per-step override
 }
 
 // Loop controls step repetition.
@@ -73,8 +77,17 @@ func Parse(data []byte) (*Workflow, error) {
 
 // validate checks the workflow for structural errors.
 func validate(wf *Workflow) error {
+	// Apply defaults before validation so directly-constructed Workflow values
+	// (not via Parse) also get sensible defaults.
+	if wf.Enforce == "" {
+		wf.Enforce = "hard"
+	}
+
 	if wf.Name == "" {
 		return fmt.Errorf("workflow missing name")
+	}
+	if wf.Enforce != "hard" && wf.Enforce != "soft" {
+		return fmt.Errorf("workflow %q has invalid enforce %q — must be \"hard\" or \"soft\"", wf.Name, wf.Enforce)
 	}
 	if len(wf.Steps) == 0 {
 		return fmt.Errorf("workflow %q has no steps", wf.Name)
