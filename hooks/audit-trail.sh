@@ -14,6 +14,24 @@ COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
 # Ensure log directory exists
 LOG_DIR=".devkit"
 LOG_FILE="${LOG_DIR}/audit.log"
+
+# First-run only: self-install .devkit/ in the host repo's root .gitignore.
+# Without this, users who install devkit into a repo whose .gitignore doesn't
+# already cover .devkit/ end up tracking audit.log, which then conflicts on
+# stash/pull/merge because the hook rewrites it on every Bash call.
+if [[ ! -d "$LOG_DIR" ]]; then
+  REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+  if [[ -n "$REPO_ROOT" ]]; then
+    GITIGNORE="${REPO_ROOT}/.gitignore"
+    if [[ ! -f "$GITIGNORE" ]] || ! grep -qE '^\.devkit($|/)' "$GITIGNORE" 2>/dev/null; then
+      if [[ -f "$GITIGNORE" ]] && [[ -n "$(tail -c 1 "$GITIGNORE" 2>/dev/null)" ]]; then
+        printf '\n' >> "$GITIGNORE"
+      fi
+      printf '.devkit/\n' >> "$GITIGNORE"
+    fi
+  fi
+fi
+
 mkdir -p "$LOG_DIR"
 
 # Truncate command for log (first line only, max 500 chars)
