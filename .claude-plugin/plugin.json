@@ -7,8 +7,9 @@
   },
   "mcpServers": {
     "devkit-engine": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/bin/devkit",
+      "command": "sh",
       "args": [
+        "${CLAUDE_PLUGIN_ROOT}/bin/devkit",
         "mcp"
       ]
     }
