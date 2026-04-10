@@ -169,7 +169,7 @@ jobs:
           cache-dependency-path: src/go.sum
 
       - name: Build binary
-        run: make build-for GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }}
+        run: make build-for GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} VERSION=v${{ needs.version.outputs.version }}
 
       - name: Upload release asset
         env:
