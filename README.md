@@ -69,7 +69,12 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 ```bash
 brew install rtk       # Token optimization (60-90% savings on Bash output)
 brew install ast-grep  # AST-based repo mapping (used by onboard skill)
+
+# Browser automation — enables scrape (JS-rendered), screenshot, and browser skills
+npx playwright install chromium
 ```
+
+**Playwright** (optional) enables three skills: enhanced `scrape` for JS-heavy sites, `screenshot` for page captures, and `browser` for full automation (clicking, form filling, multi-step flows, codegen). Free and local — no API keys. Install only the browsers you need (`chromium` is ~170MB).
 
 ### Verify
 
@@ -173,6 +178,8 @@ Skills activate automatically based on context. No slash command needed.
 | "research X" | `research` |
 | "deep research", "validate this" | `deep-research` |
 | "scrape this URL" | `scrape` |
+| "screenshot this page" | `screenshot` (requires Playwright) |
+| "automate this browser flow" | `browser` (requires Playwright) |
 | "create an ADR" | `adr` |
 
 Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `stuck`, `scratchpad`) are injected as condensed rules (~120 tokens) per workflow step — not loaded as full skill files.
@@ -264,7 +271,7 @@ Terminal fallback (devkit workflow run <name>):
 ```
 devkit/
 ├── commands/          # 6 slash commands (tab-completable entry points)
-├── skills/            # 20 context-activated skills + _principles.yml
+├── skills/            # 22 context-activated skills + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 18 YAML workflow definitions
