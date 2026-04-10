@@ -63,6 +63,82 @@ steps:
       Generate a changelog entry from git diff main...HEAD.
       Summarize what changed and why.
 
+  - id: doc-check
+    model: smart
+    prompt: |
+      Classify the diff (git diff main...HEAD) and decide which project
+      docs need updating so the user does not have to ask every PR.
+
+      STEP 1 — Classify the change as exactly one of:
+        - feature         (new user-visible capability)
+        - bugfix          (fixes existing behaviour)
+        - breaking        (removes/renames public surface, bumps required version, changes CLI/flag semantics)
+        - internal        (refactor, test, CI, build, infra — no user impact)
+        - docs-only       (README/CHANGELOG/ROADMAP/comments only)
+
+      STEP 2 — Enumerate candidate docs that exist at repo root and
+      decide per-file whether this PR requires an update. Use these
+      rules (each rule lists the classifications that force an update;
+      internal/docs-only PRs default to "not affected" unless stated):
+
+        - README.md
+          * feature: update if user-facing commands, install steps, or
+            the feature table changed.
+          * breaking: always update — migration note + changed surface.
+          * bugfix/internal: not affected unless README directly
+            describes the broken behaviour.
+
+        - ROADMAP.md
+          * feature: move the corresponding entry from "Planned" to
+            "Implemented", or add a new Implemented bullet.
+          * breaking: update if a roadmap item is now removed.
+          * bugfix/internal: not affected.
+
+        - CHANGELOG.md
+          * Managed by the release pipeline, not individual PRs. Never
+            write to it here unless the PR is an explicit release bump
+            (plugin.json version change).
+
+        - CLAUDE.md (or AGENTS.md)
+          * feature/breaking: update if project conventions, tool
+            selection rules, or workflow patterns changed.
+          * bugfix/internal: not affected.
+
+        - docs/ or *.md under docs/
+          * feature: update if an existing doc describes the subsystem
+            you touched.
+          * breaking: always update.
+
+        - plugin.json / manifest.json / .claude-plugin/
+          * breaking: update if commands, skills, agents, or MCP
+            servers were added/removed/renamed.
+          * feature: update if a new command/skill/agent is exposed.
+          * bugfix/internal: not affected unless the bug was a missing
+            manifest entry.
+
+        - workflows/*.yml
+          * feature: add/update if a workflow step was added or its
+            contract changed.
+          * internal: only if a workflow file itself was refactored.
+
+      STEP 3 — For each doc decided "needs update", either apply the
+      edit directly (Edit/Write tool) if the change is mechanical and
+      unambiguous (moving a roadmap bullet, adding a README command
+      row, renaming a manifest entry), OR emit a one-line TODO with
+      the exact edit the user needs to make.
+
+      STEP 4 — Output a markdown checklist of ALL candidate docs:
+          - [x] README.md — updated: <one-line summary>
+          - [ ] ROADMAP.md — not affected (bugfix)
+          - [ ] CHANGELOG.md — managed by release pipeline
+          - [!] CLAUDE.md — needs manual update: <TODO>
+      Use [x] for applied updates, [ ] for not-affected, [!] for
+      needs-manual-update.
+
+      Commit any applied edits with message
+          docs: update <files> for <classification>
+      so the doc changes land in the PR alongside the code.
+
   - id: create-pr
     model: smart
     prompt: |
