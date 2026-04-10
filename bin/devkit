@@ -5,6 +5,13 @@
 # This wrapper downloads the matching release asset from GitHub on first
 # run, verifies its SHA256, caches it alongside this script, and execs it.
 #
+# Downloads are resumable and crash-safe. The partial file is staged
+# next to the final engine path, and the INT/TERM trap only terminates
+# the downloader — it does not remove the partial. A subsequent wrapper
+# invocation resumes via `curl -C -` (or `wget -c`) from the current
+# file size. A checksum mismatch purges the partial so corrupt bytes
+# cannot trap a future run in a resume-from-bad-offset loop.
+#
 # All log output goes to stderr. Stdout stays clean because the MCP stdio
 # protocol runs over it when Claude Code invokes `devkit mcp`.
 
@@ -18,6 +25,26 @@ RELEASE_REPO="devkit"
 
 log() { printf 'devkit: %s\n' "$*" >&2; }
 die() { log "$*"; exit 1; }
+
+# Track the downloader PID so the INT/TERM trap can terminate curl
+# explicitly. /bin/sh does not forward signals to foreground children,
+# so without this the wrapper exits on TERM but curl keeps writing to
+# the partial file; the next wrapper run then races its own curl on
+# the same file and the two writers corrupt each other's bytes.
+DL_PID=
+cleanup_downloader() {
+    if [ -n "$DL_PID" ]; then
+        kill "$DL_PID" 2>/dev/null || true
+        wait "$DL_PID" 2>/dev/null || true
+        DL_PID=
+    fi
+}
+# INT/TERM: kill the downloader and exit with a signal-style status.
+# EXIT: defense-in-depth for `die` paths that abort mid-download — the
+# exec at the end of the happy path replaces the shell, so the EXIT
+# trap never fires on success.
+trap 'cleanup_downloader; exit 143' INT TERM
+trap 'cleanup_downloader' EXIT
 
 # Fast path: developer-built binary next to this script (from `make install-plugin`).
 LOCAL_DEV="$SCRIPT_DIR/devkit-engine"
@@ -50,24 +77,61 @@ detect_platform() {
     PLATFORM="${os}-${arch}"
 }
 
+# Detect the sha256 tool at startup rather than inside sha256_of.
+# If selection were done inside a $(...) call site, `die` on missing
+# tools would exit the subshell only, leaving the caller with an empty
+# string that the checksum branch would misreport as a mismatch.
+if command -v sha256sum >/dev/null 2>&1; then
+    SHA256_CMD=sha256sum
+elif command -v shasum >/dev/null 2>&1; then
+    SHA256_CMD="shasum -a 256"
+else
+    die "need sha256sum or shasum to verify downloads"
+fi
+
 sha256_of() {
-    f=$1
-    if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$f" | awk '{print $1}'
-    elif command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$f" | awk '{print $1}'
-    else
-        die "need sha256sum or shasum to verify downloads"
-    fi
+    $SHA256_CMD "$1" | awk '{print $1}'
 }
 
-download() {
+# Background $@ so cleanup_downloader can kill it via DL_PID.
+# `|| rc=$?` is required: under `set -e`, a bare `wait "$DL_PID"`
+# with a non-zero child exit would abort the script before the
+# caller's `|| die` ever runs, silencing the real failure.
+run_downloader() {
+    "$@" &
+    DL_PID=$!
+    rc=0
+    wait "$DL_PID" || rc=$?
+    DL_PID=
+    return "$rc"
+}
+
+# download_resume: resumable HTTP download to $out. Uses `curl -C -`
+# (or `wget -c`) to continue from the file's current size. GitHub
+# release assets honour Range requests; if that ever stops being true
+# the resume will surface as a download error or a checksum mismatch
+# on the next verification step, both of which purge the partial.
+download_resume() {
     url=$1
     out=$2
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
+        run_downloader curl -fsSL --retry 2 --retry-delay 2 -C - -o "$out" "$url"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$out" "$url"
+        run_downloader wget -q -c -O "$out" "$url"
+    else
+        die "need curl or wget to download engine binary"
+    fi
+}
+
+# download_fresh: non-resumable download for tiny files (checksums)
+# where resume offers no benefit and a stale file would be a hazard.
+download_fresh() {
+    url=$1
+    out=$2
+    if command -v curl >/dev/null 2>&1; then
+        run_downloader curl -fsSL --retry 2 --retry-delay 2 -o "$out" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        run_downloader wget -q -O "$out" "$url"
     else
         die "need curl or wget to download engine binary"
     fi
@@ -89,42 +153,67 @@ ensure_engine() {
         return 0
     fi
 
-    # Remove stale cached engines from old versions in the same directory.
-    find "$SCRIPT_DIR" -maxdepth 1 -name 'devkit-engine-v*' ! -name "$engine_name" \
+    # Staging paths live next to the final engine on the same
+    # filesystem so the install mv(2) is atomic.
+    partial="$SCRIPT_DIR/${engine_name}.partial"
+    sums_file="$SCRIPT_DIR/devkit-checksums-v${VERSION}.txt"
+
+    # Sweep stale artifacts from old versions. Current version's
+    # engine, partial, and checksums file are preserved so an
+    # interrupted download can resume on the next invocation.
+    find "$SCRIPT_DIR" -maxdepth 1 \
+        \( -name 'devkit-engine-v*' -o -name 'devkit-checksums-v*' \) \
+        ! -name "$engine_name" \
+        ! -name "${engine_name}.partial" \
+        ! -name "devkit-checksums-v${VERSION}.txt" \
         -type f -exec rm -f {} + 2>/dev/null || true
 
     tag="v${VERSION}"
     asset="devkit-${PLATFORM}${ext}"
     base_url="https://github.com/${RELEASE_OWNER}/${RELEASE_REPO}/releases/download/${tag}"
 
-    log "first-run: downloading engine ${tag} (${PLATFORM})…"
-
-    # Per-invocation temp dir so two simultaneous first runs never
-    # share tmp paths. Each process cleans up its own dir on exit;
-    # the final mv(2) is atomic within a filesystem, so whichever
-    # writer lands last produces the correct (bit-identical) binary.
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/devkit-engine-XXXXXX") \
-        || die "mktemp -d failed"
-    tmp_bin="$tmp_dir/${engine_name}"
-    tmp_sums="$tmp_dir/checksums.txt"
-    trap 'rm -rf "$tmp_dir"' EXIT INT TERM
-
-    download "${base_url}/${asset}" "$tmp_bin" \
-        || die "download failed: ${base_url}/${asset}"
-    download "${base_url}/checksums.txt" "$tmp_sums" \
+    # Fetch the checksums file first so we have a source of truth
+    # before touching the binary. Tiny file, no resume benefit.
+    download_fresh "${base_url}/checksums.txt" "$sums_file" \
         || die "checksum file download failed from ${base_url}/checksums.txt"
 
-    expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$tmp_sums")
-    [ -n "$expected" ] || die "no checksum entry for $asset in release $tag"
+    expected=$(awk -v name="$asset" '$2 == name || $2 == "*"name { print $1; exit }' "$sums_file")
+    if [ -z "$expected" ]; then
+        rm -f "$sums_file" || true
+        die "no checksum entry for $asset in release $tag"
+    fi
 
-    actual=$(sha256_of "$tmp_bin")
-    [ "$actual" = "$expected" ] \
-        || die "checksum mismatch for $asset (expected $expected, got $actual)"
+    # Fast path: a pre-existing partial that already matches the
+    # expected checksum means a prior run finished the download but
+    # crashed before the atomic install. Skip the resume (which would
+    # hit a 416 on a complete file) and install directly.
+    if [ -f "$partial" ] && [ "$(sha256_of "$partial")" = "$expected" ]; then
+        log "partial already complete — installing engine ${tag} (${PLATFORM})"
+    else
+        if [ -f "$partial" ]; then
+            log "resuming download of engine ${tag} (${PLATFORM})…"
+        else
+            log "first-run: downloading engine ${tag} (${PLATFORM})…"
+        fi
+        download_resume "${base_url}/${asset}" "$partial" \
+            || die "download failed: ${base_url}/${asset}"
 
-    chmod +x "$tmp_bin"
-    mv -f "$tmp_bin" "$ENGINE_PATH"
-    rm -rf "$tmp_dir"
-    trap - EXIT INT TERM
+        actual=$(sha256_of "$partial")
+        if [ "$actual" != "$expected" ]; then
+            # Bad resume offset, disk corruption, or MITM. Purge the
+            # partial so the next run starts fresh instead of looping
+            # on a stuck bad-bytes resume.
+            rm -f "$partial" "$sums_file" || true
+            die "checksum mismatch for $asset (expected $expected, got $actual)"
+        fi
+    fi
+
+    # chmod before mv so $ENGINE_PATH is never observed without the
+    # exec bit. Any failure in these three steps must be fatal with a
+    # clear message — `set -e` alone exits without one.
+    chmod +x "$partial" || die "chmod +x failed on $partial"
+    mv -f "$partial" "$ENGINE_PATH" || die "install failed: mv $partial -> $ENGINE_PATH"
+    rm -f "$sums_file" || true
 
     log "installed engine at $ENGINE_PATH"
 }
