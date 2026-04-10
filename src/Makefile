@@ -1,4 +1,5 @@
-BINARY  := devkit
+BINARY         := devkit-engine
+RELEASE_BINARY := devkit
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 # Clean semver for plugin.json (strip leading v; falls back to 0.0.0 when untagged)
 SEMVER  := $(shell V=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); echo "$${V:-0.0.0}")
@@ -22,7 +23,8 @@ sync-version:
 	else \
 		CURRENT=$$(jq -r '.version' "$(PLUGIN_JSON)" 2>/dev/null) || \
 			{ echo "ERROR: plugin.json is not valid JSON"; exit 1; }; \
-		if [ "$$CURRENT" != "$(SEMVER)" ]; then \
+		HIGHER=$$(printf '%s\n%s\n' "$$CURRENT" "$(SEMVER)" | sort -V | tail -1); \
+		if [ "$$HIGHER" = "$(SEMVER)" ] && [ "$$CURRENT" != "$(SEMVER)" ]; then \
 			jq --arg v "$(SEMVER)" '.version = $$v' "$(PLUGIN_JSON)" > "$(PLUGIN_JSON).tmp" \
 				&& mv "$(PLUGIN_JSON).tmp" "$(PLUGIN_JSON)" \
 				|| { rm -f "$(PLUGIN_JSON).tmp"; echo "ERROR: failed to sync plugin.json"; exit 1; }; \
@@ -33,10 +35,10 @@ sync-version:
 build: | sync-version
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY) .
 
-build-for: | sync-version ## Cross-compile for specified GOOS/GOARCH
+build-for: | sync-version ## Cross-compile release asset for specified GOOS/GOARCH (outputs bin/devkit-<os>-<arch>)
 	@EXT=""; [ "$(GOOS)" = "windows" ] && EXT=".exe"; \
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY)-$(GOOS)-$(GOARCH)$${EXT} . && \
-	echo "Built: bin/$(BINARY)-$(GOOS)-$(GOARCH)$${EXT}"
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(RELEASE_BINARY)-$(GOOS)-$(GOARCH)$${EXT} . && \
+	echo "Built: bin/$(RELEASE_BINARY)-$(GOOS)-$(GOARCH)$${EXT}"
 
 build-all: ## Build all platform binaries
 	@$(MAKE) build-for GOOS=linux GOARCH=amd64
@@ -53,12 +55,12 @@ install-plugin: | sync-version ## Build and copy binary to plugin bin/ for curre
 
 install: | sync-version
 	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' .
-	@echo "Installed to $$(go env GOPATH)/bin/$(BINARY)"
+	@echo "Installed to $$(go env GOPATH)/bin/$(RELEASE_BINARY)"
 	@echo "Ensure $$(go env GOPATH)/bin is in your PATH"
 
 link: build
-	ln -sf $(CURDIR)/bin/$(BINARY) /usr/local/bin/$(BINARY)
-	@echo "Linked bin/$(BINARY) → /usr/local/bin/$(BINARY)"
+	ln -sf $(CURDIR)/bin/$(BINARY) /usr/local/bin/$(RELEASE_BINARY)
+	@echo "Linked bin/$(BINARY) → /usr/local/bin/$(RELEASE_BINARY)"
 
 clean:
 	rm -rf bin/
