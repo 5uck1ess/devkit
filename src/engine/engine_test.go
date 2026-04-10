@@ -1314,3 +1314,32 @@ func TestParseRealWorkflows(t *testing.T) {
 		})
 	}
 }
+
+func TestParseWorkflowNewFields(t *testing.T) {
+	yaml := []byte(`
+name: test-new-fields
+enforce: soft
+branch: true
+principles: [dry, yagni]
+steps:
+  - id: step1
+    prompt: "do something"
+    principles: [clean-code]
+`)
+	wf, err := Parse(yaml)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if wf.Enforce != "soft" {
+		t.Errorf("enforce = %q, want soft", wf.Enforce)
+	}
+	if !wf.BranchMode {
+		t.Error("branch should be true")
+	}
+	if len(wf.Principles) != 2 || wf.Principles[0] != "dry" {
+		t.Errorf("principles = %v, want [dry yagni]", wf.Principles)
+	}
+	if len(wf.Steps[0].Principles) != 1 || wf.Steps[0].Principles[0] != "clean-code" {
+		t.Errorf("step principles = %v, want [clean-code]", wf.Steps[0].Principles)
+	}
+}

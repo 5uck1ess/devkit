@@ -6,7 +6,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 GOFLAGS := -trimpath
 PLUGIN_JSON := $(CURDIR)/../.claude-plugin/plugin.json
 
-.PHONY: build build-for build-all install link clean test vet fmt check all sync-version
+.PHONY: build build-for build-all install install-plugin link clean test vet fmt check all sync-version
 
 all: check build
 
@@ -45,6 +45,11 @@ build-all: ## Build all platform binaries
 	@$(MAKE) build-for GOOS=darwin GOARCH=arm64
 	@$(MAKE) build-for GOOS=windows GOARCH=amd64
 	@$(MAKE) build-for GOOS=windows GOARCH=arm64
+
+install-plugin: | sync-version ## Build and copy binary to plugin bin/ for current platform
+	@mkdir -p $(CURDIR)/../bin
+	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(CURDIR)/../bin/$(BINARY) .
+	@echo "Installed to plugin bin/$(BINARY)"
 
 install: | sync-version
 	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' .

@@ -2,8 +2,6 @@ package lib
 
 import (
 	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -45,54 +43,38 @@ func TestEnsureSessionDir(t *testing.T) {
 	}
 }
 
-func TestWriteHandoff(t *testing.T) {
-	root := t.TempDir()
-	session := &Session{
-		ID:            "hand12345678",
-		Workflow:      "improve",
-		Target:        "src/",
-		Objective:     "fix all tests",
-		Metric:        "go test ./...",
-		MaxIterations: 10,
-		BudgetUSD:     5.00,
+func TestSessionJSON(t *testing.T) {
+	dir := t.TempDir()
+	state := &SessionState{
+		ID:          "abc123",
+		Workflow:    "research",
+		CurrentStep: "clarify",
+		StepType:    "prompt",
+		Enforce:     "hard",
+		Status:      "running",
+		Outputs:     map[string]string{},
 	}
 
-	steps := []Step{
-		{Iteration: 1, Kept: true, MetricExitCode: 0, CostUSD: 0.05, ChangeSummary: "fixed auth"},
-		{Iteration: 2, Kept: false, MetricExitCode: 1, CostUSD: 0.03, ChangeSummary: "broke tests"},
+	if err := WriteSessionJSON(dir, state); err != nil {
+		t.Fatalf("write: %v", err)
 	}
 
-	baseline := MetricResult{ExitCode: 1, Output: "3 tests failed"}
-
-	if err := WriteHandoff(root, session, steps, baseline); err != nil {
-		t.Fatalf("write handoff: %v", err)
-	}
-
-	path := HandoffPath(root, session.ID)
-	data, err := os.ReadFile(path)
+	got, err := ReadSessionJSON(dir)
 	if err != nil {
-		t.Fatalf("read handoff: %v", err)
+		t.Fatalf("read: %v", err)
+	}
+	if got.ID != "abc123" || got.CurrentStep != "clarify" {
+		t.Errorf("got %+v", got)
 	}
 
-	content := string(data)
-	if !strings.Contains(content, "Iteration: 3 of 10") {
-		t.Error("handoff should show next iteration as 3")
+	if err := ClearSessionJSON(dir); err != nil {
+		t.Fatalf("clear: %v", err)
 	}
-	if !strings.Contains(content, "fix all tests") {
-		t.Error("handoff should contain objective")
+	got, err = ReadSessionJSON(dir)
+	if err != nil {
+		t.Fatalf("read after clear: %v", err)
 	}
-	if !strings.Contains(content, "fixed auth") {
-		t.Error("handoff should contain iteration history")
-	}
-	if !strings.Contains(content, "$4.92") {
-		t.Errorf("handoff should show remaining budget, got:\n%s", content)
-	}
-}
-
-func TestHandoffPath(t *testing.T) {
-	path := HandoffPath("/repo", "abc123def456")
-	expected := filepath.Join("/repo", ".devkit", "sessions", "abc123def456", "handoff.md")
-	if path != expected {
-		t.Errorf("path = %s, want %s", path, expected)
+	if got != nil {
+		t.Error("expected nil after clear")
 	}
 }

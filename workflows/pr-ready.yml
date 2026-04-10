@@ -68,7 +68,92 @@ steps:
     prompt: |
       Create the PR:
       1. Push the branch to remote
-      2. Create PR with gh pr create
-      3. Include: title, summary, changelog, test plan
+      2. Create PR with `gh pr create` including title, summary, changelog,
+         test plan (use the changelog from the previous step)
+      3. On the LAST LINE of your output, print exactly:
+             PR: <number>
+         where <number> is the numeric PR id. No other text on that line.
 
-      Use the changelog from the previous step.
+      If pushing or PR creation fails, print:
+             PR: FAILED <reason>
+         on the last line and stop.
+
+  - id: monitor
+    model: smart
+    prompt: |
+      The PR was just created. Watch it until merge-ready.
+
+      Previous step output (contains `PR: <number>` on its last line):
+      {{create-pr}}
+
+      STEP 0 — Extract PR number:
+      - Parse the last line matching `PR: <number>`.
+      - If the line says `PR: FAILED ...` or no number is present,
+        output exactly: `all resolved (create-pr failed, nothing to monitor)`
+        and stop immediately.
+
+      Each iteration:
+
+      1. Wait up to 3 minutes for CI checks and auto-reviewers (Copilot, Gemini,
+         CodeRabbit). Poll `gh pr checks <PR>` every 10s; break when no
+         PENDING/QUEUED checks remain. If `gh` exits non-zero, retry once after
+         10s; if it fails again, output exactly:
+             all resolved (gh api unreachable — manual review required)
+         and stop.
+
+      2. Fetch unresolved state (each command: retry once on non-zero exit,
+         then abort with `all resolved (gh api failure on <cmd>)`):
+         - `gh pr checks <PR> --json name,state,conclusion`
+         - `gh api repos/{owner}/{repo}/pulls/<PR>/comments --paginate`
+         - `gh api repos/{owner}/{repo}/pulls/<PR>/reviews --paginate`
+
+      3. Classify check states strictly:
+         - COMPLETED + SUCCESS/NEUTRAL/SKIPPED → ok
+         - COMPLETED + FAILURE/CANCELLED/TIMED_OUT → failed (needs fix)
+         - QUEUED/IN_PROGRESS/PENDING → not done yet (do NOT treat as resolved)
+         If any checks are still pending at this point, continue polling — do
+         not advance to completion check.
+
+      4. For each failed check, read `gh run view <run_id> --log-failed | tail -50`
+         and attempt a fix.
+
+      5. Classify each unresolved comment via the `reviewer` agent:
+         - code_fix       → read file, apply fix, commit
+         - style_nit      → apply if trivial, skip with reply if subjective
+         - question       → reply with context from codebase
+         - false_positive → reply with evidence, do NOT dismiss
+         - out_of_scope   → acknowledge, note for future
+
+      6. Apply code fixes, commit individually (`address review: <summary>`),
+         post replies via `gh api .../comments/<id>/replies`.
+
+      7. Push changes (never force-push), re-request review from original
+         reviewers.
+
+      8. Completion check — output `all resolved` ONLY when ALL of:
+         - Zero unresolved comments (REMAINING=0)
+         - Zero failed checks (FAILED_CHECKS=0)
+         - Zero pending checks (PENDING_CHECKS=0)
+         Otherwise print a one-line status (`iter N: P pending, F failed,
+         R remaining`) and continue.
+
+      Stuck detection: if 3 consecutive iterations resolve zero comments AND
+      no CI failures remain AND no checks are pending, something is wrong with
+      classification. Output exactly:
+          all resolved (stuck — manual review required, iter <N>)
+      and stop. This also terminates the loop (engine matches `all resolved`).
+
+      If the loop reaches `max` without terminating, the engine will halt with
+      status=loop_exhausted and the last iteration output is preserved in the
+      session log for inspection.
+
+      Rules:
+      - Never force-push
+      - Never dismiss reviews — only re-request after fixing
+      - Never resolve threads you didn't actually address
+      - Reply to false positives with evidence, not dismissal
+      - Use AskUserQuestion if a comment is ambiguous
+      - Architectural changes → classify as out_of_scope, flag to user
+    loop:
+      max: 10
+      until: "all resolved"

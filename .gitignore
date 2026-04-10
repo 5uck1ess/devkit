@@ -1,3 +1,6 @@
+# Compiled binaries
+bin/
+
 # Credentials — never commit
 *.token
 *.secret
@@ -23,3 +26,4 @@ dist/
 # Temp
 *.log
 *.tmp
+.worktrees
