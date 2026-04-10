@@ -43,9 +43,11 @@ From the user's message, extract:
 ## Step 3: Validate the URL
 
 Reject:
-- Non-`http(s)` schemes (`file://`, `ftp://`, `data:`)
-- Private/reserved IPs: `localhost`, `127.0.0.1`, `0.0.0.0`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `169.254.x.x`, `[::1]` — unless the user explicitly wants to test localhost
+- Non-`http(s)` schemes (`file://`, `ftp://`, `data:`, all others)
+- Private/reserved IPs: `localhost`, `127.0.0.1`, `0.0.0.0`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `169.254.x.x` (cloud metadata — AWS/GCP/Azure), `[::1]` — unless the user explicitly wants to test localhost
 - URLs containing `@` (credential-in-URL attack vector)
+
+On rejection: **report the exact reason and stop**. Never silently skip an invalid URL — if the user passed a batch, name which URL failed validation and why.
 
 ## Step 4: Execute
 
@@ -76,21 +78,36 @@ npx playwright screenshot --device="{device}" "{url}" "{output}"
 npx playwright pdf "{url}" "{output}.pdf"
 ```
 
-**Element selector** (Playwright CLI doesn't expose this directly, so use a small script):
+**Element selector** (Playwright CLI doesn't expose this directly, so write a script file and pass args via `process.argv` — never interpolate user strings into `node -e`):
+
 ```bash
-node -e "
-const { chromium } = require('playwright');
-(async () => {
-  const browser = await chromium.launch();
+cat > /tmp/devkit-shot-element.mjs <<'EOF'
+import { chromium } from 'playwright';
+
+const [, , url, selector, output] = process.argv;
+if (!url || !selector || !output) {
+  console.error('usage: node devkit-shot-element.mjs <url> <selector> <output>');
+  process.exit(2);
+}
+
+const browser = await chromium.launch();
+try {
   const page = await browser.newPage();
-  await page.goto({url_as_json});
-  await page.locator({selector_as_json}).screenshot({ path: {output_as_json} });
-  await browser.close();
-})();
-"
+  await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.locator(selector).screenshot({ path: output });
+  console.log(output);
+} catch (err) {
+  console.error('screenshot failed:', err.message);
+  process.exit(1);
+} finally {
+  try { await browser.close(); } catch (e) { /* suppress close errors */ }
+}
+EOF
+
+node /tmp/devkit-shot-element.mjs "$URL" "$SELECTOR" "$OUTPUT"
 ```
 
-Use `JSON.stringify`-safe values (never interpolate raw user strings into `-e`).
+Pass all user values via shell variables. The `.mjs` reads them from `process.argv` so quoting, `$()`, and backticks in the input can't escape.
 
 ## Step 5: Report
 
