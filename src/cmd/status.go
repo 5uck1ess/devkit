@@ -31,7 +31,7 @@ func showAllSessions() error {
 		return fmt.Errorf("list sessions: %w", err)
 	}
 	if len(sessions) == 0 {
-		fmt.Println("No sessions found. Run `devkit improve`, `devkit review`, or `devkit dispatch` to start one.")
+		fmt.Println("No sessions found. Run `devkit workflow run <name>` to start one, or use the MCP tools inside Claude Code.")
 		return nil
 	}
 
@@ -97,9 +97,6 @@ func showSessionDetail(id string) error {
 		}
 	}
 
-	if session.Status == "paused" || session.Status == "failed" {
-		fmt.Printf("\nResume with: devkit resume %s\n", session.ID)
-	}
 	return nil
 }
 

@@ -1,3 +1,6 @@
+# Compiled binaries
+bin/
+
 # Credentials — never commit
 *.token
 *.secret
