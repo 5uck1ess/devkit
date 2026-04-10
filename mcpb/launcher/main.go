@@ -1,35 +1,17 @@
-// devkit MCPB Windows launcher — real v2.1.7 launcher.
+// Package main is the devkit MCPB Windows launcher.
 //
-// Replaces the probe stub. This binary is what plugin.json's mcpb
-// platform_overrides.win32 points at, i.e. it's what Claude Code actually
-// CreateProcess()'s on Windows when spawning the devkit MCP server. It
-// duplicates the responsibilities of the POSIX bin/devkit shell wrapper,
-// so on Windows the download/verify/exec flow is identical in behavior
-// even though the code is Go instead of /bin/sh.
+// This binary is what plugin.json's mcpb platform_overrides.win32 points at,
+// i.e. it's what Claude Code CreateProcess()'s on Windows when spawning the
+// devkit MCP server. Same contract as the POSIX bin/devkit shell wrapper —
+// read plugin.json, fetch the engine from the matching GitHub release,
+// verify SHA-256, exec — but the Windows path is simpler: single-shot HTTP
+// fetch, no resume, no downloader fallback chain. A killed launcher
+// mid-download leaves no state; the next run starts over.
 //
-// Flow on every invocation:
-//
-//  1. Read CLAUDE_PLUGIN_ROOT from the environment — CC exports it to every
-//     MCP server child, and it points at the installed devkit plugin dir
-//     (not the .mcpb-cache subdir this binary physically lives in).
-//  2. Parse <CLAUDE_PLUGIN_ROOT>/.claude-plugin/plugin.json for the plugin
-//     version. Authoritative source of truth — matches what bin/devkit reads
-//     on POSIX.
-//  3. Compute the engine path at <CLAUDE_PLUGIN_ROOT>/bin/
-//     devkit-engine-v<version>-windows-amd64.exe. Same cache location as
-//     bin/devkit, so nothing gets re-downloaded if the user happens to have
-//     run the engine through any other path before.
-//  4. If the engine isn't cached, fetch checksums.txt and the engine asset
-//     from the matching GitHub release, verify SHA-256, and atomic-rename
-//     into place. Stale binaries from other versions are swept.
-//  5. exec (well, cmd.Start + cmd.Wait — Windows has no execve) the engine
-//     with this process's args and inherited stdio. MCP JSON-RPC flows
-//     directly through the launcher's parent pipes into the engine.
-//
-// Go stdlib only — no external modules — so the static build stays small
-// and reproducible. Crucially, Go's crypto/tls is used for the HTTPS fetch,
-// not Windows schannel, which sidesteps the CDN renegotiation bug issue #58
-// / PR #59 had to work around for curl.exe.
+// Go stdlib only, so the static build stays small and reproducible. Go's
+// crypto/tls handles the HTTPS fetch, not Windows schannel, which sidesteps
+// the renegotiation abort (CURLE_WRITE_ERROR / exit 23) that curl.exe hits
+// mid-stream on release-assets.githubusercontent.com.
 package main
 
 import (
@@ -39,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -53,13 +36,19 @@ const (
 	releaseOwner = "5uck1ess"
 	releaseRepo  = "devkit"
 
-	// Cap a single HTTP fetch at 5 minutes. The engine binary is ~8 MB and
-	// checksums.txt is a few KB — anything past this window is a stuck
-	// connection, not a slow one.
 	httpTimeout = 5 * time.Minute
+
+	// Cap plugin.json reads. A legitimate manifest is under a kilobyte;
+	// anything above this ceiling is either corrupted or hostile.
+	maxPluginJSONBytes = 64 * 1024
 )
 
 func main() {
+	// Stdout is reserved for the MCP stdio transport once execEngine runs;
+	// pin the stdlib log package to stderr so a future refactor can't leak
+	// diagnostics into the JSON-RPC framing.
+	log.SetOutput(os.Stderr)
+
 	if err := run(); err != nil {
 		fmt.Fprintf(os.Stderr, "devkit launcher: %v\n", err)
 		os.Exit(1)
@@ -72,9 +61,8 @@ func run() error {
 		return errors.New("CLAUDE_PLUGIN_ROOT is not set; this launcher must be invoked by Claude Code as an MCP server")
 	}
 
-	// CLAUDE_PLUGIN_ROOT must be an absolute path. CC always sets it that
-	// way; anything else is either a corrupted env or a spoofed launch and
-	// we refuse to touch the filesystem from there.
+	// CLAUDE_PLUGIN_ROOT must be absolute. CC always sets it that way;
+	// anything else is a corrupted env or a spoofed launch.
 	if !filepath.IsAbs(pluginRoot) {
 		return fmt.Errorf("CLAUDE_PLUGIN_ROOT is not absolute: %q", pluginRoot)
 	}
@@ -85,9 +73,9 @@ func run() error {
 		return fmt.Errorf("reading plugin version from %s: %w", pluginJSON, err)
 	}
 	// version is interpolated into a filename joined to binDir below. Reject
-	// anything outside a narrow semver-ish charset so a corrupted or spoofed
-	// plugin.json can't produce a path that escapes binDir via "..", a path
-	// separator, or shell metacharacters.
+	// anything outside a narrow charset so a corrupted or spoofed plugin.json
+	// can't produce a path that escapes binDir via "..", a path separator,
+	// or shell metacharacters.
 	if err := validateVersion(version); err != nil {
 		return fmt.Errorf("invalid plugin version %q: %w", version, err)
 	}
@@ -101,7 +89,11 @@ func run() error {
 		return fmt.Errorf("creating %s: %w", binDir, err)
 	}
 
-	if !fileIsExecutable(enginePath) {
+	cached, err := engineLooksCached(enginePath)
+	if err != nil {
+		logf("warning: stat %s: %v", enginePath, err)
+	}
+	if !cached {
 		logf("first-run: downloading engine v%s (%s)...", version, platform)
 		if err := ensureEngine(version, platform, enginePath); err != nil {
 			return fmt.Errorf("downloading engine: %w", err)
@@ -118,15 +110,16 @@ func run() error {
 }
 
 // logf writes to stderr with a "devkit launcher:" prefix. Stdout is
-// reserved for the MCP stdio transport once the engine takes over — we
-// must never write to it from the launcher side.
+// reserved for the MCP stdio transport once the engine takes over; the
+// launcher must never write to it.
 func logf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "devkit launcher: "+format+"\n", args...)
 }
 
-// versionPattern matches a conservative superset of semver: digits, dots,
-// and hyphen-separated alphanumeric pre-release/build tags. Explicitly
-// excludes "/", "\", "..", and anything that could escape a directory join.
+// versionPattern accepts digits + dots + an optional single pre-release
+// identifier. Narrower than semver on purpose — no "+build" metadata, no
+// hyphens inside the pre-release — so the result is safe to join onto a
+// filename.
 var versionPattern = regexp.MustCompile(`^[0-9]+(\.[0-9]+){0,3}(-[A-Za-z0-9.]+)?$`)
 
 func validateVersion(version string) error {
@@ -137,8 +130,9 @@ func validateVersion(version string) error {
 		return errors.New("must match ^[0-9]+(\\.[0-9]+){0,3}(-[A-Za-z0-9.]+)?$")
 	}
 	// Defense in depth: even inside the charset, reject ".." and path
-	// separators. The regex already excludes them, but if a future refactor
-	// widens versionPattern these guards still hold.
+	// separators. If a future refactor widens versionPattern these guards
+	// still hold — they are load-bearing for the filesystem boundary and are
+	// enforced by table tests in main_test.go.
 	if strings.Contains(version, "..") || strings.ContainsAny(version, `/\`) {
 		return errors.New("contains path traversal sequence or separator")
 	}
@@ -146,7 +140,12 @@ func validateVersion(version string) error {
 }
 
 func readPluginVersion(path string) (string, error) {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, maxPluginJSONBytes))
 	if err != nil {
 		return "", err
 	}
@@ -162,18 +161,27 @@ func readPluginVersion(path string) (string, error) {
 	return manifest.Version, nil
 }
 
-func fileIsExecutable(path string) bool {
+// engineLooksCached reports whether enginePath is present and non-empty.
+// Size-only check matches bin/devkit's POSIX semantics; stat errors other
+// than IsNotExist are surfaced so ACL/permission issues don't masquerade
+// as a cache miss and trigger spurious redownloads on every invocation.
+func engineLooksCached(path string) (bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return false
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
 	}
-	return !info.IsDir() && info.Size() > 0
+	if info.IsDir() || info.Size() == 0 {
+		return false, nil
+	}
+	return true, nil
 }
 
-// ensureEngine fetches checksums.txt and the engine asset from the matching
-// GitHub release, verifies SHA-256, and atomic-installs the binary at
-// enginePath. Intermediate files (.sums, .partial) are cleaned up on both
-// success and failure.
+// ensureEngine fetches the engine asset from the matching GitHub release,
+// verifies SHA-256, and atomic-installs the binary at enginePath. The
+// .sums.tmp and .partial staging files are cleaned up on every exit path.
 func ensureEngine(version, platform, enginePath string) error {
 	tag := "v" + version
 	baseURL := fmt.Sprintf("https://github.com/%s/%s/releases/download/%s", releaseOwner, releaseRepo, tag)
@@ -187,7 +195,7 @@ func ensureEngine(version, platform, enginePath string) error {
 	assetName := fmt.Sprintf("devkit-%s.exe", platform)
 	expected, err := findChecksum(sumsPath, assetName)
 	if err != nil {
-		return err
+		return fmt.Errorf("finding checksum for %s: %w", assetName, err)
 	}
 
 	stagingPath := enginePath + ".partial"
@@ -212,7 +220,7 @@ func ensureEngine(version, platform, enginePath string) error {
 	return nil
 }
 
-func downloadTo(url, destPath string) error {
+func downloadTo(url, destPath string) (retErr error) {
 	client := &http.Client{Timeout: httpTimeout}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -227,22 +235,41 @@ func downloadTo(url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	// Capture a late Close error so antivirus quarantine-on-close, disk
+	// quota, and SMB sync-on-close failures don't manifest only as a
+	// mysterious checksum mismatch later.
+	defer func() {
+		if cerr := out.Close(); cerr != nil && retErr == nil {
+			retErr = fmt.Errorf("closing %s: %w", destPath, cerr)
+		}
+	}()
+
+	n, err := io.Copy(out, resp.Body)
+	if err != nil {
 		return err
 	}
-	return out.Sync()
+	if resp.ContentLength > 0 && n != resp.ContentLength {
+		return fmt.Errorf("short read from %s: got %d bytes, expected %d", url, n, resp.ContentLength)
+	}
+	if err := out.Sync(); err != nil {
+		return err
+	}
+	return nil
 }
 
-// findChecksum parses a sha256sum-format file (two columns: hash, filename;
-// filename may have a leading "*" for binary mode) and returns the hash for
-// assetName. Matches bin/devkit's awk logic.
+// findChecksum parses a sha256sum-format file and returns the hash for
+// assetName. Two columns per line: hash, filename. The filename may have
+// a leading "*" for binary mode (per GNU coreutils sha256sum), which we
+// trim before comparing.
 func findChecksum(sumsFile, assetName string) (string, error) {
 	data, err := os.ReadFile(sumsFile)
 	if err != nil {
 		return "", err
 	}
-	for _, line := range strings.Split(string(data), "\n") {
+	// Normalize CRLF so a Windows-produced checksums.txt doesn't leave a
+	// trailing \r on the filename field and silently miss the match.
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	for _, line := range strings.Split(text, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
 			continue
@@ -269,8 +296,10 @@ func sha256File(path string) (string, error) {
 }
 
 // sweepStaleEngines removes engine binaries from other versions that are
-// sitting in binDir. Matches bin/devkit's find-based sweep. Errors are
-// non-fatal — worst case we leave a few MB on disk.
+// sitting in binDir. Best-effort: a few stale megabytes on disk is strictly
+// better than failing to start the engine. The prefix match deliberately
+// skips the current engine and ignores any name that doesn't start with
+// "devkit-engine-v" or "devkit-checksums-v".
 func sweepStaleEngines(binDir, currentEngineName string) error {
 	entries, err := os.ReadDir(binDir)
 	if err != nil {
@@ -294,19 +323,33 @@ func sweepStaleEngines(binDir, currentEngineName string) error {
 // execEngine runs the engine binary with inherited stdio and forwards the
 // exit code. Windows has no execve, so the launcher stays alive as the
 // parent process until the engine exits. stdin/stdout/stderr are assigned
-// by reference, so MCP JSON-RPC flows straight through Claude Code's pipes
-// into the engine with no buffering or framing on the launcher's part.
+// as *os.File values, which os/exec passes directly to CreateProcess via
+// STARTUPINFO handles — no pipe, no goroutine copy, no buffering. MCP
+// JSON-RPC framing is untouched by the launcher.
+//
+// On a non-ExitError failure (CreateProcess rejected the binary, the cached
+// file turned out to be corrupt, antivirus intercepted), the cached engine
+// is removed so the next launch self-heals by re-downloading instead of
+// getting stuck in a loop against a bad file.
 func execEngine(enginePath string, args []string) error {
 	cmd := exec.Command(enginePath, args...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			os.Exit(exitErr.ExitCode())
-		}
-		return err
+	err := cmd.Run()
+	if err == nil {
+		return nil
 	}
-	return nil
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		code := exitErr.ExitCode()
+		if code < 0 {
+			// Abnormal termination (signal, job kill). Windows maps -1 to
+			// 0xFFFFFFFF via os.Exit, which CC's MCP manager can't read.
+			code = 1
+		}
+		os.Exit(code)
+	}
+	_ = os.Remove(enginePath)
+	return fmt.Errorf("executing engine %s (cache purged for next run): %w", enginePath, err)
 }

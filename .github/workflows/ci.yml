@@ -96,10 +96,27 @@ jobs:
               exit 1
             }
 
-      - name: shellcheck wrapper
+      - name: Bundled server/devkit.exe must be a real PE binary
+        run: |
+          magic=$(unzip -p devkit.mcpb server/devkit.exe | head -c 2 | xxd -p)
+          if [ "$magic" != "4d5a" ]; then
+            echo "FATAL: server/devkit.exe in bundle is not a PE binary (MZ header missing; got '$magic')"
+            echo "Did a probe stub or wrong-architecture binary get committed?"
+            exit 1
+          fi
+
+      - name: Bundled server/devkit must have a shell shebang
+        run: |
+          first=$(unzip -p devkit.mcpb server/devkit | head -c 2)
+          if [ "$first" != "#!" ]; then
+            echo "FATAL: server/devkit in bundle has no shebang; got '$first'"
+            exit 1
+          fi
+
+      - name: shellcheck wrappers
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/devkit
+          shellcheck bin/devkit mcpb/server/devkit
 
       - name: Wrapper --help must exit with a download attempt (no local engine)
         run: |
@@ -117,6 +134,81 @@ jobs:
           # failure class we're guarding against.
           if [ $exit_code -eq 0 ] && [ -z "$output" ]; then
             echo "FATAL: wrapper exited 0 with no output — silent failure class bug"
+            exit 1
+          fi
+
+  mcpb-launcher-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mcpb/launcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mcpb/launcher/go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./... -v -count=1
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Files not formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+  # Guards against the class of bug where mcpb/launcher/main.go,
+  # mcpb/manifest.json, or mcpb/server/devkit are edited but devkit.mcpb is
+  # not rebuilt — CI would otherwise greenlight a shipped bundle with stale
+  # runtime behavior.
+  mcpb-bundle-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: mcpb/launcher/go.mod
+
+      - name: Rebuild Windows launcher from source
+        working-directory: mcpb/launcher
+        run: |
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+            go build -trimpath -ldflags="-s -w" -o /tmp/devkit.exe .
+
+      - name: Bundled server/devkit.exe must match freshly built launcher
+        run: |
+          unzip -p devkit.mcpb server/devkit.exe > /tmp/bundled.exe
+          fresh=$(sha256sum /tmp/devkit.exe  | awk '{print $1}')
+          bundled=$(sha256sum /tmp/bundled.exe | awk '{print $1}')
+          if [ "$fresh" != "$bundled" ]; then
+            echo "FATAL: devkit.mcpb contains a stale server/devkit.exe"
+            echo "  bundled sha256: $bundled"
+            echo "  source  sha256: $fresh"
+            echo "Run 'cd mcpb/launcher && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=\"-s -w\" -o ../server/devkit.exe . && cd .. && rm -f ../devkit.mcpb && zip -r ../devkit.mcpb manifest.json server/devkit server/devkit.exe' to rebuild."
+            exit 1
+          fi
+
+      - name: Bundled manifest.json must match source
+        run: |
+          unzip -p devkit.mcpb manifest.json > /tmp/bundled-manifest.json
+          if ! diff -u mcpb/manifest.json /tmp/bundled-manifest.json; then
+            echo "FATAL: devkit.mcpb manifest.json has drifted from mcpb/manifest.json"
+            exit 1
+          fi
+
+      - name: Bundled server/devkit must match source
+        run: |
+          unzip -p devkit.mcpb server/devkit > /tmp/bundled-proxy.sh
+          if ! diff -u mcpb/server/devkit /tmp/bundled-proxy.sh; then
+            echo "FATAL: devkit.mcpb server/devkit has drifted from mcpb/server/devkit"
             exit 1
           fi
 
