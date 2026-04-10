@@ -5,7 +5,7 @@ description: Full PR pipeline — use when asked to submit a PR, create a pull r
 
 # PR Ready
 
-Deterministic PR pipeline: validate → necessity → lint (loop) → test (loop) → security → changelog → create PR → monitor (loop).
+Deterministic PR pipeline: validate → necessity → lint (loop) → test (loop) → security → doc-check → changelog → create PR → monitor (loop).
 
 ## Invoke
 
@@ -22,9 +22,10 @@ Then follow each step the engine returns. Call `devkit_advance` after completing
 3. **lint** — runs linter, fixes violations, loops until clean
 4. **test** — runs test suite, fixes failures, loops until passing
 5. **security** — scans for hardcoded secrets, injection, XSS, traversal, insecure deps
-6. **changelog** — generates entry from git diff
-7. **create-pr** — pushes branch, creates PR via gh pr create with title/summary/changelog/test plan
-8. **monitor** — waits for CI, classifies reviewer comments (code_fix/style_nit/question/false_positive/out_of_scope), applies fixes, replies, pushes, loops until all resolved
+6. **doc-check** — classifies the diff (feature/bugfix/breaking/internal/docs-only) and decides per-file whether README, ROADMAP, CLAUDE.md, docs/, `skills/*/SKILL.md`, plugin.json, or `workflows/*.yml` need updates. Applies mechanical edits directly (moving roadmap bullets, adding command rows, syncing SKILL.md step lists); flags ambiguous updates as `[!]` in the output checklist. Commits applied edits with `docs: update ...` so they land in the PR alongside the code. CHANGELOG.md is intentionally skipped — it is managed by the release pipeline. Runs **before** `changelog` so any doc commit it creates is captured in the PR description.
+7. **changelog** — generates entry from git diff (now includes any doc-check commits)
+8. **create-pr** — pushes branch, creates PR via gh pr create with title/summary/changelog/test plan
+9. **monitor** — waits for CI, classifies reviewer comments (code_fix/style_nit/question/false_positive/out_of_scope), applies fixes, replies, pushes, loops until all resolved
 
 ## Rules
 
