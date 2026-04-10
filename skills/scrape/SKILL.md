@@ -46,12 +46,11 @@ This returns: { "url": "...", "title": "...", "content": "..." }
 where "content" is the Markdown.
 ```
 
-**Playwright (if installed and --backend playwright, or as auto-fallback for JS-heavy sites):**
+**Playwright:**
 
-First validate the URL against the rules below (http/https only, no private IPs, no `@`).
+Validate the URL first (see Rules: http/https only, no private IPs, no `@`).
 
-Check availability: `npx playwright --version`. If not installed, tell the user once:
-`Playwright not installed. Install with: npx playwright install chromium` — then fall through to the next backend AND record this in the backend-ran report so the user knows which backend actually served the result.
+Check availability: `npx playwright --version`. If not installed, tell the user once per session: `Playwright not installed. Install with: npx playwright install chromium`, then fall through to the next backend. The winning backend is always reported in Step 3 (Error Handling), so the user sees which one served the result.
 
 Never build scripts via inline `-e "..."` strings. Write the script to a file that reads the URL from `process.argv[2]`, then invoke it:
 

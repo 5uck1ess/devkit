@@ -9,47 +9,21 @@ Capture screenshots and PDFs of web pages using Playwright.
 
 ## Step 1: Verify Playwright
 
-Before doing anything else, check that Playwright is installed:
+Run `npx playwright --version`. If it fails, stop and tell the user: `Playwright required — install with: npx playwright install chromium`. Do not attempt workarounds.
 
-```bash
-npx playwright --version
-```
+## Step 2: Parse and Validate
 
-If the command fails or Playwright is not installed, stop and tell the user:
+Extract from the user's request:
 
-```
-This requires Playwright (optional devkit dependency).
-
-Install with:
-  npx playwright install chromium
-
-Chromium is ~170MB. You can also install firefox or webkit.
-```
-
-Do NOT attempt to work around a missing install. The skill cannot function without it.
-
-## Step 2: Parse the Request
-
-From the user's message, extract:
-
-- **URL** — the page to capture (required; validate http/https only)
-- **Output path** — where to save (default: `./screenshot-{timestamp}.png` in cwd)
-- **Capture mode** — viewport (default), full-page, or specific element
-- **Device emulation** — iPhone, Pixel, iPad, etc. (optional)
-- **Viewport size** — custom width x height (optional)
+- **URL** — required; validated below
+- **Output path** — default `./screenshot-{timestamp}.png` in cwd
+- **Capture mode** — viewport (default), full-page, element selector
+- **Device / viewport** — optional emulation or custom size
 - **Format** — PNG (default) or PDF
-- **Selector** — CSS selector for element-only capture (optional)
 
-## Step 3: Validate the URL
+**Validate the URL** (see Rules for the full list): only `http(s)`, no private/reserved IPs or cloud metadata, no `@`. On rejection, report the exact reason and stop — never silently skip in a batch.
 
-Reject:
-- Non-`http(s)` schemes (`file://`, `ftp://`, `data:`, all others)
-- Private/reserved IPs: `localhost`, `127.0.0.1`, `0.0.0.0`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `169.254.x.x` (cloud metadata — AWS/GCP/Azure), `[::1]` — unless the user explicitly wants to test localhost
-- URLs containing `@` (credential-in-URL attack vector)
-
-On rejection: **report the exact reason and stop**. Never silently skip an invalid URL — if the user passed a batch, name which URL failed validation and why.
-
-## Step 4: Execute
+## Step 3: Execute
 
 Choose the command that matches the capture mode. Always quote the URL and output path.
 
@@ -63,9 +37,9 @@ npx playwright screenshot "{url}" "{output}"
 npx playwright screenshot --full-page "{url}" "{output}"
 ```
 
-**Custom viewport:**
+**Custom viewport** (format is `W,H` with no spaces, e.g. `1280,800`):
 ```bash
-npx playwright screenshot --viewport-size={width},{height} "{url}" "{output}"
+npx playwright screenshot --viewport-size=1280,800 "{url}" "{output}"
 ```
 
 **Device emulation:**
@@ -109,7 +83,7 @@ node /tmp/devkit-shot-element.mjs "$URL" "$SELECTOR" "$OUTPUT"
 
 Pass all user values via shell variables. The `.mjs` reads them from `process.argv` so quoting, `$()`, and backticks in the input can't escape.
 
-## Step 5: Report
+## Step 4: Report
 
 Output the absolute path and any metadata:
 
@@ -123,9 +97,9 @@ If the page failed to load, report the error clearly with the HTTP status or tim
 
 ## Rules
 
-- **URL validation first** — never launch the browser on an invalid or private URL
-- **No shell injection** — never concatenate user URLs into shell strings without proper quoting
-- **Headless only** — never open a visible browser window
-- **Respect gated content** — don't screenshot login-walled or paywalled content the user doesn't own
-- **Default to cwd** — put output files in the current working directory unless the user specifies otherwise
-- **One browser, one close** — always `await browser.close()` to avoid orphaned processes
+- **URL validation** — only `http://` and `https://`. Reject `file://`, `ftp://`, `data:`, and all other schemes. Reject private/reserved IPs: `localhost`, `127.0.0.1`, `0.0.0.0`, `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x`, `169.254.x.x` (cloud metadata — AWS/GCP/Azure), `[::1]` — unless user explicitly tests localhost. Reject URLs with `@`. On rejection: report exact reason and stop, never silently skip.
+- **No raw interpolation** — for the element-selector script, pass values via shell variables and `process.argv`, never via `node -e "..."` with user input.
+- **Headless only** — never open a visible browser window.
+- **Respect gated content** — don't screenshot login-walled or paywalled content the user doesn't own.
+- **Default to cwd** — put output files in the current working directory unless the user specifies otherwise.
+- **Close safely** — when using an inline script, wrap `browser.close()` in its own try/catch inside `finally` so a close-time error can't mask the real error.
