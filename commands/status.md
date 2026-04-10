@@ -73,8 +73,6 @@ List all commands, marking which ones need external CLIs:
 | /tri:review | ⚠ partial | 2/3 agents available (no gemini) |
 | /tri:debug | ⚠ partial | 2/3 agents available |
 | /tri:security | ⚠ partial | 2/3 agents available |
-| /devkit:pr-ready | ✓ ready | Uses gh for PR creation |
-| /devkit:pr-monitor | ✓ ready | Uses gh for PR monitoring |
 | /devkit:workflow | ✓ ready | Runs YAML workflows via Go engine |
 | /devkit:status | ✓ ready | This command |
 | /devkit:setup-rules | ✓ ready | One-time setup |

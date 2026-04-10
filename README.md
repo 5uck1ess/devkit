@@ -120,18 +120,18 @@ Enforcement (runs automatically):
 
 ## Commands
 
-8 tab-completable slash commands. All other workflows are context-activated via skills or invoked via MCP tools.
+6 tab-completable slash commands. All other workflows are context-activated via skills (auto-triggered by natural language) or invoked via MCP tools.
 
 | Command | What it does |
 |---|---|
 | `/tri:review` | Code review from 1-3 agents, consolidated report |
 | `/tri:debug` | Independent root-cause analysis from each agent |
 | `/tri:security` | Security audit with severity-ranked consensus |
-| `/devkit:pr-ready` | Lint, test, security, changelog, create PR |
-| `/devkit:pr-monitor` | Watch CI, fetch reviewer comments, fix iteratively, push |
-| `/devkit:workflow` | Run user-defined YAML workflows |
+| `/devkit:workflow` | Run any YAML workflow by name |
 | `/devkit:status` | Health check |
 | `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` |
+
+Tasks like "ship this PR" or "submit a PR" auto-activate the `pr-ready` skill — no slash command needed.
 
 ### Workflows
 
@@ -263,8 +263,8 @@ Terminal fallback (devkit workflow run <name>):
 
 ```
 devkit/
-├── commands/          # 8 slash commands (tab-completable entry points)
-├── skills/            # 19 context-activated skills + _principles.yml
+├── commands/          # 6 slash commands (tab-completable entry points)
+├── skills/            # 20 context-activated skills + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 18 YAML workflow definitions

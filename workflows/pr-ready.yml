@@ -72,3 +72,61 @@ steps:
       3. Include: title, summary, changelog, test plan
 
       Use the changelog from the previous step.
+
+      Output the PR number on a line like: PR: <number>
+
+  - id: monitor
+    model: smart
+    prompt: |
+      The PR was just created. Now watch it until merge-ready.
+
+      PR context from previous step:
+      {{create-pr}}
+
+      Each iteration:
+
+      1. Wait up to 3 minutes for CI checks and auto-reviewers (Copilot, Gemini,
+         CodeRabbit) to post. Poll `gh pr checks <PR>` every 10s; break when no
+         PENDING/QUEUED checks remain.
+
+      2. Fetch unresolved state:
+         - `gh pr checks <PR> --json name,state,conclusion` — failed checks
+         - `gh api repos/{owner}/{repo}/pulls/<PR>/comments --paginate` — line comments
+         - `gh api repos/{owner}/{repo}/pulls/<PR>/reviews --paginate` — review bodies
+
+      3. For each failed check, read `gh run view <run_id> --log-failed | tail -50`
+         and attempt a fix.
+
+      4. Classify each unresolved comment:
+         - code_fix      → read file, apply fix, commit
+         - style_nit     → apply if trivial, skip with reply if subjective
+         - question      → reply with context from codebase
+         - false_positive → reply with evidence, do NOT dismiss
+         - out_of_scope  → acknowledge, note for future
+
+         Use the `reviewer` agent (worktree-isolated) to classify + draft responses.
+
+      5. Apply code fixes, commit individually (`address review: <summary>`),
+         post replies via `gh api .../comments/<id>/replies`.
+
+      6. Push changes (never force-push) and re-request review from original
+         reviewers.
+
+      7. Check completion — stop the loop when BOTH are true:
+         - REMAINING=0 (no unresolved comments)
+         - CHECKS_OK=0 (no failing checks other than NEUTRAL/SKIPPED)
+         When both are zero, output: "all resolved"
+
+      Stuck detection: if 3 consecutive iterations resolve zero comments AND
+      no CI failures remain, output "stuck" and stop.
+
+      Rules:
+      - Never force-push
+      - Never dismiss reviews — only re-request after fixing
+      - Never resolve threads you didn't actually address
+      - Reply to false positives with evidence, not dismissal
+      - Use AskUserQuestion if a comment is ambiguous
+      - Architectural changes → classify as out_of_scope, flag to user
+    loop:
+      max: 10
+      until: "all resolved"
