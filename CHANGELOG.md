@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.0.34
+
+### Deterministic Workflow Conversion (PRs #38–#45)
+
+Major architectural shift: all command logic moved from LLM-interpreted markdown to Go-engine-driven YAML workflows.
+
+#### Changed
+- **24 → 8 slash commands** — 16 commands deleted, logic now in YAML workflows invoked via `devkit workflow run <name>` or context-activated skills
+- **4 ultra-thin wrappers** — tri-review, tri-debug, tri-security, pr-ready (one-liner pointing to workflow)
+- **4 kept as-is** — pr-monitor, status, setup-rules, workflow
+- **~3,600 lines removed** across PRs 1–5
+
+#### Added
+- **`expect` field** on command steps — `expect: success` (fail on non-zero) and `expect: failure` (fail on zero exit). Enables bugfix reproduction gates.
+- **3 new YAML workflows** — `self-migrate.yml`, `audit.yml`, `pr-ready.yml`
+- **`until: DONE` fix** — All self-improvement loops now use LLM output matching instead of `exit code: 0`
+
+#### Fixed
+- Self-improvement loop termination — `until` checks LLM text output, not gate exit code
+- Research skill escalation — all 4 trigger conditions restored in fallback
+- Stale README/status.md command references after rebase
+
 ## 2.0.1
 
 ### Fixed
