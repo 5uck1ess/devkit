@@ -116,7 +116,7 @@ jobs:
       - name: shellcheck wrappers
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck bin/devkit mcpb/server/devkit
+          shellcheck bin/devkit bin/mcpb-build mcpb/server/devkit
 
       - name: Wrapper --help must exit with a download attempt (no local engine)
         run: |
@@ -168,31 +168,52 @@ jobs:
   # mcpb/manifest.json, or mcpb/server/devkit are edited but devkit.mcpb is
   # not rebuilt — CI would otherwise greenlight a shipped bundle with stale
   # runtime behavior.
+  #
+  # devkit.mcpb.sources.json is a sidecar manifest that records the sha256
+  # of each source file at bundle-build time. This job re-computes each
+  # hash and compares. We don't byte-compare the cross-compiled .exe
+  # because Go cross-builds aren't byte-identical across host OSes even
+  # with -trimpath (linker build ID leaks host state) — the sidecar is
+  # the portable equivalent.
   mcpb-bundle-integrity:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: mcpb/launcher/go.mod
-
-      - name: Rebuild Windows launcher from source
-        working-directory: mcpb/launcher
+      - name: Sources sidecar must exist
         run: |
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-            go build -trimpath -ldflags="-s -w" -o /tmp/devkit.exe .
+          test -f devkit.mcpb.sources.json || {
+            echo "FATAL: devkit.mcpb.sources.json is missing; did you rebuild the bundle with bin/mcpb-build?"
+            exit 1
+          }
 
-      - name: Bundled server/devkit.exe must match freshly built launcher
+      - name: Source file hashes must match sidecar
         run: |
-          unzip -p devkit.mcpb server/devkit.exe > /tmp/bundled.exe
-          fresh=$(sha256sum /tmp/devkit.exe  | awk '{print $1}')
-          bundled=$(sha256sum /tmp/bundled.exe | awk '{print $1}')
-          if [ "$fresh" != "$bundled" ]; then
-            echo "FATAL: devkit.mcpb contains a stale server/devkit.exe"
-            echo "  bundled sha256: $bundled"
-            echo "  source  sha256: $fresh"
-            echo "Run 'cd mcpb/launcher && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=\"-s -w\" -o ../server/devkit.exe . && cd .. && rm -f ../devkit.mcpb && zip -r ../devkit.mcpb manifest.json server/devkit server/devkit.exe' to rebuild."
+          stale=0
+          while IFS= read -r file; do
+            want=$(jq -r --arg f "$file" '.[$f]' devkit.mcpb.sources.json)
+            if [ "$want" = "null" ] || [ -z "$want" ]; then
+              echo "FATAL: devkit.mcpb.sources.json has no entry for $file"
+              stale=1
+              continue
+            fi
+            have=$(sha256sum "$file" | awk '{print $1}')
+            if [ "$want" != "$have" ]; then
+              echo "FATAL: $file has been edited since devkit.mcpb was built"
+              echo "  sidecar sha256: $want"
+              echo "  current sha256: $have"
+              stale=1
+            fi
+          done <<'EOF'
+          mcpb/launcher/main.go
+          mcpb/launcher/go.mod
+          mcpb/launcher/main_test.go
+          mcpb/manifest.json
+          mcpb/server/devkit
+          EOF
+          if [ "$stale" != "0" ]; then
+            echo ""
+            echo "Rebuild with: bin/mcpb-build"
             exit 1
           fi
 

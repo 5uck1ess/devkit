@@ -1,0 +1,59 @@
+#!/bin/sh
+# Rebuild devkit.mcpb from mcpb/ sources.
+#
+# Runs: cross-compile mcpb/launcher/main.go into mcpb/server/devkit.exe,
+# rezip devkit.mcpb, regenerate devkit.mcpb.sources.json with sha256s of
+# every source file the bundle depends on. Dev and CI both call this so
+# there's one definition of "bundle rebuild."
+#
+# Must be run from the repo root.
+
+set -eu
+
+if [ ! -f mcpb/launcher/main.go ]; then
+    printf 'mcpb-build: must be run from repo root (mcpb/launcher/main.go not found)\n' >&2
+    exit 1
+fi
+
+printf 'mcpb-build: cross-compiling Windows launcher\n'
+(
+    cd mcpb/launcher
+    GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+        go build -trimpath -ldflags='-s -w' -o ../server/devkit.exe .
+)
+
+printf 'mcpb-build: rebuilding devkit.mcpb\n'
+rm -f devkit.mcpb
+(
+    cd mcpb
+    zip -q -r ../devkit.mcpb manifest.json server/devkit server/devkit.exe
+)
+
+printf 'mcpb-build: regenerating devkit.mcpb.sources.json\n'
+{
+    printf '{\n'
+    first=1
+    for f in \
+        mcpb/launcher/main.go \
+        mcpb/launcher/go.mod \
+        mcpb/launcher/main_test.go \
+        mcpb/manifest.json \
+        mcpb/server/devkit
+    do
+        hash=$(shasum -a 256 "$f" 2>/dev/null | awk '{print $1}')
+        if [ -z "$hash" ]; then
+            hash=$(sha256sum "$f" | awk '{print $1}')
+        fi
+        if [ "$first" = "1" ]; then
+            first=0
+        else
+            printf ',\n'
+        fi
+        printf '  "%s": "%s"' "$f" "$hash"
+    done
+    printf '\n}\n'
+} > devkit.mcpb.sources.json
+
+printf 'mcpb-build: done\n'
+printf '  devkit.mcpb                  %s bytes\n' "$(wc -c < devkit.mcpb | tr -d ' ')"
+printf '  mcpb/server/devkit.exe       %s bytes\n' "$(wc -c < mcpb/server/devkit.exe | tr -d ' ')"
