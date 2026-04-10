@@ -131,5 +131,7 @@ ensure_engine() {
 
 ENGINE_PATH=""
 ensure_engine
-[ -n "$ENGINE_PATH" ] && [ -x "$ENGINE_PATH" ] || die "engine path not resolved"
+if [ -z "$ENGINE_PATH" ] || [ ! -x "$ENGINE_PATH" ]; then
+    die "engine path not resolved"
+fi
 exec "$ENGINE_PATH" "$@"
