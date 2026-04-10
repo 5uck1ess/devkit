@@ -99,7 +99,17 @@ if [[ "$OS" == "windows" ]]; then
   mkdir -p "$WIN_DIR"
   mv "$TMPFILE" "${WIN_DIR}/${BINARY}${EXT}" || { printf "Failed to install to %s\n" "$WIN_DIR"; exit 1; }
   printf "Installed to %s/%s%s\n" "$WIN_DIR" "$BINARY" "$EXT"
-  printf "Add to PATH: %s\n" "$WIN_DIR"
+  # Add to PATH for current session
+  export PATH="${WIN_DIR}:${PATH}"
+  # Persist to user PATH for future sessions via PowerShell
+  # (safer than setx which silently truncates PATH > 1024 chars)
+  if command -v powershell.exe >/dev/null 2>&1; then
+    powershell.exe -Command "[Environment]::SetEnvironmentVariable('Path', [Environment]::GetEnvironmentVariable('Path', 'User') + ';${WIN_DIR}', 'User')" 2>/dev/null \
+      && printf "Added %s to user PATH (persistent).\n" "$WIN_DIR" \
+      || printf "Warning: could not persist PATH. Add %s to your PATH manually.\n" "$WIN_DIR"
+  else
+    printf "Add to PATH: %s\n" "$WIN_DIR"
+  fi
   exit 0
 fi
 
