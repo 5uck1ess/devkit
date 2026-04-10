@@ -147,6 +147,13 @@ download_release_asset() {
             return 0
         fi
         log "gh release download failed; falling back to curl/wget"
+        # A failed gh run may have written partial bytes to $out. On the
+        # resumable path the next downloader is `curl -C -`, which would
+        # resume from gh's offset and splice the two byte streams into
+        # one file; the outer checksum-verify loop catches the corruption
+        # on the next invocation but wastes a round-trip. Dropping the
+        # partial here forces curl to start fresh on this attempt.
+        rm -f "$out" 2>/dev/null || true
     fi
 
     if command -v curl >/dev/null 2>&1; then
@@ -168,9 +175,21 @@ download_release_asset() {
     case "${PLATFORM-}" in
         windows-*)
             if command -v powershell.exe >/dev/null 2>&1; then
+                # MSYS2/Git Bash only auto-converts POSIX paths to
+                # Windows paths when they are standalone arguments to a
+                # native .exe. Paths embedded inside a quoted -Command
+                # string are just characters to MSYS — no conversion —
+                # so PowerShell would see `/c/Users/…` and resolve it
+                # against the current drive root as `C:\c\Users\…`,
+                # failing with DirectoryNotFoundException. Convert the
+                # output path explicitly via cygpath before embedding.
+                winout=$out
+                if command -v cygpath >/dev/null 2>&1; then
+                    winout=$(cygpath -w "$out") || winout=$out
+                fi
                 log "trying PowerShell Invoke-WebRequest fallback"
                 run_downloader powershell.exe -NoProfile -Command \
-                    "Invoke-WebRequest -UseBasicParsing -Uri '$url' -OutFile '$out'" \
+                    "Invoke-WebRequest -UseBasicParsing -Uri '$url' -OutFile '$winout'" \
                     && return 0
             fi
             ;;
