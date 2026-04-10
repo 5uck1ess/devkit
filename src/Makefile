@@ -33,10 +33,10 @@ sync-version:
 build: | sync-version
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY) .
 
-build-for: ## Cross-compile for specified GOOS/GOARCH
-	$(eval EXT := $(if $(filter windows,$(GOOS)),.exe,))
-	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY)-$(GOOS)-$(GOARCH)$(EXT) .
-	@echo "Built: bin/$(BINARY)-$(GOOS)-$(GOARCH)$(EXT)"
+build-for: | sync-version ## Cross-compile for specified GOOS/GOARCH
+	@EXT=""; [ "$(GOOS)" = "windows" ] && EXT=".exe"; \
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY)-$(GOOS)-$(GOARCH)$${EXT} . && \
+	echo "Built: bin/$(BINARY)-$(GOOS)-$(GOARCH)$${EXT}"
 
 build-all: ## Build all platform binaries
 	@$(MAKE) build-for GOOS=linux GOARCH=amd64

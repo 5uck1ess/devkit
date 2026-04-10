@@ -51,7 +51,7 @@ If the user says "everything" or skips, leave scope open.
 Ensure the devkit engine is installed:
 
 ```bash
-command -v devkit >/dev/null 2>&1 || bash "$(dirname "$(find ~/.claude/plugins -path '*/devkit/scripts/install-engine.sh' 2>/dev/null | head -1)")/install-engine.sh"
+bash "$(find ~/.claude/plugins -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"
 ```
 
 Assemble the input as a single string and invoke:
@@ -60,7 +60,7 @@ Assemble the input as a single string and invoke:
 devkit workflow autoloop "<objective> | metric: <command> | direction: <higher/lower>-is-better | iterations: <N> | scope: <constraint or 'all'>"
 ```
 
-If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Run `bash scripts/install-engine.sh` manually." Do NOT fall back to manual steps — the engine is required for determinism.
+If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Install manually from https://github.com/5uck1ess/devkit/releases" Do NOT fall back to manual steps — the engine is required for determinism.
 
 ## Rules
 

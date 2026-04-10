@@ -14,7 +14,7 @@ Costs more tokens (~400k budget) but produces higher-confidence results by activ
 Ensure the devkit engine is installed, then run the workflow:
 
 ```bash
-command -v devkit >/dev/null 2>&1 || bash "$(dirname "$(find ~/.claude/plugins -path '*/devkit/scripts/install-engine.sh' 2>/dev/null | head -1)")/install-engine.sh"
+bash "$(find ~/.claude/plugins -path '*/devkit/scripts/ensure-engine.sh' 2>/dev/null | head -1)"
 ```
 
 ```bash
@@ -23,7 +23,7 @@ devkit workflow run deep-research "{input}"
 
 The YAML workflow (`workflows/deep-research.yml`) enforces the full ACH sequence deterministically. Claude handles thinking within each step; the engine owns the order.
 
-If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Run `bash scripts/install-engine.sh` manually." Do NOT fall back to manual steps — the engine is required for determinism.
+If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Install manually from https://github.com/5uck1ess/devkit/releases" Do NOT fall back to manual steps — the engine is required for determinism.
 
 ## Rules
 

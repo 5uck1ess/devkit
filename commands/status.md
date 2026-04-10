@@ -24,7 +24,8 @@ if command -v devkit >/dev/null 2>&1; then
   echo "engine: ✓ installed ($(devkit --version 2>/dev/null || echo 'unknown version'))"
 else
   echo "engine: ✗ NOT INSTALLED — workflows will not run deterministically"
-  echo "  install: bash scripts/install-engine.sh"
+  echo "  install: bash \"\$(find ~/.claude/plugins -path '*/devkit/scripts/install-engine.sh' 2>/dev/null | head -1)\""
+  echo "  or download from: https://github.com/5uck1ess/devkit/releases"
 fi
 ```
 
