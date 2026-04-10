@@ -287,22 +287,8 @@ func buildCommandEnv(input string, outputs map[string]string) []string {
 	return env
 }
 
-// envKey maps a step ID (may contain hyphens) to a POSIX env var suffix.
-func envKey(id string) string {
-	b := make([]byte, 0, len(id))
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		switch {
-		case c >= 'a' && c <= 'z':
-			b = append(b, c-32)
-		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
-			b = append(b, c)
-		default:
-			b = append(b, '_')
-		}
-	}
-	return string(b)
-}
+// envKey is a package-private alias to EnvKey for call-site brevity.
+func envKey(id string) string { return EnvKey(id) }
 
 // runStep executes a single step and records it in the database.
 func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session, input string, outputs map[string]string, opts runners.RunOpts, iterNum *int) (float64, string, error) {

@@ -99,9 +99,15 @@ ensure_engine() {
 
     log "first-run: downloading engine ${tag} (${PLATFORM})…"
 
-    tmp_bin="${ENGINE_PATH}.tmp"
-    tmp_sums="${SCRIPT_DIR}/.checksums.${VERSION}.tmp"
-    trap 'rm -f "$tmp_bin" "$tmp_sums"' EXIT INT TERM
+    # Per-invocation temp dir so two simultaneous first runs never
+    # share tmp paths. Each process cleans up its own dir on exit;
+    # the final mv(2) is atomic within a filesystem, so whichever
+    # writer lands last produces the correct (bit-identical) binary.
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/devkit-engine-XXXXXX") \
+        || die "mktemp -d failed"
+    tmp_bin="$tmp_dir/${engine_name}"
+    tmp_sums="$tmp_dir/checksums.txt"
+    trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
     download "${base_url}/${asset}" "$tmp_bin" \
         || die "download failed: ${base_url}/${asset}"
@@ -117,7 +123,7 @@ ensure_engine() {
 
     chmod +x "$tmp_bin"
     mv -f "$tmp_bin" "$ENGINE_PATH"
-    rm -f "$tmp_sums"
+    rm -rf "$tmp_dir"
     trap - EXIT INT TERM
 
     log "installed engine at $ENGINE_PATH"

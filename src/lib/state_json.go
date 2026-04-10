@@ -6,8 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // SessionState is the hot-path state file read by hooks on every tool call.
@@ -57,13 +55,14 @@ func withSessionLock(dataDir string, fn func() error) error {
 		return fmt.Errorf("open session lock: %w", err)
 	}
 	defer f.Close()
-	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX); err != nil {
+	// Acquire platform-specific exclusive advisory lock. Implementations
+	// live in state_lock_unix.go / state_lock_windows.go behind build
+	// tags so the package compiles on all GOOS targets the release
+	// Makefile ships (linux, darwin, windows).
+	if err := lockFile(f); err != nil {
 		return fmt.Errorf("acquire session lock: %w", err)
 	}
-	// Register LOCK_UN only after LOCK_EX succeeds. If the lock
-	// acquisition failed we already returned above, so this defer
-	// never runs on an unlocked fd.
-	defer unix.Flock(int(f.Fd()), unix.LOCK_UN)
+	defer unlockFile(f)
 	return fn()
 }
 

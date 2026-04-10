@@ -254,6 +254,12 @@ steps:
 steps:
   - id: a
     model: fast`, "no body"},
+		{"env key collision", `name: T
+steps:
+  - id: fetch-data
+    prompt: x
+  - id: fetch_data
+    prompt: y`, "collide under env key"},
 	}
 
 	for _, tt := range tests {

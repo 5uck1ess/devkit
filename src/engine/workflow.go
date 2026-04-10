@@ -105,6 +105,7 @@ func validate(wf *Workflow) error {
 	}
 
 	ids := make(map[string]bool)
+	envKeys := make(map[string]string) // canonical env key → first step id that produced it
 	for _, s := range wf.Steps {
 		if s.ID == "" {
 			return fmt.Errorf("step missing id in workflow %q", wf.Name)
@@ -113,6 +114,16 @@ func validate(wf *Workflow) error {
 			return fmt.Errorf("duplicate step id %q in workflow %q", s.ID, wf.Name)
 		}
 		ids[s.ID] = true
+
+		// Reject step IDs whose canonical env-key collides with an
+		// earlier step. Without this, "fetch-data" and "fetch_data"
+		// would both map to DEVKIT_OUT_FETCH_DATA and silently
+		// overwrite each other depending on map iteration order.
+		key := EnvKey(s.ID)
+		if prior, clash := envKeys[key]; clash {
+			return fmt.Errorf("step ids %q and %q collide under env key %q in workflow %q — rename one", prior, s.ID, key, wf.Name)
+		}
+		envKeys[key] = s.ID
 
 		// Validate step mode mutual exclusion — exactly one of
 		// prompt | command | parallel must be set. A step with only
@@ -187,6 +198,29 @@ func validate(wf *Workflow) error {
 // (not via Parse). Call this at the engine boundary for safety.
 func (wf *Workflow) Validate() error {
 	return validate(wf)
+}
+
+// EnvKey maps a workflow step ID to a POSIX env var suffix used in
+// DEVKIT_OUT_<key>. POSIX allows [A-Za-z_][A-Za-z0-9_]*, so any
+// non-alphanumeric byte is mapped to underscore and lowercase is
+// upcased. Note the collision risk: "a-b", "a_b", "a.b", "A B" all
+// produce "A_B". The validator rejects workflows whose step IDs
+// collide under this mapping so two outputs can never silently shadow
+// each other in the env.
+func EnvKey(id string) string {
+	b := make([]byte, 0, len(id))
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		switch {
+		case c >= 'a' && c <= 'z':
+			b = append(b, c-32)
+		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
+			b = append(b, c)
+		default:
+			b = append(b, '_')
+		}
+	}
+	return string(b)
 }
 
 // Interpolate replaces {{step-id}} and {{input}} placeholders in a prompt.

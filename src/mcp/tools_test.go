@@ -1101,6 +1101,61 @@ steps:
 	}
 }
 
+// TestStartConcurrentRace verifies two simultaneous devkit_start calls
+// cannot both succeed. The previous read-then-write pattern let them
+// both see "no session" and both write, silently clobbering.
+func TestStartConcurrentRace(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "r.yml"), `name: r
+steps:
+  - id: one
+    prompt: first
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, startHandler := srv.startTool()
+
+	const N = 8
+	var wg sync.WaitGroup
+	var successes, alreadyRunning int64
+	start := make(chan struct{})
+	wg.Add(N)
+	for i := 0; i < N; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			req := mcpmcp.CallToolRequest{}
+			req.Params.Arguments = map[string]interface{}{"workflow": "r", "input": "x"}
+			result, err := startHandler(context.Background(), req)
+			if err != nil {
+				return
+			}
+			if result.IsError {
+				tc, _ := result.Content[0].(mcpmcp.TextContent)
+				if strings.Contains(tc.Text, "already") {
+					atomic.AddInt64(&alreadyRunning, 1)
+				}
+				return
+			}
+			atomic.AddInt64(&successes, 1)
+		}()
+	}
+	close(start)
+	wg.Wait()
+
+	if successes != 1 {
+		t.Errorf("successes = %d, want 1 (start/start race: claim is not atomic)", successes)
+	}
+	if alreadyRunning != N-1 {
+		t.Errorf("alreadyRunning = %d, want %d", alreadyRunning, N-1)
+	}
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state == nil || state.Status != "running" {
+		t.Errorf("final state should be running, got %+v", state)
+	}
+}
+
 // TestAdvanceRealRace launches N concurrent devkit_advance calls while
 // the first step (a sleeping command) holds the Busy claim. Under the
 // flock + Busy claim, exactly one must get through; every other racer

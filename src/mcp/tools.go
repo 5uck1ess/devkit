@@ -80,15 +80,6 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		mcpmcp.WithString("input", mcpmcp.Required(), mcpmcp.Description("Workflow input/description")),
 	)
 	return tool, func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		// Check no active session — propagate read errors
-		existing, err := lib.ReadSessionJSON(s.dataDir)
-		if err != nil {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("read session state: %v", err)), nil
-		}
-		if existing != nil && existing.Status == "running" {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %s already running (session %s). Call devkit_advance to continue or devkit_status to check.", existing.Workflow, existing.ID)), nil
-		}
-
 		wfName, err := req.RequireString("workflow")
 		if err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("missing argument: %v", err)), nil
@@ -117,32 +108,56 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q has no steps", wfName)), nil
 		}
 
-		// Create session in memory only — store the validated filename
-		// for safe re-parsing in advance. We publish session.json ONLY
-		// after all pre-flight side effects (branch creation) succeed,
-		// so a concurrent devkit_advance can never observe a
-		// half-initialized session and race the start itself.
+		// Atomically CLAIM the session slot under the session lock with
+		// Status="starting". This closes the start/start race: two
+		// concurrent devkit_start calls both observing "no session"
+		// cannot both proceed — the second one sees Status="starting"
+		// or "running" and rejects. The "starting" status is distinct
+		// from "running" so a concurrent devkit_advance firing in this
+		// window will also correctly report "no active session" until
+		// we publish the transition to "running" below.
 		sessionID := lib.NewSessionID()
 		firstStep := wf.Steps[0]
-
-		state := &lib.SessionState{
-			ID:           sessionID,
-			Workflow:     wfName, // store filename, not wf.Name, to prevent traversal in advance
-			Input:        input,
-			CurrentStep:  firstStep.ID,
-			CurrentIndex: 0,
-			TotalSteps:   len(wf.Steps),
-			StepType:     stepType(firstStep),
-			Enforce:      wf.Enforce,
-			Branch:       wf.BranchMode,
-			Status:       "running",
-			StartedAt:    time.Now(),
-			Outputs:      map[string]string{},
+		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+			if cur != nil && (cur.Status == "running" || cur.Status == "starting") {
+				return nil, fmt.Errorf("workflow %s already %s (session %s). Call devkit_advance to continue or devkit_status to check", cur.Workflow, cur.Status, cur.ID)
+			}
+			return &lib.SessionState{
+				ID:           sessionID,
+				Workflow:     wfName, // store filename, not wf.Name, to prevent traversal in advance
+				Input:        input,
+				CurrentStep:  firstStep.ID,
+				CurrentIndex: 0,
+				TotalSteps:   len(wf.Steps),
+				StepType:     stepType(firstStep),
+				Enforce:      wf.Enforce,
+				Branch:       wf.BranchMode,
+				Status:       "starting",
+				StartedAt:    time.Now(),
+				Outputs:      map[string]string{},
+			}, nil
+		})
+		if err != nil {
+			return mcpmcp.NewToolResultError(err.Error()), nil
 		}
 
+		// From here on, any failure must roll back the claim or the
+		// slot stays wedged. Track cleanup with a deferred rollback
+		// that only fires if we never reach the final "running"
+		// transition.
+		committed := false
+		defer func() {
+			if committed {
+				return
+			}
+			_ = lib.ClearSessionJSON(s.dataDir)
+			if s.db != nil {
+				_ = s.db.UpdateSessionStatus(sessionID, "failed")
+			}
+		}()
+
 		// Hard error on branch-mode failure: silent fallthrough would
-		// later commit onto the caller's current branch. Done BEFORE
-		// the session.json write so there is nothing to roll back.
+		// later commit onto the caller's current branch.
 		if wf.BranchMode {
 			if s.git == nil {
 				return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q requires branch mode but git is not available", wfName)), nil
@@ -153,10 +168,19 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Publish session state now that all pre-flight succeeded.
-		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
+		// Transition starting → running. After this, devkit_advance
+		// will accept the session.
+		state, err = lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+			if cur == nil || cur.ID != sessionID {
+				return nil, fmt.Errorf("session %s disappeared during start", sessionID)
+			}
+			cur.Status = "running"
+			return cur, nil
+		})
+		if err != nil {
+			return mcpmcp.NewToolResultError(err.Error()), nil
 		}
+		committed = true
 
 		// SQLite record (best-effort; session.json is the source of
 		// truth for the hot path).
@@ -286,13 +310,19 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		// Claim the advance slot atomically under the session lock. If
 		// another advance is already in progress we reject — letting
 		// both proceed would race on the current step index and could
-		// execute the same command step twice or skip one.
+		// execute the same command step twice or skip one. Also
+		// reject if the session is still in the "starting" state,
+		// which means devkit_start has not finished its pre-flight
+		// (branch creation) yet and there is no valid step to run.
 		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
 			if cur == nil {
 				return nil, fmt.Errorf("no active session")
 			}
 			if cur.ID != sessionID {
 				return nil, fmt.Errorf("session mismatch: active is %s", cur.ID)
+			}
+			if cur.Status != "running" {
+				return nil, fmt.Errorf("session %s is %s, not running — wait for devkit_start to finish", cur.ID, cur.Status)
 			}
 			if cur.Busy {
 				return nil, fmt.Errorf("step %s already in progress (another devkit_advance call holds the claim)", cur.CurrentStep)
@@ -492,19 +522,26 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 	err := cmd.Run()
+	// Timeout must be checked BEFORE the exec.ExitError branch —
+	// on Unix, CommandContext kills the process with SIGKILL when
+	// the deadline fires, and that surfaces as an *exec.ExitError
+	// with ExitCode() == -1, NOT a non-ExitError. Previous code
+	// put the ctx.Err() check only in the non-ExitError branch,
+	// so timeouts were reported as "exit code -1" instead of the
+	// promised exit 124 with a clear timeout message.
+	if ctx.Err() == context.DeadlineExceeded {
+		return out.String(), 124, fmt.Errorf("command timed out after %s", timeout)
+	}
 	exitCode := 0
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			exitCode = exitErr.ExitCode()
 		} else {
-			// Surface whatever the command produced on its combined
-			// stream so the user can see the real cause (missing
-			// binary, permission denied, timeout), not just the Go
-			// error wrapper.
-			if ctx.Err() == context.DeadlineExceeded {
-				return out.String(), 124, fmt.Errorf("command timed out after %s: %w", commandTimeout, err)
-			}
+			// Non-ExitError: startup failure (missing binary,
+			// permission denied). Surface whatever the command
+			// produced on its combined stream so the user sees
+			// the real cause, not just the Go wrapper.
 			return out.String(), 1, fmt.Errorf("command execution failed: %w", err)
 		}
 	}
@@ -512,32 +549,23 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 }
 
 // commandEnv returns the DEVKIT_INPUT and DEVKIT_OUT_<id> env vars that
-// command steps can read via $DEVKIT_INPUT / $DEVKIT_OUT_<id>.
+// command steps can read via $DEVKIT_INPUT / $DEVKIT_OUT_<id>. Keys are
+// canonicalized via engine.EnvKey; the validator rejects workflows
+// whose IDs would collide under that mapping, so there is no
+// ambiguity about which output wins.
 func commandEnv(state *lib.SessionState) []string {
 	env := []string{"DEVKIT_INPUT=" + state.Input}
 	for id, out := range state.Outputs {
-		env = append(env, "DEVKIT_OUT_"+sanitizeEnvKey(id)+"="+out)
+		env = append(env, "DEVKIT_OUT_"+engine.EnvKey(id)+"="+out)
 	}
 	return env
 }
 
-// sanitizeEnvKey maps a workflow step ID to a valid env var suffix.
-// POSIX allows [A-Za-z_][A-Za-z0-9_]*; step IDs may contain hyphens.
-func sanitizeEnvKey(id string) string {
-	b := make([]byte, 0, len(id))
-	for i := 0; i < len(id); i++ {
-		c := id[i]
-		switch {
-		case c >= 'a' && c <= 'z':
-			b = append(b, c-32) // upper
-		case c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '_':
-			b = append(b, c)
-		default:
-			b = append(b, '_')
-		}
-	}
-	return string(b)
-}
+// sanitizeEnvKey is a thin alias to engine.EnvKey for call sites in
+// this package that already reference it by the old name. Both
+// callers (formatStepResponse and commandEnv above) now canonicalize
+// through the same function the validator uses.
+func sanitizeEnvKey(id string) string { return engine.EnvKey(id) }
 
 func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
 	// Initialize loop tracking on first call
