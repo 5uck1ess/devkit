@@ -37,6 +37,7 @@ steps:
 - **model** — Which model tier runs this step. Pick based on task complexity.
 - **prompt** — The instruction. Use `{{step-id}}` to reference earlier outputs. Use `{{input}}` for workflow input. Mutually exclusive with `command`.
 - **command** — Shell command run directly (no LLM). Output is captured and available via `{{step-id}}`. Costs $0. Mutually exclusive with `prompt`.
+- **expect** — Only for `command` steps. Values: `success` (step fails if exit code is non-zero) or `failure` (step fails if exit code is 0). Omit for the default behavior where all exit codes are informational. Enables bugfix reproduction gates: repro with `expect: failure` must fail before fix, verify with `expect: success` must pass after.
 - **parallel** — Lists step IDs to run concurrently. Results collected before next sequential step.
 - **loop** — Repeats with `max` iterations. Exits early if output contains `until` string. Optional `gate` command enforces quality after each iteration.
 - **loop.gate** — Shell command run after each loop iteration. Exit 0 = keep changes and commit. Non-zero = revert changes via `git checkout`. 3 consecutive gate failures trigger stuck detection and stop the loop.

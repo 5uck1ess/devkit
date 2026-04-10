@@ -31,6 +31,7 @@ type WfStep struct {
 	Model    string   `yaml:"model"`
 	Prompt   string   `yaml:"prompt"`
 	Command  string   `yaml:"command"`
+	Expect   string   `yaml:"expect"`
 	Parallel []string `yaml:"parallel"`
 	Loop     *Loop    `yaml:"loop"`
 	Branch   []Branch `yaml:"branch"`
@@ -100,6 +101,12 @@ func validate(wf *Workflow) error {
 		}
 		if len(s.Parallel) > 0 && (s.Prompt != "" || s.Command != "") {
 			return fmt.Errorf("step %q has both parallel and prompt/command — these are mutually exclusive", s.ID)
+		}
+		if s.Expect != "" && s.Command == "" {
+			return fmt.Errorf("step %q has expect without command — expect only applies to command steps", s.ID)
+		}
+		if s.Expect != "" && s.Expect != "success" && s.Expect != "failure" {
+			return fmt.Errorf("step %q has invalid expect %q — must be \"success\" or \"failure\"", s.ID, s.Expect)
 		}
 		if s.Command != "" && s.Loop != nil {
 			return fmt.Errorf("step %q has both command and loop — these are mutually exclusive", s.ID)

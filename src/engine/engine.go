@@ -297,6 +297,24 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 			return 0, "", fmt.Errorf("step %s command failed: %w", step.ID, err)
 		}
 
+		// Check expect condition on exit code.
+		if step.Expect == "failure" && exitCode == 0 {
+			reason := "expected failure but got exit code 0"
+			dbStep.Status = "failed"
+			dbStep.ChangeSummary = reason
+			e.db.UpdateStep(dbStep)
+			fmt.Printf("  %s\n\n", reason)
+			return 0, "", fmt.Errorf("step %s: %s", step.ID, reason)
+		}
+		if step.Expect == "success" && exitCode != 0 {
+			reason := fmt.Sprintf("expected success but got exit code %d", exitCode)
+			dbStep.Status = "failed"
+			dbStep.ChangeSummary = reason
+			e.db.UpdateStep(dbStep)
+			fmt.Printf("  %s\n\n", reason)
+			return 0, "", fmt.Errorf("step %s: %s", step.ID, reason)
+		}
+
 		// Include exit code in output so downstream steps can check it
 		fullOutput := fmt.Sprintf("%s\nexit code: %d", strings.TrimRight(output, "\n"), exitCode)
 
