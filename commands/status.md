@@ -67,18 +67,13 @@ List all commands, marking which ones need external CLIs:
 | Command | Status | Notes |
 |---------|--------|-------|
 | /tri:review | ⚠ partial | 2/3 agents available (no gemini) |
-| /tri:dispatch | ⚠ partial | 2/3 agents available |
-| /self:improve | ✓ ready | Claude-only |
-| /self:test | ✓ ready | Claude-only |
-| /self:lint | ✓ ready | Claude-only |
-| /self:perf | ✓ ready | Claude-only |
-| /self:migrate | ✓ ready | Claude-only |
-| /devkit:test-gen | ✓ ready | Claude-only |
-| /devkit:doc-gen | ✓ ready | Claude-only |
+| /tri:debug | ⚠ partial | 2/3 agents available |
+| /tri:security | ⚠ partial | 2/3 agents available |
 | /devkit:pr-ready | ✓ ready | Uses gh for PR creation |
-| /devkit:onboard | ✓ ready | Claude-only |
-| /devkit:changelog | ✓ ready | Claude-only |
-| /devkit:workflow | ✓ ready | Claude-only |
+| /devkit:pr-monitor | ✓ ready | Uses gh for PR monitoring |
+| /devkit:workflow | ✓ ready | Runs YAML workflows via Go engine |
+| /devkit:status | ✓ ready | This command |
+| /devkit:setup-rules | ✓ ready | One-time setup |
 
 ### Agents
 | Agent | Model | Isolation | Status |

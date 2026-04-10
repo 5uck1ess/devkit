@@ -68,7 +68,7 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 
 ```bash
 brew install rtk       # Token optimization (60-90% savings on Bash output)
-brew install ast-grep  # AST-based repo mapping (/devkit:repo-map)
+brew install ast-grep  # AST-based repo mapping (devkit workflow run repo-map)
 ```
 
 ### Verify
@@ -93,65 +93,50 @@ This shows which CLIs are installed, which agents are available, and which comma
 # Slash commands for complex workflows:
 /devkit:pr-ready              # Full PR pipeline
 /tri:review                   # Multi-agent code review
-/self:lint --lint "npm run lint"  # Fix all lint errors
+devkit workflow run self-lint "npm run lint"  # Fix all lint errors
 ```
 
 ---
 
 ## Commands
 
-### Development Lifecycle
-
-| Command | What it does |
-|---|---|
-| `/devkit:feature` | Brainstorm, plan, implement, test, lint, review |
-| `/devkit:bugfix` | Reproduce, diagnose, fix, regression test, verify |
-| `/devkit:refactor` | Analyze smells, plan, restructure, verify nothing broke |
-| `/devkit:decompose` | Break a goal into a task DAG, assign agents, execute in order |
-
-### Shipping
-
-| Command | What it does |
-|---|---|
-| `/devkit:pr-ready` | Lint, test, security, changelog, create PR |
-| `/devkit:pr-monitor` | Watch CI, fetch reviewer comments, fix iteratively, push |
-
-### Self-Improvement Loops
-
-Automated propose / measure / keep or discard / repeat cycles.
-
-| Command | What it does |
-|---|---|
-| `/self:improve` | General-purpose loop with custom metric gate |
-| `/self:test` | Generate tests until coverage target is hit |
-| `/self:lint` | Fix lint/type errors until zero remain |
-| `/self:perf` | Hypothesis-driven perf investigation |
-| `/self:migrate` | Incremental migration (JS->TS, etc.) with test gate |
-| `/self:audit` | Measure everything, rank hypotheses, report only |
-| `/devkit:autoloop` | Autonomous improvement loop — audit, fix, measure, repeat |
-
-### Multi-Agent (Claude + Codex + Gemini)
-
-Runs with whatever agents are available. Claude always runs.
+8 tab-completable slash commands. All other workflows are context-activated via skills or invoked directly with `devkit workflow run <name>`.
 
 | Command | What it does |
 |---|---|
 | `/tri:review` | Code review from 1-3 agents, consolidated report |
-| `/tri:dispatch` | Send any task to all agents, compare outputs |
 | `/tri:debug` | Independent root-cause analysis from each agent |
-| `/tri:test-gen` | Generate tests from multiple agents, merge coverage |
 | `/tri:security` | Security audit with severity-ranked consensus |
-
-### Utility
-
-| Command | What it does |
-|---|---|
-| `/devkit:repo-map` | AST-based symbol index with dependency graph |
-| `/devkit:deep-research` | Competing hypotheses, disconfirmation, evidence matrix |
-| `/devkit:audit` | Dependencies, vulnerabilities, licenses, lint, security |
+| `/devkit:pr-ready` | Lint, test, security, changelog, create PR |
+| `/devkit:pr-monitor` | Watch CI, fetch reviewer comments, fix iteratively, push |
 | `/devkit:workflow` | Run user-defined YAML workflows |
 | `/devkit:status` | Health check |
 | `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` |
+
+### Workflows (via `devkit workflow run <name>`)
+
+All 18 YAML workflows can be invoked directly. Skills auto-activate for common triggers (e.g., "research X", "fix this bug", "add a feature").
+
+| Workflow | What it does |
+|---|---|
+| `feature` | Brainstorm, plan, implement, test, lint, review |
+| `bugfix` | Reproduce, diagnose, fix, regression test, verify |
+| `refactor` | Analyze smells, plan, restructure, verify nothing broke |
+| `research` | Clarify, decompose, parallel search, corroborate, synthesize |
+| `deep-research` | ACH: hypotheses, disconfirmation, evidence matrix |
+| `self-test` | Run tests, fix failures, repeat until passing |
+| `self-lint` | Run linter, fix violations, repeat until clean |
+| `self-perf` | Benchmark, optimize, repeat until target met |
+| `self-improve` | Run metric, fix issues, repeat until passing |
+| `self-migrate` | Migrate code incrementally with test gate |
+| `self-audit` | Measure codebase, rank improvements by evidence |
+| `autoloop` | Autonomous audit/fix/measure/keep-or-revert loop |
+| `audit` | Dependencies, vulnerabilities, licenses, lint, security |
+| `pr-ready` | Full PR preparation pipeline |
+| `tri-review` | Multi-agent code review |
+| `tri-debug` | Multi-agent debugging |
+| `tri-security` | Multi-agent security audit |
+| `tri-dispatch` | Send any task to multiple agents |
 
 ---
 
@@ -197,12 +182,12 @@ Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `
 
 | Agent | Model | Used by |
 |---|---|---|
-| `reviewer` | Opus | tri:review |
-| `researcher` | Sonnet | tri:dispatch, tri:debug, onboard |
-| `improver` | Opus | self:*, tri:dispatch |
-| `test-writer` | Sonnet | test-gen, self:test, tri:test-gen |
-| `documenter` | Haiku | doc-gen |
-| `security-auditor` | Opus | tri:security, pr-ready, audit |
+| `reviewer` | Opus | tri-review workflow, feature workflow |
+| `researcher` | Sonnet | research, deep-research, tri-debug workflows |
+| `improver` | Opus | self-improve, self-lint, self-perf, refactor workflows |
+| `test-writer` | Sonnet | self-test, tri-test-gen workflows |
+| `documenter` | Haiku | doc-gen skill |
+| `security-auditor` | Opus | tri-security, pr-ready, audit workflows |
 
 All agents run in worktree isolation.
 
@@ -291,12 +276,12 @@ Workflow Engine (Go binary)
   │   └── Budget check every step
   └── Commit, report, clean up
 
-Multi-Agent (tri:* commands)
+Multi-Agent (tri-* workflows)
   ├── Claude  → native background agent (always)
   ├── Codex   → plugin or CLI (optional)
   └── Gemini  → plugin or CLI (optional)
 
-Self-Improvement (self:* commands)
+Self-Improvement (self-* workflows)
   └── Loop: propose → measure → keep/revert → repeat
 ```
 
