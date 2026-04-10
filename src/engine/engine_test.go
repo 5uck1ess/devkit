@@ -243,6 +243,17 @@ steps:
   - id: a
     command: "echo hi"
     loop: {max: 3, until: DONE}`, "mutually exclusive"},
+		{"empty branch when", `name: T
+steps:
+  - id: a
+    prompt: x
+    branch: [{when: "", goto: b}]
+  - id: b
+    prompt: y`, "empty when"},
+		{"step with no body", `name: T
+steps:
+  - id: a
+    model: fast`, "no body"},
 	}
 
 	for _, tt := range tests {
@@ -1395,5 +1406,23 @@ steps:
 	}
 	if len(wf.Steps[0].Principles) != 1 || wf.Steps[0].Principles[0] != "clean-code" {
 		t.Errorf("step principles = %v, want [clean-code]", wf.Steps[0].Principles)
+	}
+}
+
+func TestInterpolateDeterministic(t *testing.T) {
+	// Regression: map iteration order is randomized in Go; Interpolate
+	// must sort keys so a step output containing {{another-id}} renders
+	// the same way on every call.
+	outputs := map[string]string{
+		"a": "[AA {{b}}]",
+		"b": "BB",
+		"c": "CC",
+	}
+	first := Interpolate("{{a}} {{c}}", "", outputs)
+	for i := 0; i < 100; i++ {
+		got := Interpolate("{{a}} {{c}}", "", outputs)
+		if got != first {
+			t.Fatalf("nondeterministic interpolate: %q vs %q", first, got)
+		}
 	}
 }

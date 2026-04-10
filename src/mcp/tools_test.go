@@ -987,6 +987,140 @@ steps:
 	}
 }
 
+// TestAdvanceConcurrentClaim verifies the cross-process Busy claim: when
+// one devkit_advance is mid-flight, a racing second call must be rejected
+// rather than both advancing and clobbering the session index.
+func TestAdvanceConcurrentClaim(t *testing.T) {
+	dataDir := t.TempDir()
+
+	// Seed state directly as if an advance is already in progress.
+	seeded := &lib.SessionState{
+		ID:           "race-sess",
+		Workflow:     "race",
+		CurrentStep:  "one",
+		CurrentIndex: 0,
+		TotalSteps:   2,
+		StepType:     "prompt",
+		Enforce:      "hard",
+		Status:       "running",
+		Busy:         true,
+		StartedAt:    time.Now(),
+		Outputs:      map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dataDir, seeded); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	wfDir := t.TempDir()
+	writeFile(t, filepath.Join(wfDir, "race.yml"), `name: race
+description: race test
+steps:
+  - id: one
+    prompt: first
+  - id: two
+    prompt: second
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, advHandler := srv.advanceTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"session": "race-sess",
+		"output":  "x",
+	}
+	result, err := advHandler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true when Busy claim is held")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "already in progress") {
+		t.Errorf("expected 'already in progress' message, got: %s", tc.Text)
+	}
+
+	// Busy must still be true — the rejected caller must not clear it.
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !state.Busy {
+		t.Error("rejected advance should not have cleared Busy")
+	}
+}
+
+// TestAdvanceClearsBusy verifies that a successful advance clears the
+// Busy claim so the next call can proceed.
+func TestAdvanceClearsBusy(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "clear.yml"), `name: clear
+description: clear busy test
+steps:
+  - id: a
+    prompt: first
+  - id: b
+    prompt: second
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{"workflow": "clear", "input": "x"}
+	if _, err := startHandler(context.Background(), startReq); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	state, _ := lib.ReadSessionJSON(dataDir)
+	if state.Busy {
+		t.Error("start should not leave Busy=true")
+	}
+
+	_, advHandler := srv.advanceTool()
+	advReq := mcpmcp.CallToolRequest{}
+	advReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "done with a",
+	}
+	if _, err := advHandler(context.Background(), advReq); err != nil {
+		t.Fatalf("advance: %v", err)
+	}
+
+	state2, _ := lib.ReadSessionJSON(dataDir)
+	if state2.Busy {
+		t.Error("advance should clear Busy before returning")
+	}
+	if state2.CurrentStep != "b" {
+		t.Errorf("expected CurrentStep=b, got %q", state2.CurrentStep)
+	}
+}
+
+// TestSessionFileMode verifies session.json is chmod 0600 (may contain
+// pasted secrets via workflow input/outputs).
+func TestSessionFileMode(t *testing.T) {
+	dir := t.TempDir()
+	state := &lib.SessionState{
+		ID:      "mode-test",
+		Status:  "running",
+		Outputs: map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dir, state); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	info, err := os.Stat(lib.SessionJSONPath(dir))
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	got := info.Mode().Perm()
+	if got != 0o600 {
+		t.Errorf("session.json mode = %o, want 0600", got)
+	}
+}
+
 // writeFile is a test helper that creates a file with the given content.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()

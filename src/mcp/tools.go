@@ -20,6 +20,12 @@ import (
 // commandTimeout is the maximum duration for workflow command execution.
 const commandTimeout = 5 * time.Minute
 
+// gateTimeout is shorter than commandTimeout because loop gates should
+// be fast checks (lint, test, build) — a gate that takes longer than
+// this is almost certainly wedged and should fail the loop fast rather
+// than eat the full command budget.
+const gateTimeout = 60 * time.Second
+
 func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 	tool := mcpmcp.NewTool("devkit_list",
 		mcpmcp.WithDescription("List available workflows"),
@@ -147,11 +153,26 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Git branch if configured
-		if wf.BranchMode && s.git != nil {
+		// Git branch if configured. Must be a hard error — if a
+		// workflow declares branch: true and we silently fall through,
+		// completeWorkflow will later commit onto the user's current
+		// branch (often main). Roll back session state and DB record
+		// before returning.
+		if wf.BranchMode {
+			if s.git == nil {
+				_ = lib.ClearSessionJSON(s.dataDir)
+				if s.db != nil {
+					_ = s.db.UpdateSessionStatus(sessionID, "failed")
+				}
+				return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q requires branch mode but git is not available", wfName)), nil
+			}
 			branchName := fmt.Sprintf("%s/%s", wf.Name, sessionID)
 			if err := s.git.CreateBranch(branchName); err != nil {
-				fmt.Fprintf(os.Stderr, "warning: branch creation failed: %v\n", err)
+				_ = lib.ClearSessionJSON(s.dataDir)
+				if s.db != nil {
+					_ = s.db.UpdateSessionStatus(sessionID, "failed")
+				}
+				return mcpmcp.NewToolResultError(fmt.Sprintf("create branch %q: %v (workflow declares branch mode and cannot proceed on the current branch)", branchName, err)), nil
 			}
 		}
 
@@ -267,16 +288,46 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return mcpmcp.NewToolResultError("missing session argument"), nil
 		}
 
-		state, err := lib.ReadSessionJSON(s.dataDir)
+		// Claim the advance slot atomically under the session lock. If
+		// another advance is already in progress we reject — letting
+		// both proceed would race on the current step index and could
+		// execute the same command step twice or skip one.
+		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+			if cur == nil {
+				return nil, fmt.Errorf("no active session")
+			}
+			if cur.ID != sessionID {
+				return nil, fmt.Errorf("session mismatch: active is %s", cur.ID)
+			}
+			if cur.Busy {
+				return nil, fmt.Errorf("step %s already in progress (another devkit_advance call holds the claim)", cur.CurrentStep)
+			}
+			cur.Busy = true
+			return cur, nil
+		})
 		if err != nil {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("read session: %v", err)), nil
+			return mcpmcp.NewToolResultError(err.Error()), nil
 		}
-		if state == nil {
-			return mcpmcp.NewToolResultError("no active session"), nil
+
+		// Ensure the claim is released no matter how we exit. On the
+		// success path we explicitly clear Busy before the final write;
+		// this deferred clear is the safety net for panics, errors, or
+		// early returns in the handlers below.
+		claimReleased := false
+		releaseClaim := func() {
+			if claimReleased {
+				return
+			}
+			claimReleased = true
+			_, _ = lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+				if cur == nil || cur.ID != sessionID {
+					return nil, nil
+				}
+				cur.Busy = false
+				return cur, nil
+			})
 		}
-		if state.ID != sessionID {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("session mismatch: active is %s", state.ID)), nil
-		}
+		defer releaseClaim()
 
 		// Re-parse workflow using validated filename stored in state.Workflow
 		wfPath, err := s.resolveWorkflowPath(state.Workflow)
@@ -325,8 +376,11 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Handle loop steps
+		// Handle loop steps. handleLoopAdvance writes state (clearing
+		// Busy) on all its return paths, so mark the claim released
+		// here so the deferred release does not double-write.
 		if currentStep.Loop != nil {
+			claimReleased = true
 			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
 		}
 
@@ -349,17 +403,22 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		}
 
 		if nextIndex >= len(wf.Steps) {
+			claimReleased = true // completeWorkflow clears the whole state
 			return s.completeWorkflow(state)
 		}
 
-		// Write next step state
+		// Write next step state. Clear the claim as part of this same
+		// write so hooks observing session.json mid-transition never
+		// see Busy=true with a stale step index.
 		nextStep := wf.Steps[nextIndex]
 		state.CurrentStep = nextStep.ID
 		state.CurrentIndex = nextIndex
 		state.StepType = stepType(nextStep)
+		state.Busy = false
 		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
 		}
+		claimReleased = true
 
 		response := s.formatStepResponse(wf, state, &nextStep, state.Input)
 		return mcpmcp.NewToolResultText(response), nil
@@ -413,7 +472,16 @@ func (s *Server) completeWorkflow(state *lib.SessionState) (*mcpmcp.CallToolResu
 // injection via LLM-chosen input or contaminated prior-step output — the
 // command text is always the literal YAML value.
 func (s *Server) runCommand(ctx context.Context, command string, state *lib.SessionState) (string, int, error) {
-	ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+	return s.runCommandWithTimeout(ctx, command, state, commandTimeout)
+}
+
+// runCommandWithTimeout is the general form — gate commands call this
+// with gateTimeout so a stuck gate does not eat the full command budget.
+func (s *Server) runCommandWithTimeout(ctx context.Context, command string, state *lib.SessionState, timeout time.Duration) (string, int, error) {
+	// Nest a fresh deadline on top of the parent. Parent cancellation
+	// still propagates (e.g. MCP request abort), but the effective
+	// deadline is now min(parent deadline, now+timeout).
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
@@ -482,8 +550,10 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 
 	// Check gate command if present. Gate strings are also literal —
 	// values come via env vars DEVKIT_INPUT / DEVKIT_OUT_<step_id>.
+	// Gates get a shorter independent timeout so a wedged gate cannot
+	// eat the full command budget.
 	if step.Loop.Gate != "" {
-		gateOut, exitCode, err := s.runCommand(ctx, step.Loop.Gate, state)
+		gateOut, exitCode, err := s.runCommandWithTimeout(ctx, step.Loop.Gate, state, gateTimeout)
 		if err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("gate command failed: %v\n%s", err, gateOut)), nil
 		}
@@ -509,7 +579,9 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 		return s.advancePastLoop(wf, state)
 	}
 
-	// Continue loop — return same step for another iteration
+	// Continue loop — return same step for another iteration.
+	// Clear the advance claim as part of this write (see advanceTool).
+	state.Busy = false
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write loop state: %v", err)), nil
 	}
@@ -532,6 +604,7 @@ func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (
 	state.CurrentStep = nextStep.ID
 	state.CurrentIndex = nextIndex
 	state.StepType = stepType(nextStep)
+	state.Busy = false
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
 	}

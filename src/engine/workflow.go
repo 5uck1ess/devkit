@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -113,12 +114,25 @@ func validate(wf *Workflow) error {
 		}
 		ids[s.ID] = true
 
-		// Validate step mode mutual exclusion
-		if s.Command != "" && s.Prompt != "" {
-			return fmt.Errorf("step %q has both command and prompt — these are mutually exclusive", s.ID)
+		// Validate step mode mutual exclusion — exactly one of
+		// prompt | command | parallel must be set. A step with only
+		// metadata (id/model/principles but no executable body) would
+		// otherwise parse fine and silently do nothing.
+		modes := 0
+		if s.Prompt != "" {
+			modes++
 		}
-		if len(s.Parallel) > 0 && (s.Prompt != "" || s.Command != "") {
-			return fmt.Errorf("step %q has both parallel and prompt/command — these are mutually exclusive", s.ID)
+		if s.Command != "" {
+			modes++
+		}
+		if len(s.Parallel) > 0 {
+			modes++
+		}
+		if modes == 0 {
+			return fmt.Errorf("step %q has no body — set exactly one of prompt, command, or parallel", s.ID)
+		}
+		if modes > 1 {
+			return fmt.Errorf("step %q has multiple bodies — prompt, command, and parallel are mutually exclusive, set exactly one", s.ID)
 		}
 		if s.Expect != "" && s.Command == "" {
 			return fmt.Errorf("step %q has expect without command — expect only applies to command steps", s.ID)
@@ -148,6 +162,12 @@ func validate(wf *Workflow) error {
 	// Validate branch targets exist
 	for _, s := range wf.Steps {
 		for _, b := range s.Branch {
+			// Reject empty when — strings.Contains(x, "") is
+			// always true, so an empty when: matches every step
+			// and silently hijacks execution.
+			if strings.TrimSpace(b.When) == "" {
+				return fmt.Errorf("branch in step %q has empty when: — use a non-empty sentinel", s.ID)
+			}
 			if !ids[b.Goto] {
 				return fmt.Errorf("branch target %q not found (step %q)", b.Goto, s.ID)
 			}
@@ -170,10 +190,17 @@ func (wf *Workflow) Validate() error {
 }
 
 // Interpolate replaces {{step-id}} and {{input}} placeholders in a prompt.
+// Keys are iterated in sorted order so rendering is deterministic when one
+// step's output itself contains a {{another-id}} placeholder.
 func Interpolate(prompt string, input string, outputs map[string]string) string {
 	result := strings.ReplaceAll(prompt, "{{input}}", input)
-	for id, output := range outputs {
-		result = strings.ReplaceAll(result, "{{"+id+"}}", output)
+	ids := make([]string, 0, len(outputs))
+	for id := range outputs {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		result = strings.ReplaceAll(result, "{{"+id+"}}", outputs[id])
 	}
 	return result
 }
