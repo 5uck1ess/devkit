@@ -928,6 +928,143 @@ func TestRunWorkflowCommandNonZeroExit(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Expect field tests
+// ---------------------------------------------------------------------------
+
+func TestRunWorkflowExpectFailure(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// expect: failure — non-zero exit should succeed (bug repro)
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "repro", Command: "exit 1", Expect: "failure"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("expected success for non-zero exit with expect:failure, got: %v", err)
+	}
+	if _, ok := res.Outputs["repro"]; !ok {
+		t.Fatal("repro output missing")
+	}
+}
+
+func TestRunWorkflowExpectFailureButGotZero(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// expect: failure — zero exit should FAIL (bug not reproducible)
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "repro", Command: "exit 0", Expect: "failure"},
+		},
+	}
+
+	_, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err == nil {
+		t.Fatal("expected error for exit 0 with expect:failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "expected failure") {
+		t.Errorf("error = %q, want it to contain 'expected failure'", err.Error())
+	}
+}
+
+func TestRunWorkflowExpectSuccessDefault(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	// No expect field (default) — non-zero exit is informational, not fatal
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "check", Command: "exit 1"},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("default expect should not fail on non-zero exit: %v", err)
+	}
+	if !strings.Contains(res.Outputs["check"], "exit code: 1") {
+		t.Error("exit code not in output")
+	}
+}
+
+func TestParseExpectField(t *testing.T) {
+	yaml := `
+name: Expect Test
+description: test
+
+steps:
+  - id: repro
+    command: "npm test"
+    expect: failure
+  - id: verify
+    command: "npm test"
+    expect: success
+`
+	wf, err := Parse([]byte(yaml))
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if wf.Steps[0].Expect != "failure" {
+		t.Errorf("step 0 expect = %q, want failure", wf.Steps[0].Expect)
+	}
+	if wf.Steps[1].Expect != "success" {
+		t.Errorf("step 1 expect = %q, want success", wf.Steps[1].Expect)
+	}
+}
+
+func TestValidateExpectOnPromptStep(t *testing.T) {
+	yaml := `
+name: Bad
+description: test
+
+steps:
+  - id: broken
+    model: smart
+    prompt: "do something"
+    expect: failure
+`
+	_, err := Parse([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected validation error for expect on prompt step")
+	}
+	if !strings.Contains(err.Error(), "expect without command") {
+		t.Errorf("error = %q, want 'expect without command'", err.Error())
+	}
+}
+
+func TestValidateExpectInvalidValue(t *testing.T) {
+	yaml := `
+name: Bad
+description: test
+
+steps:
+  - id: broken
+    command: "echo hi"
+    expect: maybe
+`
+	_, err := Parse([]byte(yaml))
+	if err == nil {
+		t.Fatal("expected validation error for invalid expect value")
+	}
+	if !strings.Contains(err.Error(), "invalid expect") {
+		t.Errorf("error = %q, want 'invalid expect'", err.Error())
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Gate tests
 // ---------------------------------------------------------------------------
 
