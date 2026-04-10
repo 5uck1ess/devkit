@@ -16,6 +16,18 @@ echo -n "codex plugin: " && (/codex:status >/dev/null 2>&1 && echo "installed" |
 echo -n "gemini plugin: " && (/gemini:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
 ```
 
+### Devkit Engine
+
+```bash
+echo "=== Devkit Engine ==="
+if command -v devkit >/dev/null 2>&1; then
+  echo "engine: ✓ installed ($(devkit --version 2>/dev/null || echo 'unknown version'))"
+else
+  echo "engine: ✗ NOT INSTALLED — workflows will not run deterministically"
+  echo "  install: bash scripts/install-engine.sh"
+fi
+```
+
 ### External CLIs
 
 ```bash

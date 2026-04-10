@@ -6,7 +6,7 @@ LDFLAGS := -s -w -X main.version=$(VERSION)
 GOFLAGS := -trimpath
 PLUGIN_JSON := $(CURDIR)/../.claude-plugin/plugin.json
 
-.PHONY: build install link clean test vet fmt check all sync-version
+.PHONY: build build-for build-all install link clean test vet fmt check all sync-version
 
 all: check build
 
@@ -32,6 +32,19 @@ sync-version:
 
 build: | sync-version
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY) .
+
+build-for: ## Cross-compile for specified GOOS/GOARCH
+	$(eval EXT := $(if $(filter windows,$(GOOS)),.exe,))
+	@CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY)-$(GOOS)-$(GOARCH)$(EXT) .
+	@echo "Built: bin/$(BINARY)-$(GOOS)-$(GOARCH)$(EXT)"
+
+build-all: ## Build all platform binaries
+	@$(MAKE) build-for GOOS=linux GOARCH=amd64
+	@$(MAKE) build-for GOOS=linux GOARCH=arm64
+	@$(MAKE) build-for GOOS=darwin GOARCH=amd64
+	@$(MAKE) build-for GOOS=darwin GOARCH=arm64
+	@$(MAKE) build-for GOOS=windows GOARCH=amd64
+	@$(MAKE) build-for GOOS=windows GOARCH=arm64
 
 install: | sync-version
 	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' .

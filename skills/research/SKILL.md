@@ -9,26 +9,19 @@ Deterministic research workflow: clarify → decompose → parallel search → s
 
 ## Invoke
 
-Run the workflow via the devkit engine:
+Ensure the devkit engine is installed, then run the workflow:
 
+```bash
+command -v devkit >/dev/null 2>&1 || bash "$(dirname "$(find ~/.claude/plugins -path '*/devkit/scripts/install-engine.sh' 2>/dev/null | head -1)")/install-engine.sh"
 ```
+
+```bash
 devkit workflow run research "{input}"
 ```
 
 The YAML workflow (`workflows/research.yml`) enforces the step sequence deterministically. Claude handles thinking within each step; the engine owns the order.
 
-## Fallback (no engine)
-
-If `devkit workflow` is not available, follow these steps manually. Token budget: ~200k. Early exit if first search pass clearly answers the question.
-
-1. **Clarify** — Use `AskUserQuestion` to sharpen the question before searching
-2. **Decompose** — Break into 3-5 sub-questions with explicit retrieval goals; include at least one disconfirming query
-3. **Search** — Launch searches in parallel using the `researcher` agent (max 3); collect titles, URLs, snippets
-4. **Summarize** — Fetch top URLs via Jina Reader (`WebFetch https://r.jina.ai/{url}`); extract 3-5 claims per source immediately; do NOT carry raw content forward
-5. **Corroborate** — Mark each claim CONFIRMED (2+ sources) / UNCORROBORATED (1 source) / CONTESTED (sources disagree)
-6. **Escalation check** — Ask the user to upgrade to `/devkit:deep-research` if ANY: 3+ CONTESTED claims, high-stakes domain, user expressed uncertainty, or most claims UNCORROBORATED. Never auto-escalate.
-7. **Follow-up** — For UNCORROBORATED/CONTESTED claims, run one targeted search to resolve (loop max 2)
-8. **Synthesize** — Direct answer → key findings with corroboration status → tradeoffs → open questions → recommendation with confidence level
+If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Run `bash scripts/install-engine.sh` manually." Do NOT fall back to manual steps — the engine is required for determinism.
 
 ## Rules
 

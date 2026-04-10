@@ -48,22 +48,19 @@ If the user says "everything" or skips, leave scope open.
 
 ## Invoke the Workflow
 
+Ensure the devkit engine is installed:
+
+```bash
+command -v devkit >/dev/null 2>&1 || bash "$(dirname "$(find ~/.claude/plugins -path '*/devkit/scripts/install-engine.sh' 2>/dev/null | head -1)")/install-engine.sh"
+```
+
 Assemble the input as a single string and invoke:
 
-```
+```bash
 devkit workflow autoloop "<objective> | metric: <command> | direction: <higher/lower>-is-better | iterations: <N> | scope: <constraint or 'all'>"
 ```
 
-Or if the Go harness is not available, follow the workflow steps manually:
-
-1. **Baseline** — run the metric command, record the starting number
-2. **Audit** — analyze codebase, pick single highest-impact hypothesis
-3. **Fix** — make the recommended change (minimal, focused)
-4. **Measure** — run the same metric command again
-5. **Compare** — IMPROVED or REGRESSED based on direction
-6. **Keep** (if improved) — git commit, update scratchpad, loop back to audit
-7. **Revert** (if regressed) — git checkout -- <modified files>, update scratchpad, loop back to audit
-8. **Report** — final summary with kept changes, reverted attempts, net improvement
+If the engine cannot be installed, tell the user: "The devkit engine binary is required for deterministic workflow execution. Run `bash scripts/install-engine.sh` manually." Do NOT fall back to manual steps — the engine is required for determinism.
 
 ## Rules
 
