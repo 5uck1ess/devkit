@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/5uck1ess/devkit/lib"
-	mcpmcp "github.com/mark3labs/mcp-go/mcp"
 	mcpgo "github.com/mark3labs/mcp-go/server"
 )
 
@@ -64,45 +63,4 @@ func (s *Server) Serve(ctx context.Context) error {
 	return mcpgo.ServeStdio(srv)
 }
 
-// Stubs — replaced in Tasks 6-8
-
-func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
-	tool := mcpmcp.NewTool("workflow_start",
-		mcpmcp.WithDescription("Start a workflow (stub)"),
-	)
-	handler := func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		return mcpmcp.NewToolResultText("not implemented"), nil
-	}
-	return tool, handler
-}
-
-func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
-	tool := mcpmcp.NewTool("workflow_advance",
-		mcpmcp.WithDescription("Advance a workflow step (stub)"),
-	)
-	handler := func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		return mcpmcp.NewToolResultText("not implemented"), nil
-	}
-	return tool, handler
-}
-
-func (s *Server) statusTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
-	tool := mcpmcp.NewTool("workflow_status",
-		mcpmcp.WithDescription("Get workflow status (stub)"),
-	)
-	handler := func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		return mcpmcp.NewToolResultText("not implemented"), nil
-	}
-	return tool, handler
-}
-
-func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
-	tool := mcpmcp.NewTool("workflow_list",
-		mcpmcp.WithDescription("List workflows (stub)"),
-	)
-	handler := func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
-		return mcpmcp.NewToolResultText("not implemented"), nil
-	}
-	return tool, handler
-}
 
