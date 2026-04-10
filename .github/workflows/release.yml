@@ -201,10 +201,8 @@ jobs:
           TAG="v${{ needs.version.outputs.version }}"
           mkdir -p /tmp/release-assets
           gh release download "$TAG" --dir /tmp/release-assets
-          cd /tmp/release-assets
-          sha256sum devkit-* > checksums.txt
-          cat checksums.txt
-          gh release upload "$TAG" checksums.txt --clobber
+          (cd /tmp/release-assets && sha256sum devkit-* > checksums.txt && cat checksums.txt)
+          gh release upload "$TAG" /tmp/release-assets/checksums.txt --clobber
 
       - name: Publish release
         env:
