@@ -1,0 +1,6 @@
+# Force LF on the POSIX shell wrapper. Git for Windows' default
+# core.autocrlf=true would otherwise rewrite this file with CRLF on
+# checkout, and while Git Bash tolerates CRLF today, a strict POSIX
+# /bin/sh or a future autocrlf change would break the shebang line
+# or embedded heredocs. See issue #58.
+bin/devkit text eol=lf
