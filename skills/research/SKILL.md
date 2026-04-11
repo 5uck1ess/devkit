@@ -1,6 +1,6 @@
 ---
 name: research
-description: Research workflow — use when asked to research a topic, investigate options, compare approaches, or find the best solution to a technical question. NOT for "deep research" or "validate" requests — those go to deep-research. For complex or high-stakes questions where correctness is critical, use deep-research instead.
+description: Fast, standard research workflow (clarify → decompose → parallel search → summarize → synthesize) for exploratory questions where the user wants a good answer quickly. Use when the user asks to research a topic, investigate options, compare libraries/tools/approaches, find the best solution to a technical question, scope out a space they don't know yet, or get a grounded starting point before deciding. Worth using when the user is gathering context or narrowing down options — not when they've already committed and need validation. Do NOT use for high-stakes decisions where a wrong answer is expensive (use deep-research), validating specific claims under scrutiny (use deep-research), or simple factual lookups that don't need web searches (answer directly). Default to this over deep-research unless the user explicitly signals stakes with phrases like "we're making a big bet", "need to be sure", "validate", "deeply investigate", or "correctness is critical".
 ---
 
 # Research

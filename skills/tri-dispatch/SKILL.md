@@ -1,6 +1,6 @@
 ---
 name: tri-dispatch
-description: Triple-tier task dispatch — use when asked for tri dispatch, triple dispatch, three-way comparison, "send this to three models", or "compare model approaches". Sends the same task to three model tiers in parallel and compares their approaches. Triggers the deterministic tri-dispatch workflow.
+description: Three model tiers (smart + general + fast) each tackle the SAME open-ended task independently, then their divergent approaches are compared — this is the GENERAL-PURPOSE tri-* skill for tasks that don't fit the specialized siblings. Use when the user asks for tri-dispatch, triple dispatch, three-way comparison of model approaches, says "send this to three models and show me their takes", or wants to see divergent solutions before picking one. Worth the extra cost when: the task is exploratory or greenfield (design, architecture, new implementation, optimization), the user wants to compare model strengths on a novel problem, or is deliberately seeking diversity of approach before committing. Do NOT use for code review of existing code (use tri-review), debugging a specific failure (use tri-debug), or security audits (use tri-security). Do NOT use when the user already knows which approach they want — tri-dispatch is for exploration, not execution.
 ---
 
 # Tri-Dispatch

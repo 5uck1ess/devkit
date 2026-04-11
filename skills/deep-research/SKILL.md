@@ -1,6 +1,6 @@
 ---
 name: deep-research
-description: Deep research with Analysis of Competing Hypotheses — use when asked to do deep research, deeply investigate, validate claims, or when correctness is critical and the user wants rigorous analysis with disconfirmation testing.
+description: High-stakes research with Analysis of Competing Hypotheses, disconfirmation testing, evidence matrices, and sensitivity checks (~400k token budget) — use when the user needs to be SURE, not just well-informed. Trigger phrases include "deep research", "deeply investigate", "validate that X", "prove/disprove", "we're making a big decision", "correctness is critical", "I need to trust this answer", or "actively try to disprove this". Worth the extra cost when: the wrong answer has real consequences (architecture commitment, vendor choice, security claim, compliance question, public-facing claim), the user has already seen shallow answers and doesn't trust them, they explicitly ask for rigor or disconfirmation, or they're defending a position to stakeholders. Do NOT use for exploratory "what's out there" questions (use research), routine library comparisons where a single good answer suffices (use research), or quick factual lookups. This is the bias-catching, evidence-calibrating tier — overkill for casual exploration but essential when you can't afford to be wrong.
 ---
 
 # Deep Research
