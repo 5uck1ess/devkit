@@ -146,7 +146,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			session: lib.SessionState{
 				Status:      "done",
 				StepType:    "command",
-				Enforce:     "hard",
+				StepEnforce: lib.EnforceHard,
 				CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
@@ -159,7 +159,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			session: lib.SessionState{
 				Status:      "running",
 				StepType:    "command",
-				Enforce:     "hard",
+				StepEnforce: lib.EnforceHard,
 				CurrentStep: "build",
 				Workflow:    "feature",
 				TotalSteps:  3,
@@ -173,7 +173,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            `{"tool_name":"Write"}`,
 			wantExit:         2,
@@ -184,7 +184,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"devkit_advance"}`,
 			wantExit: 0,
@@ -194,7 +194,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"mcp__devkit__advance"}`,
 			wantExit: 0,
@@ -204,7 +204,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"TodoWrite"}`,
 			wantExit: 0,
@@ -218,7 +218,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"Skill"}`,
 			wantExit: 0,
@@ -228,7 +228,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "soft", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceSoft, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
 			wantExit: 0,
@@ -238,7 +238,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Read"}`,
 			wantExit: 0,
@@ -248,7 +248,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Grep"}`,
 			wantExit: 0,
@@ -258,7 +258,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 				Workflow: "tri-review", TotalSteps: 6,
 			},
 			stdin:            `{"tool_name":"Bash"}`,
@@ -270,7 +270,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 				Workflow: "tri-review", TotalSteps: 6,
 			},
 			stdin:            `{"tool_name":"Write"}`,
@@ -282,7 +282,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:            `{"tool_name":"Task"}`,
 			wantExit:         2,
@@ -293,7 +293,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"devkit_advance"}`,
 			wantExit: 0,
@@ -303,7 +303,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "soft", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceSoft, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
 			wantExit: 0,
@@ -313,23 +313,26 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "parallel", Enforce: "hard", CurrentStep: "fanout",
+				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceHard, CurrentStep: "fanout",
 			},
 			stdin:    `{"tool_name":"Task"}`,
 			wantExit: 0,
 		},
 		{
-			// The shell hook relied on python .get('enforce','hard')
-			// to catch this silent-degrade case. Mirrored via
-			// effectiveEnforce().
-			name:       "command step missing enforce → block (default hard)",
+			// Session files with a missing/empty enforce field are now
+			// rejected at ReadSessionJSON time by SessionState.UnmarshalJSON
+			// — the guard never gets a chance to fall through to a
+			// silent default. Exits with a "cannot read session state"
+			// error rather than the command-step "BLOCKED" message.
+			name:       "session missing enforce field → parse-reject",
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
 				Status: "running", StepType: "command", CurrentStep: "build",
 			},
-			stdin:    `{"tool_name":"Bash"}`,
-			wantExit: 2,
+			stdin:            `{"tool_name":"Bash"}`,
+			wantExit:         2,
+			wantStderrSubstr: "cannot read session state",
 		},
 		{
 			// Empty step_type is non-command and non-prompt, so the
@@ -339,7 +342,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
 			wantExit: 0,
@@ -350,7 +353,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    "",
 			toolFlag: "Bash",
@@ -364,7 +367,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"mcp__plugin_devkit_devkit-engine__devkit_advance"}`,
 			wantExit: 0,
@@ -374,7 +377,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Glob"}`,
 			wantExit: 0,
@@ -384,7 +387,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Edit"}`,
 			wantExit: 2,
@@ -394,7 +397,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"WebFetch"}`,
 			wantExit: 2,
@@ -404,7 +407,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "parallel", Enforce: "hard", CurrentStep: "fanout",
+				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceHard, CurrentStep: "fanout",
 			},
 			stdin:    `{"tool_name":"Write"}`,
 			wantExit: 0,
@@ -417,7 +420,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "parallel", Enforce: "soft", CurrentStep: "fanout",
+				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceSoft, CurrentStep: "fanout",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
 			wantExit: 0,
@@ -430,7 +433,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"TodoWrite"}`,
 			wantExit: 0,
@@ -443,7 +446,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"Skill"}`,
 			wantExit: 0,
@@ -455,7 +458,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "soft", CurrentStep: "analyse",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceSoft, CurrentStep: "analyse",
 				Workflow: "feature", TotalSteps: 4,
 			},
 			stdin:            `{"tool_name":"Write"}`,
@@ -470,7 +473,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "unknown",
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "unknown",
 				Workflow: "mystery", TotalSteps: 0,
 			},
 			stdin:            `{"tool_name":"Bash"}`,
@@ -487,7 +490,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            `{"tool_name":"mcp__plugin_evil_server__devkit_masquerade"}`,
 			wantExit:         2,
@@ -500,7 +503,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"mcp__devkit__advance"}`,
 			wantExit: 0,
@@ -515,7 +518,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            `{"tool_name":"mcp__plugin_devkit_other_server__probe"}`,
 			wantExit:         2,
@@ -529,7 +532,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "RUNNING", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "RUNNING", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:    `{"tool_name":"Bash"}`,
 			wantExit: 0,
@@ -542,7 +545,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            `{"tool_name":"devkit_advance"}`,
 			toolFlag:         "Bash",
@@ -557,7 +560,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            ``,
 			wantExit:         2,
@@ -572,7 +575,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			dataDir:    true,
 			hasSession: true,
 			session: lib.SessionState{
-				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 			},
 			stdin:            `{not json`,
 			wantExit:         2,
@@ -663,7 +666,7 @@ func TestGuardStaleTTLHonourLongerOverride(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("DEVKIT_SESSION_STALE_TTL_SECONDS", "7200") // 2h
 	writeSession(t, dir, lib.SessionState{
-		Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+		Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 		Workflow: "feature", TotalSteps: 2,
 		UpdatedAt: time.Now().Add(-45 * time.Minute),
 	})
@@ -734,7 +737,7 @@ func TestGuardStaleSessionPromptSoft(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Now().Add(-2 * time.Hour)
 	writeSession(t, dir, lib.SessionState{
-		Status: "running", StepType: "prompt", Enforce: "soft", CurrentStep: "analyse",
+		Status: "running", StepType: "prompt", StepEnforce: lib.EnforceSoft, CurrentStep: "analyse",
 		Workflow: "tri-review", TotalSteps: 6,
 		UpdatedAt: old, StartedAt: old,
 	})
@@ -761,6 +764,28 @@ func TestGuardPreToolUseCorruptSession(t *testing.T) {
 	}
 }
 
+// TestGuardPreToolUseMissingEnforceField locks in the #81 fix end-to-end:
+// a stale session.json missing the enforce field must fail closed through
+// SessionState.UnmarshalJSON's rejection, not silently fall through to the
+// pre-PR guard.go `effectiveEnforce` empty-default. Without this test, a
+// refactor that swallowed the parse error between ReadSessionJSON and
+// runPreToolGuard would silently disarm enforcement on stale sessions.
+func TestGuardPreToolUseMissingEnforceField(t *testing.T) {
+	dir := t.TempDir()
+	writeSessionRaw(t, dir, []byte(`{"id":"x","status":"running","step_type":"command","workflow":"test","current_step":"build"}`))
+	env := newGuardTestEnv(t, `{"tool_name":"Bash"}`, "", false, dir)
+	runGuard(guardCmd, nil)
+	if env.exit != 2 {
+		t.Fatalf("missing enforce should fail closed: exit=%d stderr=%s", env.exit, env.stderr.String())
+	}
+	if !strings.Contains(env.stderr.String(), "BLOCKED") {
+		t.Fatalf("expected BLOCKED diagnostic, got: %s", env.stderr.String())
+	}
+	if !strings.Contains(env.stderr.String(), "cannot read session state") {
+		t.Fatalf("expected parse-reject path (cannot read session state), got: %s", env.stderr.String())
+	}
+}
+
 func TestGuardPreToolUseStaleSession(t *testing.T) {
 	dir := t.TempDir()
 	// Stale session: UpdatedAt older than TTL. This is the orphan
@@ -770,7 +795,7 @@ func TestGuardPreToolUseStaleSession(t *testing.T) {
 	writeSession(t, dir, lib.SessionState{
 		Status:      "running",
 		StepType:    "command",
-		Enforce:     "hard",
+		StepEnforce: lib.EnforceHard,
 		CurrentStep: "build",
 		Workflow:    "feature",
 		UpdatedAt:   old,
@@ -792,7 +817,7 @@ func TestGuardPreToolUseEnvTTLOverride(t *testing.T) {
 	// Mirrors the DEVKIT_SESSION_STALE_TTL_SECONDS hook-era knob.
 	t.Setenv("DEVKIT_SESSION_STALE_TTL_SECONDS", "1")
 	writeSession(t, dir, lib.SessionState{
-		Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+		Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
 		UpdatedAt: time.Now().Add(-2 * time.Second),
 	})
 	env := newGuardTestEnv(t, `{"tool_name":"Bash"}`, "", false, dir)
@@ -828,6 +853,7 @@ func TestGuardStopHook(t *testing.T) {
 			hasSession: true,
 			session: lib.SessionState{
 				Status: "running", Workflow: "test", TotalSteps: 5, CurrentIndex: 2,
+				StepEnforce: lib.EnforceHard,
 			},
 			wantDecision: "block",
 			wantReason:   "3 steps remaining",
@@ -838,6 +864,7 @@ func TestGuardStopHook(t *testing.T) {
 			hasSession: true,
 			session: lib.SessionState{
 				Status: "done", Workflow: "test", TotalSteps: 5, CurrentIndex: 4,
+				StepEnforce: lib.EnforceHard,
 			},
 			wantDecision: "approve",
 		},
@@ -847,6 +874,7 @@ func TestGuardStopHook(t *testing.T) {
 			hasSession: true,
 			session: lib.SessionState{
 				Status: "failed", Workflow: "test", TotalSteps: 5, CurrentIndex: 2,
+				StepEnforce: lib.EnforceHard,
 			},
 			wantDecision: "approve",
 		},
@@ -854,6 +882,19 @@ func TestGuardStopHook(t *testing.T) {
 			name:         "corrupt JSON → block (fail closed)",
 			dataDir:      true,
 			rawSession:   []byte("not json"),
+			wantDecision: "block",
+			wantReason:   "unreadable",
+		},
+		{
+			// A stale session.json without an enforce field must flow
+			// through SessionState.UnmarshalJSON's rejection and fail
+			// closed in the stop hook too — not just the pre-tool guard.
+			// Without this test, a refactor that swallowed the parse
+			// error anywhere between ReadSessionJSON and runStopGuard
+			// would silently disarm enforcement on stale sessions.
+			name:         "missing enforce field → block (parse-reject through stop hook)",
+			dataDir:      true,
+			rawSession:   []byte(`{"id":"x","status":"running","workflow":"test"}`),
 			wantDecision: "block",
 			wantReason:   "unreadable",
 		},
@@ -899,10 +940,11 @@ func TestGuardStopHookStaleSession(t *testing.T) {
 	dir := t.TempDir()
 	old := time.Now().Add(-2 * time.Hour)
 	writeSession(t, dir, lib.SessionState{
-		Status:    "running",
-		Workflow:  "test",
-		UpdatedAt: old,
-		StartedAt: old,
+		Status:      "running",
+		Workflow:    "test",
+		StepEnforce: lib.EnforceHard,
+		UpdatedAt:   old,
+		StartedAt:   old,
 	})
 	env := newGuardTestEnv(t, "", "", true, dir)
 	runGuard(guardCmd, nil)

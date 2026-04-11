@@ -1459,17 +1459,17 @@ steps:
 func TestEffectiveEnforce(t *testing.T) {
 	tests := []struct {
 		name      string
-		wfField   string
-		stepField string
-		want      string
+		wfField   EnforceMode
+		stepField EnforceMode
+		want      EnforceMode
 	}{
-		{"step soft overrides wf hard", "hard", "soft", "soft"},
-		{"step hard overrides wf soft", "soft", "hard", "hard"},
-		{"empty step inherits wf soft", "soft", "", "soft"},
-		{"empty step inherits wf hard", "hard", "", "hard"},
-		{"both zero → default hard", "", "", "hard"},
-		{"zero wf + soft step → soft", "", "soft", "soft"},
-		{"zero wf + hard step → hard", "", "hard", "hard"},
+		{"step soft overrides wf hard", EnforceHard, EnforceSoft, EnforceSoft},
+		{"step hard overrides wf soft", EnforceSoft, EnforceHard, EnforceHard},
+		{"empty step inherits wf soft", EnforceSoft, EnforceInherit, EnforceSoft},
+		{"empty step inherits wf hard", EnforceHard, EnforceInherit, EnforceHard},
+		{"both zero → default hard", EnforceInherit, EnforceInherit, EnforceHard},
+		{"zero wf + soft step → soft", EnforceInherit, EnforceSoft, EnforceSoft},
+		{"zero wf + hard step → hard", EnforceInherit, EnforceHard, EnforceHard},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

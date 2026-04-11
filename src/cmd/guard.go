@@ -201,17 +201,6 @@ func sessionFileExists(dataDir string) bool {
 	return err == nil
 }
 
-// effectiveEnforce defaults an empty Enforce field to "hard". The shell
-// version relied on python3 .get('enforce','hard'); the fixture matrix
-// explicitly asserts that a command step with no enforce field still
-// blocks. See hooks_test.sh "missing enforce field" case.
-func effectiveEnforce(s *lib.SessionState) string {
-	if s.Enforce == "" {
-		return "hard"
-	}
-	return s.Enforce
-}
-
 // isDevkitMCPTool identifies tools that are part of the devkit MCP
 // server's own surface — and therefore safe to allow during a command
 // or prompt step because they drive the engine, not the agent.
@@ -319,7 +308,10 @@ func runPreToolGuard() {
 		}
 		tool = t
 	}
-	enforce := effectiveEnforce(state)
+	// state.StepEnforce is guaranteed valid ("hard" or "soft") by
+	// SessionState.UnmarshalJSON — ReadSessionJSON would have rejected
+	// a stale/corrupt session with a missing or invalid enforce field.
+	enforce := state.StepEnforce
 
 	// attemptedTool is what we print in veto diagnostics. An empty
 	// tool name means we failed to parse it from stdin (or got an
@@ -332,7 +324,7 @@ func runPreToolGuard() {
 
 	switch state.StepType {
 	case "command":
-		if enforce != "hard" {
+		if enforce != lib.EnforceHard {
 			guardExit(0)
 			return
 		}
@@ -347,7 +339,7 @@ func runPreToolGuard() {
 		return
 
 	case "prompt":
-		if enforce == "hard" {
+		if enforce == lib.EnforceHard {
 			if isDevkitMCPTool(tool) {
 				guardExit(0)
 				return
@@ -444,7 +436,7 @@ func runStopGuard() {
 		// state == nil handles the TOCTOU where the file was removed
 		// between sessionFileExists and ReadSessionJSON.
 		// Stop is enforce-agnostic — any running workflow blocks Stop
-		// regardless of soft/hard — so we don't consult effectiveEnforce.
+		// regardless of soft/hard — so we don't branch on state.StepEnforce.
 		writeStopVerdict(stopVerdict{Decision: "approve"})
 		guardExit(0)
 		return

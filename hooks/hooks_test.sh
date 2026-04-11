@@ -551,12 +551,15 @@ else
   fail "devkit-guard: corrupt JSON (exit $corrupt_exit, want 2)"
 fi
 
-# Valid JSON but missing enforce field — Python .get() returns default
-# "hard", so a command step with no enforce must still block like hard.
-# This catches the "schema drift silently degrades enforcement" class.
+# Valid JSON but missing enforce field — used to silently default to
+# "hard" via Python .get() / effectiveEnforce(). Post-#81 the Go binary
+# rejects the parse at SessionState.UnmarshalJSON and the guard fails
+# closed via the "cannot read session state" path. Exit is still 2 so
+# the contract (missing enforce → block) is preserved, but via type-
+# level rejection instead of silent coercion.
 run_guard '{"status":"running","step_type":"command","current_step":"build"}' \
   '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
-  2 "command step with missing enforce field → block (default hard)"
+  2 "command step with missing enforce field → block (parse-reject)"
 
 # Valid JSON missing step_type — should default to empty string, which
 # is NOT "command", so fall through to allow. This verifies the guard
@@ -608,16 +611,19 @@ else
   fail "devkit-stop-guard: no session file (got: $out)"
 fi
 
-# Running workflow → block
-run_stop_guard '{"status":"running","workflow":"test","total_steps":5,"current_index":2}' \
+# Running workflow → block. Fixtures must include enforce: the Go
+# binary's SessionState.UnmarshalJSON rejects session.json with a
+# missing/empty enforce at read time (closes #81 silent-soft fall-
+# through), so the stop hook fails closed before even reading status.
+run_stop_guard '{"status":"running","workflow":"test","enforce":"hard","total_steps":5,"current_index":2}' \
   "block" "running workflow → block"
 
 # Done workflow → approve
-run_stop_guard '{"status":"done","workflow":"test","total_steps":5,"current_index":4}' \
+run_stop_guard '{"status":"done","workflow":"test","enforce":"hard","total_steps":5,"current_index":4}' \
   "approve" "done workflow → approve"
 
 # Failed workflow → approve (user should see the failure, not be stuck in a loop)
-run_stop_guard '{"status":"failed","workflow":"test","total_steps":5,"current_index":2}' \
+run_stop_guard '{"status":"failed","workflow":"test","enforce":"hard","total_steps":5,"current_index":2}' \
   "approve" "failed workflow → approve"
 
 # Corrupt JSON → block (fail closed)
