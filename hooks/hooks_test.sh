@@ -1,5 +1,5 @@
 #!/bin/bash
-# Smoke tests for all 10 registered hooks.
+# Smoke tests for all 12 registered hook scripts.
 # Validates: (1) script exits 0, (2) output is valid JSON when expected,
 # (3) correct contract schema for each lifecycle event.
 #
