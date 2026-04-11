@@ -98,27 +98,34 @@ run_hook "rtk-rewrite.sh" \
   "rtk-rewrite: pass through" false
 
 # rtk-rewrite.sh — exit-code protocol coverage via a PATH shim.
-# rtk's documented contract (from the binary):
-#   0 + stdout  rewrite found, auto-allow
-#   1           no RTK equivalent → pass through
-#   2           deny rule matched → pass through (CC handles natively)
-#   3 + stdout  ask rule matched → rewrite with permissionDecision=ask
+# Contract:
+#   rtk rc 0 → devkit decision "allow" + rewrite
+#   rtk rc 3 → devkit decision "allow" + rewrite   (devkit suppresses rtk's ask;
+#                                                   safety-check.sh already
+#                                                   guards destructive ops earlier
+#                                                   in the PreToolUse chain)
+#   rtk rc 1 → pass through (no rewrite available)
+#   rtk rc 2 → pass through (rtk deny — CC's native safety handles it)
+#   rtk other → pass through (fail-open)
+#   malformed JSON stdin → no-op without crashing the hook
 # The shim lets us test each branch deterministically without depending on
 # the real rtk version's rule set.
 rtk_shim_dir=$(mktemp -d)
 GUARD_TMPS+=("$rtk_shim_dir")
 cat > "$rtk_shim_dir/rtk" <<'SHIM'
 #!/bin/sh
-# Fake rtk: first arg selects mode via $RTK_SHIM_MODE.
-# Usage: RTK_SHIM_MODE=allow|ask|no-equiv|deny rtk rewrite <cmd>
+# Fake rtk: $RTK_SHIM_MODE selects the exit code + stdout behavior.
 [ "$1" = "rewrite" ] || exit 0
 shift
 case "$RTK_SHIM_MODE" in
-  allow)    printf 'rtk %s' "$*"; exit 0 ;;
-  ask)      printf 'rtk %s' "$*"; exit 3 ;;
-  no-equiv) exit 1 ;;
-  deny)     exit 2 ;;
-  *)        exit 1 ;;
+  allow)       printf 'rtk %s' "$*"; exit 0 ;;
+  ask)         printf 'rtk %s' "$*"; exit 3 ;;
+  no-equiv)    exit 1 ;;
+  deny)        exit 2 ;;
+  unknown)     printf 'rtk %s' "$*"; exit 42 ;;
+  empty-allow) exit 0 ;;
+  noop-rewrite) printf '%s' "$*"; exit 0 ;;  # rewrite equals input
+  *)           exit 1 ;;
 esac
 SHIM
 chmod +x "$rtk_shim_dir/rtk"
@@ -137,10 +144,10 @@ else
   fail "rtk-rewrite: exit 0 (got: $out)"
 fi
 
-# exit 3 → permissionDecision=ask + rewrite
+# exit 3 → STILL permissionDecision=allow + rewrite (devkit suppresses rtk's ask)
 out=$(rtk_shim_run ask '{"tool_input":{"command":"git status","description":"status"}}')
-if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="ask" and .hookSpecificOutput.updatedInput.command=="rtk git status"' >/dev/null 2>&1; then
-  pass "rtk-rewrite: exit 3 → ask + rewrite"
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="allow" and .hookSpecificOutput.updatedInput.command=="rtk git status"' >/dev/null 2>&1; then
+  pass "rtk-rewrite: exit 3 → allow + rewrite (ask suppressed)"
 else
   fail "rtk-rewrite: exit 3 (got: $out)"
 fi
@@ -161,12 +168,53 @@ else
   fail "rtk-rewrite: exit 2 should no-op (got: $out)"
 fi
 
+# Unknown exit code → fail-open pass-through
+out=$(rtk_shim_run unknown '{"tool_input":{"command":"weird","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: unknown exit code → pass through (fail-open)"
+else
+  fail "rtk-rewrite: unknown exit should no-op (got: $out)"
+fi
+
+# exit 0 but empty stdout → no-op (pins the [[ -z $REWRITTEN ]] guard)
+out=$(rtk_shim_run empty-allow '{"tool_input":{"command":"anything","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: exit 0 with empty stdout → no-op"
+else
+  fail "rtk-rewrite: empty-rewrite should no-op (got: $out)"
+fi
+
+# rewrite == input → no-op (pins the command-equality guard)
+out=$(rtk_shim_run noop-rewrite '{"tool_input":{"command":"foo bar","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: rewrite == input → no-op"
+else
+  fail "rtk-rewrite: identity rewrite should no-op (got: $out)"
+fi
+
 # Empty command → no-op
 out=$(rtk_shim_run allow '{"tool_input":{"command":"","description":""}}')
 if [[ -z "$out" ]]; then
   pass "rtk-rewrite: empty command → no-op"
 else
   fail "rtk-rewrite: empty command should no-op (got: $out)"
+fi
+
+# Malformed JSON stdin → hook must exit 0 cleanly (set -e regression test).
+# Before the `|| true` guard in rtk-rewrite.sh, `jq -r` on malformed input +
+# set -e + pipefail caused the whole hook to exit non-zero, which CC treats
+# as a blocking error. We call the hook directly (not under $()) so rc is
+# preserved, then assert rc=0 and empty stdout. Note: this suite runs under
+# `set -uo pipefail` (no -e), so we don't toggle -e here.
+PATH="$rtk_shim_dir:$PATH" RTK_SHIM_MODE=allow \
+  bash "$HOOK_DIR/rtk-rewrite.sh" > /tmp/rtk-malformed.out 2>/dev/null <<< 'not valid json {{{'
+rc=$?
+out=$(cat /tmp/rtk-malformed.out)
+rm -f /tmp/rtk-malformed.out
+if [[ "$rc" -eq 0 ]] && [[ -z "$out" ]]; then
+  pass "rtk-rewrite: malformed JSON → exit 0 silent no-op"
+else
+  fail "rtk-rewrite: malformed JSON should exit 0 silently (rc=$rc out=$out)"
 fi
 
 # pr-gate.sh — should allow non-push commands
