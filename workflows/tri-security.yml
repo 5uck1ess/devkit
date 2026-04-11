@@ -1,5 +1,6 @@
 name: Tri-Security
 description: Three-tier security audit — parallel review focused on vulnerabilities
+enforce: soft
 
 steps:
   - id: gather
