@@ -56,10 +56,19 @@ if ts:
         ts = ts[:-1] + "+00:00"
     try:
         t = datetime.datetime.fromisoformat(ts)
+        # Attach UTC if the timestamp came in naive (no tzinfo).
+        # Without this the subtraction raises TypeError and the whole
+        # python call traps, flipping the guard into fail-closed mode
+        # on any state file written by a non-Go producer.
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=datetime.timezone.utc)
         age = (datetime.datetime.now(datetime.timezone.utc) - t).total_seconds()
-        if age > ttl:
+        # >= so the hook and Go-side `time.Since < ttl` agree at exactly
+        # the TTL boundary — otherwise a 30-min-old session is "fresh"
+        # to the hook but reclaimed by devkit_start.
+        if age >= ttl:
             stale = "1"
-    except ValueError:
+    except (ValueError, TypeError):
         pass  # unparseable timestamp — treat as fresh, fail-safe
 
 print("\t".join([
@@ -73,6 +82,16 @@ print("\t".join([
     stale,
 ]))
 ' "$session_file" "$DEVKIT_SESSION_STALE_TTL_SECONDS" 2>/dev/null) || return 1
+
+  # Guard against a python3 refactor dropping a field: require exactly
+  # 8 tab-separated fields, else fail-closed so a silent truncation
+  # can't let SESSION_STALE default-false through and start enforcing
+  # against orphaned sessions.
+  local field_count
+  field_count=$(awk -F'\t' '{print NF}' <<< "$parsed")
+  if [[ "$field_count" != "8" ]]; then
+    return 1
+  fi
 
   IFS=$'\t' read -r \
     SESSION_STATUS \

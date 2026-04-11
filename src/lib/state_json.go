@@ -71,6 +71,9 @@ func withSessionLock(dataDir string, fn func() error) error {
 }
 
 // WriteSessionJSON atomically writes session state under the session lock.
+// Side effect: mutates state.UpdatedAt to time.Now() before serialising.
+// Callers holding the struct for later comparison or retry must account
+// for this — take a copy first if the original timestamp matters.
 func WriteSessionJSON(dataDir string, state *SessionState) error {
 	return withSessionLock(dataDir, func() error {
 		return writeSessionJSONLocked(dataDir, state)

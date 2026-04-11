@@ -308,34 +308,9 @@ steps:
     prompt: Analyse {{input}} and identify issues.
 `)
 
-	// Pre-seed an orphaned session: status=running but UpdatedAt far
-	// enough in the past that the TTL check fires. The write path
-	// bumps UpdatedAt to now, so we have to rewrite the raw file
-	// after to backdate it.
-	stale := &lib.SessionState{
-		ID:        "stale1234567",
-		Workflow:  "review",
-		Status:    "running",
-		StartedAt: time.Now().Add(-2 * time.Hour),
-		UpdatedAt: time.Now().Add(-2 * time.Hour),
-		Outputs:   map[string]string{},
-	}
-	if err := lib.WriteSessionJSON(dataDir, stale); err != nil {
-		t.Fatalf("seed stale session: %v", err)
-	}
-	// WriteSessionJSON bumped UpdatedAt to now — rewrite via Update
-	// to force the stale timestamp back onto disk.
-	if _, err := lib.UpdateSessionJSON(dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
-		cur.UpdatedAt = time.Now().Add(-2 * time.Hour)
-		cur.StartedAt = time.Now().Add(-2 * time.Hour)
-		return cur, nil
-	}); err != nil {
-		t.Fatalf("backdate: %v", err)
-	}
-	// And writeSessionJSONLocked will have bumped it again, so do a
-	// raw marshal bypassing the helper. Instead: use os.Chtimes-style
-	// trick isn't enough since we need the field inside the JSON.
-	// Easiest: write the JSON file directly.
+	// WriteSessionJSON / UpdateSessionJSON always bump UpdatedAt to
+	// time.Now(), so the only way to land a past timestamp on disk is
+	// to write the raw JSON file directly.
 	rawPath := filepath.Join(dataDir, "session.json")
 	raw := []byte(`{
   "id": "stale1234567",
@@ -376,6 +351,16 @@ steps:
 		t.Fatalf("expected reclaim to succeed, got error: %s", tc.Text)
 	}
 
+	// Assert the agent-visible reclaim notice is present — without
+	// this the agent has no signal that its prior session was wiped.
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "reclaimed stale session stale1234567") {
+		t.Errorf("expected reclaim notice in response, got:\n%s", tc.Text)
+	}
+	if !strings.Contains(tc.Text, "Outputs from the previous session were discarded") {
+		t.Errorf("expected discarded-outputs warning in response, got:\n%s", tc.Text)
+	}
+
 	state, err := lib.ReadSessionJSON(dataDir)
 	if err != nil || state == nil {
 		t.Fatalf("read reclaimed session: %v", err)
@@ -388,10 +373,11 @@ steps:
 	}
 }
 
-// TestStartRejectsFreshSession is the inverse: TestStartAlreadyRunning
-// covers the case where an in-progress session has a fresh UpdatedAt.
-// This test adds the explicit guarantee that the TTL cutoff is real —
-// a session 29 minutes old must still reject, only >30min reclaims.
+// TestStartRejectsFreshSession asserts the TTL cutoff is real — a
+// session 29 minutes old must still reject, only sessions at or past
+// the 30 minute sessionStaleTTL get reclaimed. Error message is
+// checked so a regression where IsError stays true for an unrelated
+// reason (e.g. workflow not found) doesn't pass this test silently.
 func TestStartRejectsFreshSession(t *testing.T) {
 	wfDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -453,6 +439,10 @@ steps:
 	}
 	if !result.IsError {
 		t.Fatal("expected IsError=true for fresh session below TTL")
+	}
+	tc, _ := result.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "already running") {
+		t.Errorf("expected 'already running' TTL-enforcement error, got: %s", tc.Text)
 	}
 }
 

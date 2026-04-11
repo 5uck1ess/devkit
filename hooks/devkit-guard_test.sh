@@ -150,9 +150,73 @@ run_case "prompt-soft allows Bash" \
 run_case "parallel allows Write" \
   "$(fresh_session parallel hard)" "Write" 0 ""
 
-# Stale session → allow + warn, regardless of step type.
+# Stale session → allow + warn, regardless of step type. The stale
+# branch fires BEFORE the step-type dispatch, so flipping the order
+# would regress these cases.
 run_case "stale-prompt-hard allows Write (orphaned)" \
   "$(stale_session)" "Write" 0 "orphaned"
+
+stale_session_with() {
+  # Args: step_type enforce
+  printf '{
+  "id": "abc123",
+  "workflow": "tri-review",
+  "current_step": "gather",
+  "current_index": 0,
+  "total_steps": 6,
+  "step_type": "%s",
+  "enforce": "%s",
+  "status": "running",
+  "started_at": "%s",
+  "updated_at": "%s"
+}' "$1" "$2" "$STALE_ISO" "$STALE_ISO"
+}
+
+run_case "stale-command-hard allows Bash (orphaned)" \
+  "$(stale_session_with command hard)" "Bash" 0 "orphaned"
+run_case "stale-prompt-soft allows Write (orphaned)" \
+  "$(stale_session_with prompt soft)" "Write" 0 "orphaned"
+
+# Backward-compat: session with only started_at (no updated_at) —
+# the parser falls through to started_at for pre-UpdatedAt binaries.
+run_case "legacy-session (no updated_at) treated as fresh when recent" \
+  "$(printf '{
+  "id": "legacy1",
+  "workflow": "tri-review",
+  "current_step": "gather",
+  "current_index": 0,
+  "total_steps": 6,
+  "step_type": "prompt",
+  "enforce": "hard",
+  "status": "running",
+  "started_at": "%s"
+}' "$NOW_ISO")" "Write" 2 "BLOCKED"
+
+# Corrupt JSON → fail-closed exit 2. Exercises the new code path on
+# the shared helper; the legacy hooks_test.sh only covered the old
+# inline parser.
+corrupt_tmp=$(mktemp -d)
+printf '{this is not json' > "$corrupt_tmp/session.json"
+set +e
+CLAUDE_PLUGIN_DATA="$corrupt_tmp" output=$(printf '{"tool_name":"Bash"}' | bash "$GUARD" 2>&1)
+corrupt_exit=$?
+set -e
+if [[ "$corrupt_exit" == "2" && "$output" == *"Cannot parse session state"* ]]; then
+  PASS=$((PASS + 1))
+  printf '  PASS  corrupt JSON fails closed with diagnostic\n'
+else
+  FAIL=$((FAIL + 1))
+  printf '  FAIL  corrupt JSON fails closed (exit=%s output=%s)\n' "$corrupt_exit" "$output"
+fi
+rm -rf "$corrupt_tmp"
+
+# C1 regression guard: the devkit MCP allowlist must be narrow enough
+# not to admit a third-party MCP tool whose name happens to contain
+# "devkit". Use a plausible-looking foreign tool name.
+run_case "prompt-hard blocks foreign devkit-like mcp" \
+  "$(fresh_session prompt hard)" "mcp__other__my_devkit_plugin" 2 "BLOCKED"
+run_case "prompt-hard allows real devkit-engine mcp" \
+  "$(fresh_session prompt hard)" "mcp__plugin_devkit_devkit-engine__devkit_advance" 0 ""
 
 # --- Report ---------------------------------------------------------------
 

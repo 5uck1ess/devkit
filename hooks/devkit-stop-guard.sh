@@ -55,11 +55,19 @@ WF="${SESSION_WORKFLOW:-unknown}"
 # Emit the block verdict via python3 json.dumps so the reason string is
 # escaped safely — workflow names and step IDs flow from workflow YAML
 # and could theoretically contain characters that need escaping.
-python3 -c '
+# Fail-closed fallback: if python3 crashes (OOM, broken pipe, PATH race)
+# after parse_session_fields already succeeded, emit a plain-ASCII block
+# verdict manually so Claude Code still sees a decision — without this
+# the script would exit under `set -e` and the Stop hook behaviour
+# becomes undefined.
+if ! python3 -c '
 import json, sys
 print(json.dumps({
     "decision": "block",
     "reason": f"Workflow {sys.argv[1]} incomplete — {sys.argv[2]} steps remaining. Call devkit_advance to continue."
 }))
-' "$WF" "$REMAINING"
+' "$WF" "$REMAINING" 2>/dev/null; then
+  printf 'devkit-stop-guard: verdict emit failed; falling back to manual JSON\n' >&2
+  printf '{"decision":"block","reason":"devkit workflow incomplete — call devkit_advance to continue"}'
+fi
 exit 0

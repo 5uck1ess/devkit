@@ -8,9 +8,9 @@ set -euo pipefail
 # Policy matrix:
 #   step_type=command, enforce=hard → allow only devkit MCP + TodoWrite
 #                                     (engine runs the command, not Claude)
-#   step_type=prompt,  enforce=hard → allow evidence-gathering + devkit MCP
-#                                     (Read/Grep/Glob/TodoWrite) — force
-#                                     the agent to advance before any
+#   step_type=prompt,  enforce=hard → allow Read/Grep/Glob/NotebookRead/
+#                                     TodoWrite + devkit MCP. Forces the
+#                                     agent to advance before any
 #                                     write/bash/dispatch. Closes issue #63
 #                                     drift hole.
 #   step_type=prompt,  enforce=soft → allow everything, emit stderr nudge
@@ -56,7 +56,13 @@ fi
 
 # Read tool name from stdin. Matches PreToolUse payload format.
 INPUT=$(cat)
-TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null || echo "")
+TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null) || {
+  # Malformed payload — surface a diagnostic so the transcript shows
+  # why the next veto lists an empty tool name, instead of letting the
+  # BLOCKED message say "(attempted tool: )" with no hint.
+  printf 'devkit-guard: could not parse tool name from PreToolUse payload (python3 or JSON error)\n' >&2
+  TOOL_NAME=""
+}
 
 # Build a progress label for veto messages so the agent always sees
 # workflow + position without another devkit_status round trip.
@@ -73,7 +79,7 @@ step_label() {
 # workflow. Everything else is blocked, including future tools.
 if [[ "$SESSION_STEP_TYPE" == "command" && "$SESSION_ENFORCE" == "hard" ]]; then
   case "$TOOL_NAME" in
-    mcp__*devkit*|devkit_advance|devkit_status|devkit_list|devkit_start)
+    mcp__*devkit-engine*|mcp__devkit__*|devkit_advance|devkit_status|devkit_list|devkit_start)
       exit 0
       ;;
     TodoWrite)
@@ -92,7 +98,7 @@ fi
 # devkit_advance. See issue #63.
 if [[ "$SESSION_STEP_TYPE" == "prompt" && "$SESSION_ENFORCE" == "hard" ]]; then
   case "$TOOL_NAME" in
-    mcp__*devkit*|devkit_advance|devkit_status|devkit_list|devkit_start)
+    mcp__*devkit-engine*|mcp__devkit__*|devkit_advance|devkit_status|devkit_list|devkit_start)
       exit 0
       ;;
     Read|Grep|Glob|TodoWrite|NotebookRead)
