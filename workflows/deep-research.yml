@@ -8,6 +8,7 @@ budget:
 steps:
   - id: clarify
     model: smart
+    enforce: soft  # AskUserQuestion
     prompt: |
       The user wants to deep-research: {{input}}
 
@@ -21,6 +22,7 @@ steps:
 
   - id: perspectives
     model: smart
+    enforce: soft  # WebSearch + WebFetch via Jina
     prompt: |
       Research question: {{clarify}}
 
@@ -58,6 +60,7 @@ steps:
 
   - id: search-1
     model: general
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 1-2 from this decomposition:
       {{decompose}}
@@ -66,6 +69,7 @@ steps:
 
   - id: search-2
     model: general
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 3-4 from this decomposition:
       {{decompose}}
@@ -74,6 +78,7 @@ steps:
 
   - id: search-3
     model: general
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 5+ from this decomposition:
       {{decompose}}
@@ -86,6 +91,7 @@ steps:
 
   - id: extract-claims
     model: smart
+    enforce: soft  # WebFetch via Jina Reader
     prompt: |
       Research question: {{clarify}}
 
@@ -127,6 +133,7 @@ steps:
 
   - id: disconfirm
     model: smart
+    enforce: soft  # WebSearch + WebFetch for disconfirming evidence
     prompt: |
       Research question: {{clarify}}
       Hypotheses: {{hypotheses}}
@@ -176,6 +183,7 @@ steps:
 
   - id: self-critique
     model: smart
+    enforce: soft  # may do ONE targeted WebSearch to fill gaps
     prompt: |
       Research question: {{clarify}}
       Evidence matrix and sensitivity: {{evidence-matrix}}

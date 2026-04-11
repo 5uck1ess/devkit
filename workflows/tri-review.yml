@@ -1,10 +1,10 @@
 name: Tri-Review
 description: Three-tier model review — reviews run in parallel, then consolidated
-enforce: soft
 
 steps:
   - id: gather
     model: fast
+    enforce: soft  # runs git diff / file reads to collect the diff
     prompt: |
       Collect the code or diff to review: {{input}}
 

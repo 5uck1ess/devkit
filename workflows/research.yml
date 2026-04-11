@@ -8,6 +8,7 @@ budget:
 steps:
   - id: clarify
     model: smart
+    enforce: soft  # uses AskUserQuestion
     prompt: |
       The user wants to research: {{input}}
 
@@ -36,6 +37,7 @@ steps:
 
   - id: search-1
     model: general
+    enforce: soft
     prompt: |
       Execute web search for the FIRST sub-question from this decomposition:
       {{decompose}}
@@ -44,6 +46,7 @@ steps:
 
   - id: search-2
     model: general
+    enforce: soft
     prompt: |
       Execute web search for the SECOND sub-question from this decomposition:
       {{decompose}}
@@ -52,6 +55,7 @@ steps:
 
   - id: search-3
     model: fast
+    enforce: soft
     prompt: |
       Execute web search for the THIRD sub-question from this decomposition:
       {{decompose}}
@@ -63,6 +67,7 @@ steps:
 
   - id: summarize
     model: smart
+    enforce: soft  # WebFetch via Jina Reader
     prompt: |
       Research question: {{clarify}}
 
@@ -85,6 +90,7 @@ steps:
 
   - id: follow-up
     model: general
+    enforce: soft  # WebSearch + WebFetch
     prompt: |
       Research question: {{clarify}}
 

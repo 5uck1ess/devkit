@@ -4,6 +4,7 @@ description: Generate code documentation via the documenter agent — analyze co
 steps:
   - id: analyze
     model: general
+    # analyze stays hard: Read-only surface extraction.
     prompt: |
       Target: {{input}}
 
@@ -22,6 +23,7 @@ steps:
 
   - id: generate
     model: smart
+    enforce: soft  # spawns documenter agent via Task tool
     prompt: |
       Target: {{input}}
       Analysis: {{analyze}}
@@ -43,6 +45,7 @@ steps:
 
   - id: write
     model: fast
+    enforce: soft  # writes doc files to disk
     prompt: |
       Generated docs: {{generate}}
 

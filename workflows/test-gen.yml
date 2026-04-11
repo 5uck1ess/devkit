@@ -4,6 +4,7 @@ description: Generate tests for code, run them, iterate until they pass — anal
 steps:
   - id: analyze
     model: general
+    # analyze stays hard: Read-only framework detection.
     prompt: |
       Target: {{input}}
 
@@ -22,6 +23,7 @@ steps:
 
   - id: generate
     model: smart
+    enforce: soft  # spawns test-writer agent via Task tool
     prompt: |
       Target: {{input}}
       Analysis: {{analyze}}
@@ -39,6 +41,7 @@ steps:
 
   - id: run-fix
     model: general
+    enforce: soft  # runs tests + dispatches fix agents
     prompt: |
       Test files just created: {{generate}}
 

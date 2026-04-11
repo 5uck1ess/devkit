@@ -7,6 +7,7 @@ steps:
 
   - id: migrate
     model: smart
+    enforce: soft  # edits source + updates imports/references
     prompt: |
       Test baseline:
 

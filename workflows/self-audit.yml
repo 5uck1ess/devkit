@@ -20,6 +20,7 @@ steps:
 
   - id: measure-quality
     model: general
+    enforce: soft  # runs go vet, tsc, eslint, ruff, clippy
     prompt: |
       Stack detected: {{detect}}
 
@@ -33,6 +34,7 @@ steps:
 
   - id: measure-security
     model: general
+    enforce: soft  # runs govulncheck, npm audit, grep for secrets
     prompt: |
       Stack detected: {{detect}}
 
@@ -45,6 +47,7 @@ steps:
 
   - id: measure-git
     model: fast
+    enforce: soft  # runs git log / git ls-tree
     prompt: |
       Measure git health:
       - 30-day commit count

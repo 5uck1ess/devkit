@@ -55,6 +55,7 @@ steps:
 
   - id: implement
     model: smart
+    enforce: soft  # writes code + appends to scratchpad
     prompt: |
       Implementation plan:
 
@@ -76,6 +77,7 @@ steps:
 
   - id: gen-tests
     model: smart
+    enforce: soft  # creates test files
     prompt: |
       Implementation complete. The feature:
 
@@ -91,6 +93,7 @@ steps:
 
   - id: run-tests
     model: fast
+    enforce: soft  # runs project test suite
     prompt: |
       Run the full test suite (not just the new tests).
       Report which pass, which fail, and the error messages.
@@ -99,6 +102,7 @@ steps:
 
   - id: fix-tests
     model: smart
+    enforce: soft  # edits source + test files, re-runs tests
     prompt: |
       Test results:
 
@@ -118,6 +122,7 @@ steps:
 
   - id: lint
     model: fast
+    enforce: soft  # runs project linter
     prompt: |
       Run the project's linter on the changed files.
       Report any violations.
@@ -126,6 +131,7 @@ steps:
 
   - id: fix-lint
     model: smart
+    enforce: soft  # edits violations, re-runs linter
     prompt: |
       Lint violations:
 
@@ -162,6 +168,7 @@ steps:
 
   - id: final-report
     model: fast
+    enforce: soft  # deletes scratchpad file
     prompt: |
       Feature session complete. Produce a summary:
 
@@ -188,6 +195,7 @@ steps:
 
   - id: quick-fix
     model: smart
+    enforce: soft  # edits + runs linter + runs tests
     prompt: |
       This is a tiny change — no design or planning needed.
 

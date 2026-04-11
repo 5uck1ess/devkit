@@ -7,6 +7,7 @@ steps:
 
   - id: optimize
     model: smart
+    enforce: soft  # edits source to apply optimization
     prompt: |
       Performance baseline:
 

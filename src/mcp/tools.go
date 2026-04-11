@@ -160,11 +160,14 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				CurrentIndex: 0,
 				TotalSteps:   len(wf.Steps),
 				StepType:     stepType(firstStep),
-				Enforce:      wf.Enforce,
-				Branch:       wf.BranchMode,
-				Status:       "starting",
-				StartedAt:    time.Now(),
-				Outputs:      map[string]string{},
+				// SessionState.Enforce is the current step's effective
+				// enforce, re-derived on every transition so the hook
+				// always reads the mode that matches state.CurrentStep.
+				Enforce:   engine.EffectiveEnforce(*wf, firstStep),
+				Branch:    wf.BranchMode,
+				Status:    "starting",
+				StartedAt: time.Now(),
+				Outputs:   map[string]string{},
 			}, nil
 		})
 		if err != nil {
@@ -478,6 +481,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		state.CurrentStep = nextStep.ID
 		state.CurrentIndex = nextIndex
 		state.StepType = stepType(nextStep)
+		state.Enforce = engine.EffectiveEnforce(*wf, nextStep)
 		state.Busy = false
 		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
@@ -642,6 +646,10 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 
 	// Continue loop — return same step for another iteration.
 	// Clear the advance claim as part of this write (see advanceTool).
+	// state.Enforce is NOT re-derived: loop iterations stay on the same
+	// step, so the step's effective enforce does not change. If that
+	// invariant ever breaks (e.g. enforce becomes iteration-dependent),
+	// recompute here like the other transition sites do.
 	state.Busy = false
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write loop state: %v", err)), nil
@@ -665,6 +673,7 @@ func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (
 	state.CurrentStep = nextStep.ID
 	state.CurrentIndex = nextIndex
 	state.StepType = stepType(nextStep)
+	state.Enforce = engine.EffectiveEnforce(*wf, nextStep)
 	state.Busy = false
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil

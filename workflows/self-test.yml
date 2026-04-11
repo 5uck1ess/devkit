@@ -10,6 +10,7 @@ steps:
 
   - id: fix
     model: smart
+    enforce: soft  # edits code/tests to fix failures
     prompt: |
       Test output:
 
