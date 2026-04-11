@@ -5,32 +5,45 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 SEMVER  := $(shell V=$$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//'); echo "$${V:-0.0.0}")
 LDFLAGS := -s -w -X main.version=$(VERSION)
 GOFLAGS := -trimpath
-PLUGIN_JSON := $(CURDIR)/../.claude-plugin/plugin.json
+PLUGIN_JSON  := $(CURDIR)/../.claude-plugin/plugin.json
+MCPB_MANIFEST := $(CURDIR)/../mcpb/manifest.json
 
 .PHONY: build build-for build-all install install-plugin link clean test vet fmt check all sync-version
 
 all: check build
 
+# sync-version writes $(SEMVER) into both .claude-plugin/plugin.json and
+# mcpb/manifest.json when the git tag is higher than the current value.
+# Both files must track the plugin version — plugin.json is the manifest
+# Claude Code reads, mcpb/manifest.json is the bundled MCP server descriptor.
 sync-version:
 	@if ! command -v jq >/dev/null 2>&1; then \
-		echo "WARNING: jq not found, skipping plugin.json version sync"; \
-	elif [ ! -f "$(PLUGIN_JSON)" ]; then \
-		echo "WARNING: $(PLUGIN_JSON) not found, skipping version sync"; \
-	elif [ "$(SEMVER)" = "0.0.0" ]; then \
-		echo "WARNING: no git tag found, skipping plugin.json version sync"; \
-	elif ! echo "$(SEMVER)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then \
+		echo "WARNING: jq not found, skipping version sync"; \
+		exit 0; \
+	fi; \
+	if [ "$(SEMVER)" = "0.0.0" ]; then \
+		echo "WARNING: no git tag found, skipping version sync"; \
+		exit 0; \
+	fi; \
+	if ! echo "$(SEMVER)" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+'; then \
 		echo "WARNING: git tag is not valid semver ($(SEMVER)), skipping sync"; \
-	else \
-		CURRENT=$$(jq -r '.version' "$(PLUGIN_JSON)" 2>/dev/null) || \
-			{ echo "ERROR: plugin.json is not valid JSON"; exit 1; }; \
+		exit 0; \
+	fi; \
+	for target in "$(PLUGIN_JSON)" "$(MCPB_MANIFEST)"; do \
+		if [ ! -f "$$target" ]; then \
+			echo "WARNING: $$target not found, skipping"; \
+			continue; \
+		fi; \
+		CURRENT=$$(jq -r '.version' "$$target" 2>/dev/null) || \
+			{ echo "ERROR: $$target is not valid JSON"; exit 1; }; \
 		HIGHER=$$(printf '%s\n%s\n' "$$CURRENT" "$(SEMVER)" | sort -V | tail -1); \
 		if [ "$$HIGHER" = "$(SEMVER)" ] && [ "$$CURRENT" != "$(SEMVER)" ]; then \
-			jq --arg v "$(SEMVER)" '.version = $$v' "$(PLUGIN_JSON)" > "$(PLUGIN_JSON).tmp" \
-				&& mv "$(PLUGIN_JSON).tmp" "$(PLUGIN_JSON)" \
-				|| { rm -f "$(PLUGIN_JSON).tmp"; echo "ERROR: failed to sync plugin.json"; exit 1; }; \
-			echo "Synced plugin.json version: $$CURRENT -> $(SEMVER)"; \
+			jq --arg v "$(SEMVER)" '.version = $$v' "$$target" > "$$target.tmp" \
+				&& mv "$$target.tmp" "$$target" \
+				|| { rm -f "$$target.tmp"; echo "ERROR: failed to sync $$target"; exit 1; }; \
+			echo "Synced $$(basename $$target) version: $$CURRENT -> $(SEMVER)"; \
 		fi; \
-	fi
+	done
 
 build: | sync-version
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/$(BINARY) .

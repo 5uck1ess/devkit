@@ -8,7 +8,7 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 
 | Path | What | Grep here for |
 |---|---|---|
-| `skills/` | 39 SKILL.md dispatchers | Skill descriptions; what triggers each workflow |
+| `skills/` | 38 SKILL.md dispatchers | Skill descriptions; what triggers each workflow |
 | `skills/_principles.yml` | Shared cross-cutting principle config | Rules applied to every skill |
 | `skills/creating-workflows/` | Workflow YAML schema reference | Step types, `parallel:`/`branch:`/`loop:`/`expect:` semantics |
 | `workflows/` | 21 YAML workflow definitions | What each skill actually runs |
@@ -34,7 +34,7 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 | `resources/rules/` | Language coding rules | Installed via the `setup-rules` skill |
 | `.claude-plugin/plugin.json` | Plugin manifest | Name, version, `mcpServers` pointer |
 | `src/Makefile` | Build + test + version sync | `make build`, `make test`, `make check`, `make sync-version` |
-| `commands/` | Legacy (mostly empty since PR #77) | Ignore; write new work as skills |
+| `commands/references/` | 3 reference files pulled in by skills (`debug-checklists.md`, `domain-probes.md`, `stub-patterns.md`) | Shared checklist/probe/stub content; write new work as skills |
 
 ## Architectural invariants
 
