@@ -26,7 +26,7 @@ steps:
 
   - id: reproduce
     model: smart
-    enforce: soft  # "run the failing case" requires Bash
+    enforce: soft  # may run the failing case to confirm the bug
     prompt: |
       Bug report: {{input}}
 

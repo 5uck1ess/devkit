@@ -265,6 +265,11 @@ steps:
   - id: a
     prompt: x
     enforce: maybe`, `invalid enforce "maybe"`},
+		{"enforce on command step", `name: T
+steps:
+  - id: a
+    command: "echo hi"
+    enforce: soft`, "enforce on a command step"},
 	}
 
 	for _, tt := range tests {
@@ -1453,39 +1458,28 @@ steps:
 
 func TestEffectiveEnforce(t *testing.T) {
 	tests := []struct {
-		name     string
-		wfField  string
+		name      string
+		wfField   string
 		stepField string
-		want     string
+		want      string
 	}{
 		{"step soft overrides wf hard", "hard", "soft", "soft"},
 		{"step hard overrides wf soft", "soft", "hard", "hard"},
 		{"empty step inherits wf soft", "soft", "", "soft"},
 		{"empty step inherits wf hard", "hard", "", "hard"},
-		{"both empty → default hard", "", "", "hard"},
-		{"nil workflow → default hard", "", "", "hard"},
+		{"both zero → default hard", "", "", "hard"},
+		{"zero wf + soft step → soft", "", "soft", "soft"},
+		{"zero wf + hard step → hard", "", "hard", "hard"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wf := &Workflow{Enforce: tt.wfField}
-			step := &WfStep{Enforce: tt.stepField}
+			wf := Workflow{Enforce: tt.wfField}
+			step := WfStep{Enforce: tt.stepField}
 			got := EffectiveEnforce(wf, step)
 			if got != tt.want {
 				t.Errorf("EffectiveEnforce = %q, want %q", got, tt.want)
 			}
 		})
-	}
-
-	// Nil-safety: caller might pass nil for either arg during early
-	// setup paths. Should not panic; should fall through to "hard".
-	if got := EffectiveEnforce(nil, nil); got != "hard" {
-		t.Errorf("EffectiveEnforce(nil, nil) = %q, want hard", got)
-	}
-	if got := EffectiveEnforce(nil, &WfStep{Enforce: "soft"}); got != "soft" {
-		t.Errorf("EffectiveEnforce(nil, soft) = %q, want soft", got)
-	}
-	if got := EffectiveEnforce(&Workflow{Enforce: "soft"}, nil); got != "soft" {
-		t.Errorf("EffectiveEnforce(soft, nil) = %q, want soft", got)
 	}
 }
 

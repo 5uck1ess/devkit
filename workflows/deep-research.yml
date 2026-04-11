@@ -60,7 +60,7 @@ steps:
 
   - id: search-1
     model: general
-    enforce: soft  # WebSearch
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 1-2 from this decomposition:
       {{decompose}}
@@ -69,7 +69,7 @@ steps:
 
   - id: search-2
     model: general
-    enforce: soft  # WebSearch
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 3-4 from this decomposition:
       {{decompose}}
@@ -78,7 +78,7 @@ steps:
 
   - id: search-3
     model: general
-    enforce: soft  # WebSearch
+    enforce: soft
     prompt: |
       Execute web search for sub-questions 5+ from this decomposition:
       {{decompose}}

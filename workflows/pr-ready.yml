@@ -4,7 +4,7 @@ description: Full PR preparation pipeline — validate, drop unrelated changes, 
 steps:
   - id: validate
     model: fast
-    enforce: soft  # runs git status / git log
+    enforce: soft  # inspects branch state via git
     prompt: |
       Validate the current branch is ready for PR preparation:
       - Not on main/master
@@ -64,7 +64,7 @@ steps:
 
   - id: doc-check
     model: smart
-    enforce: soft  # commits docs edits when the rule is mechanical
+    enforce: soft  # edits doc files (and commits them)
     prompt: |
       Classify the diff (git diff main...HEAD) and decide which project
       docs need updating so the user does not have to ask every PR.

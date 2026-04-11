@@ -78,7 +78,7 @@ steps:
 
   - id: measure
     model: fast
-    enforce: soft  # re-runs the metric command
+    enforce: soft
     prompt: |
       Run the EXACT same metric command from the baseline to measure the result.
 

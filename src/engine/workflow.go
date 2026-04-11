@@ -44,20 +44,24 @@ type WfStep struct {
 	// Enforce overrides the workflow-level enforce for this step only.
 	// Empty inherits from Workflow.Enforce. Lets a workflow keep most
 	// prompt steps under hard (mid-step tool block) while allowing
-	// specific steps whose body needs Bash/Edit/Write/WebFetch to run
-	// under soft. The Stop-hook still blocks session end on soft steps.
-	Enforce string `yaml:"enforce"`
+	// specific steps whose body needs tools the hard mode blocks to
+	// run under soft. The Stop-hook still blocks session end on soft
+	// steps, so end-of-turn drift is still caught.
+	Enforce string `yaml:"enforce,omitempty"`
 }
 
 // EffectiveEnforce returns the enforcement mode for a step, falling back
-// to the workflow-level setting when the step does not override it.
-// Callers should use this instead of reading step.Enforce directly so
-// that the fall-through is consistent everywhere state transitions.
-func EffectiveEnforce(wf *Workflow, step *WfStep) string {
-	if step != nil && step.Enforce != "" {
+// to the workflow-level setting when the step does not override it, and
+// to "hard" when neither is set. Callers must use this instead of
+// reading step.Enforce directly so the fall-through is consistent at
+// every state transition. Takes values (not pointers) so the compiler
+// enforces that both fields exist at the call site — every current
+// caller owns concrete structs by the time they reach a transition.
+func EffectiveEnforce(wf Workflow, step WfStep) string {
+	if step.Enforce != "" {
 		return step.Enforce
 	}
-	if wf != nil && wf.Enforce != "" {
+	if wf.Enforce != "" {
 		return wf.Enforce
 	}
 	return "hard"
@@ -172,11 +176,20 @@ func validate(wf *Workflow) error {
 			return fmt.Errorf("step %q has invalid expect %q — must be \"success\" or \"failure\"", s.ID, s.Expect)
 		}
 		// Step-level enforce override: empty inherits from workflow,
-		// otherwise must be hard|soft. Command steps get guarded
-		// differently (engine runs them), but allow the field anyway
-		// for symmetry — it's a no-op there rather than a parse error.
-		if s.Enforce != "" && s.Enforce != "hard" && s.Enforce != "soft" {
-			return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
+		// otherwise must be hard|soft. Reject on command steps — the
+		// guard honors SessionState.Enforce uniformly (see guard.go's
+		// command branch), so marking a command step `soft` would let
+		// arbitrary agent tool calls slip through while the engine is
+		// executing that step. Since command steps are engine-owned
+		// and never need per-step overrides, fail loudly at parse time
+		// instead of producing a sharp edge at runtime.
+		if s.Enforce != "" {
+			if s.Enforce != "hard" && s.Enforce != "soft" {
+				return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
+			}
+			if s.Command != "" {
+				return fmt.Errorf("step %q has enforce on a command step — enforce is only meaningful for prompt steps (the engine executes command steps directly)", s.ID)
+			}
 		}
 		if s.Command != "" && s.Loop != nil {
 			return fmt.Errorf("step %q has both command and loop — these are mutually exclusive", s.ID)
