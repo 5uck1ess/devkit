@@ -10,18 +10,31 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/5uck1ess/devkit/lib"
 	"gopkg.in/yaml.v3"
+)
+
+// EnforceMode aliases lib.EnforceMode so call sites in this package
+// don't need a second import. The canonical definition lives in lib
+// because SessionState (in lib) also needs it and lib cannot import
+// engine (engine already imports lib).
+type EnforceMode = lib.EnforceMode
+
+const (
+	EnforceInherit = lib.EnforceInherit
+	EnforceHard    = lib.EnforceHard
+	EnforceSoft    = lib.EnforceSoft
 )
 
 // Workflow is the top-level YAML structure.
 type Workflow struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Budget      Budget   `yaml:"budget"`
-	Steps       []WfStep `yaml:"steps"`
-	Enforce     string   `yaml:"enforce"`    // "hard" (default) | "soft"
-	BranchMode  bool     `yaml:"branch"`     // create git branch per session
-	Principles  []string `yaml:"principles"` // principle keys to inject
+	Name        string      `yaml:"name"`
+	Description string      `yaml:"description"`
+	Budget      Budget      `yaml:"budget"`
+	Steps       []WfStep    `yaml:"steps"`
+	Enforce     EnforceMode `yaml:"enforce"`    // "hard" (default) | "soft"
+	BranchMode  bool        `yaml:"branch"`     // create git branch per session
+	Principles  []string    `yaml:"principles"` // principle keys to inject
 }
 
 // Budget controls token spending limits.
@@ -47,24 +60,27 @@ type WfStep struct {
 	// specific steps whose body needs tools the hard mode blocks to
 	// run under soft. The Stop-hook still blocks session end on soft
 	// steps, so end-of-turn drift is still caught.
-	Enforce string `yaml:"enforce,omitempty"`
+	Enforce EnforceMode `yaml:"enforce,omitempty"`
 }
 
 // EffectiveEnforce returns the enforcement mode for a step, falling back
 // to the workflow-level setting when the step does not override it, and
-// to "hard" when neither is set. Callers must use this instead of
+// to EnforceHard when neither is set. Callers must use this instead of
 // reading step.Enforce directly so the fall-through is consistent at
 // every state transition. Takes values (not pointers) so the compiler
 // enforces that both fields exist at the call site — every current
 // caller owns concrete structs by the time they reach a transition.
-func EffectiveEnforce(wf Workflow, step WfStep) string {
-	if step.Enforce != "" {
+// The return type is guaranteed concrete (never EnforceInherit), so
+// callers storing the result into SessionState.StepEnforce can rely on
+// the type-level invariant.
+func EffectiveEnforce(wf Workflow, step WfStep) EnforceMode {
+	if step.Enforce != EnforceInherit {
 		return step.Enforce
 	}
-	if wf.Enforce != "" {
+	if wf.Enforce != EnforceInherit {
 		return wf.Enforce
 	}
-	return "hard"
+	return EnforceHard
 }
 
 // Loop controls step repetition.
@@ -109,14 +125,14 @@ func Parse(data []byte) (*Workflow, error) {
 func validate(wf *Workflow) error {
 	// Apply defaults before validation so directly-constructed Workflow values
 	// (not via Parse) also get sensible defaults.
-	if wf.Enforce == "" {
-		wf.Enforce = "hard"
+	if wf.Enforce == EnforceInherit {
+		wf.Enforce = EnforceHard
 	}
 
 	if wf.Name == "" {
 		return fmt.Errorf("workflow missing name")
 	}
-	if wf.Enforce != "hard" && wf.Enforce != "soft" {
+	if !wf.Enforce.IsValid() {
 		return fmt.Errorf("workflow %q has invalid enforce %q — must be \"hard\" or \"soft\"", wf.Name, wf.Enforce)
 	}
 	if len(wf.Steps) == 0 {
@@ -177,14 +193,14 @@ func validate(wf *Workflow) error {
 		}
 		// Step-level enforce override: empty inherits from workflow,
 		// otherwise must be hard|soft. Reject on command steps — the
-		// guard honors SessionState.Enforce uniformly (see guard.go's
+		// guard honors SessionState.StepEnforce uniformly (see guard.go's
 		// command branch), so marking a command step `soft` would let
 		// arbitrary agent tool calls slip through while the engine is
 		// executing that step. Since command steps are engine-owned
 		// and never need per-step overrides, fail loudly at parse time
 		// instead of producing a sharp edge at runtime.
-		if s.Enforce != "" {
-			if s.Enforce != "hard" && s.Enforce != "soft" {
+		if s.Enforce != EnforceInherit {
+			if !s.Enforce.IsValid() {
 				return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
 			}
 			if s.Command != "" {

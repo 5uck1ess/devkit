@@ -8,20 +8,46 @@ import (
 	"time"
 )
 
+// EnforceMode is a typed enum for workflow enforcement mode. Bare string
+// was previously checked only in engine.validate(), meaning a stray
+// assignment from any package writing to SessionState could silently
+// fall through to the "soft" branch of guard.go's switch. The named
+// type concentrates the valid-value set in IsValid() and lets writers
+// at every layer signal intent at the type level. The YAML and JSON
+// wire format is unchanged — gopkg.in/yaml.v3 and encoding/json both
+// handle string-aliased types transparently. Defined here (not in
+// engine) because engine already imports lib; inverting that would
+// create a cycle. engine re-exports this type as a type alias for
+// ergonomic call sites.
+type EnforceMode string
+
+const (
+	EnforceInherit EnforceMode = ""     // step-level only — inherits workflow
+	EnforceHard    EnforceMode = "hard" // default — guard blocks tools mid-step
+	EnforceSoft    EnforceMode = "soft" // allow + nudge; Stop-hook still blocks
+)
+
+// IsValid reports whether m is a concrete enforcement mode. The empty
+// value is valid on a step override (inherit) but not on a resolved
+// SessionState.StepEnforce — callers in that context should reject "".
+func (m EnforceMode) IsValid() bool {
+	return m == EnforceHard || m == EnforceSoft
+}
+
 // SessionState is the hot-path state file read by hooks on every tool call.
 type SessionState struct {
-	ID           string    `json:"id"`
-	Workflow     string    `json:"workflow"`
-	Input        string    `json:"input"`
-	CurrentStep  string    `json:"current_step"`
-	CurrentIndex int       `json:"current_index"`
-	TotalSteps   int       `json:"total_steps"`
-	StepType     string    `json:"step_type"` // "prompt" | "command" | "parallel"
-	Enforce      string    `json:"enforce"`
-	Branch       bool      `json:"branch"`
-	BudgetUSD    float64   `json:"budget_usd"`
-	SpentUSD     float64   `json:"spent_usd"`
-	StartedAt    time.Time `json:"started_at"`
+	ID           string      `json:"id"`
+	Workflow     string      `json:"workflow"`
+	Input        string      `json:"input"`
+	CurrentStep  string      `json:"current_step"`
+	CurrentIndex int         `json:"current_index"`
+	TotalSteps   int         `json:"total_steps"`
+	StepType     string      `json:"step_type"` // "prompt" | "command" | "parallel"
+	StepEnforce  EnforceMode `json:"enforce"`
+	Branch       bool        `json:"branch"`
+	BudgetUSD    float64     `json:"budget_usd"`
+	SpentUSD     float64     `json:"spent_usd"`
+	StartedAt    time.Time   `json:"started_at"`
 	// UpdatedAt is bumped on every WriteSessionJSON. Hooks read this to
 	// detect orphaned sessions (engine crash leaves Status=running but
 	// no process is advancing) and refuse to enforce against them.
@@ -34,6 +60,26 @@ type SessionState struct {
 	Busy          bool `json:"busy,omitempty"`
 	LoopIteration int  `json:"loop_iteration,omitempty"` // current loop count for loop steps
 	LoopMax       int  `json:"loop_max,omitempty"`       // max iterations for current loop
+}
+
+// UnmarshalJSON validates StepEnforce at read time so a stale or
+// hand-edited session.json with an invalid/missing enforce value can
+// never reach guard.go's switch. Every current writer goes through
+// engine.EffectiveEnforce which returns a concrete mode, so this only
+// triggers on corrupt or pre-#80 session files — in which case we'd
+// rather fail loudly than silently fall through to "soft". Uses a
+// type alias to avoid infinite recursion.
+func (s *SessionState) UnmarshalJSON(data []byte) error {
+	type alias SessionState
+	var a alias
+	if err := json.Unmarshal(data, &a); err != nil {
+		return err
+	}
+	if !a.StepEnforce.IsValid() {
+		return fmt.Errorf("session state has invalid enforce %q — must be \"hard\" or \"soft\"", a.StepEnforce)
+	}
+	*s = SessionState(a)
+	return nil
 }
 
 // SessionJSONPath returns the path to the hot-state session file.

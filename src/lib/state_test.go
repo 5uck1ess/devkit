@@ -2,6 +2,8 @@ package lib
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,7 +53,7 @@ func TestSessionJSON(t *testing.T) {
 		Workflow:    "research",
 		CurrentStep: "clarify",
 		StepType:    "prompt",
-		Enforce:     "hard",
+		StepEnforce: EnforceHard,
 		Status:      "running",
 		Outputs:     map[string]string{},
 	}
@@ -87,12 +89,12 @@ func TestSessionJSON(t *testing.T) {
 func TestSessionJSONUpdatedAtBumps(t *testing.T) {
 	dir := t.TempDir()
 	state := &SessionState{
-		ID:       "abc123",
-		Workflow: "research",
-		StepType: "prompt",
-		Enforce:  "hard",
-		Status:   "running",
-		Outputs:  map[string]string{},
+		ID:          "abc123",
+		Workflow:    "research",
+		StepType:    "prompt",
+		StepEnforce: EnforceHard,
+		Status:      "running",
+		Outputs:     map[string]string{},
 	}
 
 	if err := WriteSessionJSON(dir, state); err != nil {
@@ -122,5 +124,38 @@ func TestSessionJSONUpdatedAtBumps(t *testing.T) {
 	}
 	if !second.UpdatedAt.After(first.UpdatedAt) {
 		t.Errorf("UpdatedAt did not advance: first=%v second=%v", first.UpdatedAt, second.UpdatedAt)
+	}
+}
+
+// TestSessionJSONRejectsInvalidEnforce verifies that a stale or
+// hand-edited session.json with a missing or bogus enforce value is
+// rejected at ReadSessionJSON time by SessionState.UnmarshalJSON. This
+// is the type-level replacement for guard.go's old effectiveEnforce
+// empty-default: rather than silently coercing to "hard" we fail fast
+// so the caller can see the corruption.
+func TestSessionJSONRejectsInvalidEnforce(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+	}{
+		{"missing enforce field", `{"id":"x","status":"running"}`},
+		{"empty enforce", `{"id":"x","status":"running","enforce":""}`},
+		{"bogus enforce", `{"id":"x","status":"running","enforce":"medium"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "session.json")
+			if err := os.WriteFile(path, []byte(tc.raw), 0o600); err != nil {
+				t.Fatalf("write: %v", err)
+			}
+			_, err := ReadSessionJSON(dir)
+			if err == nil {
+				t.Fatalf("expected parse error, got nil")
+			}
+			if !strings.Contains(err.Error(), "invalid enforce") {
+				t.Errorf("error = %q, want substring %q", err.Error(), "invalid enforce")
+			}
+		})
 	}
 }

@@ -128,7 +128,7 @@ func TestStatusWithSession(t *testing.T) {
 		CurrentStep:  "step-review",
 		CurrentIndex: 2,
 		TotalSteps:   5,
-		Enforce:      "hard",
+		StepEnforce:  lib.EnforceHard,
 		Status:       "running",
 		StartedAt:    time.Now(),
 		Outputs:      map[string]string{},
@@ -257,11 +257,12 @@ steps:
 
 	// Pre-seed a running session
 	existing := &lib.SessionState{
-		ID:        "abc123",
-		Workflow:  "review",
-		Status:    "running",
-		StartedAt: time.Now(),
-		Outputs:   map[string]string{},
+		ID:          "abc123",
+		Workflow:    "review",
+		Status:      "running",
+		StepEnforce: lib.EnforceHard,
+		StartedAt:   time.Now(),
+		Outputs:     map[string]string{},
 	}
 	if err := lib.WriteSessionJSON(dataDir, existing); err != nil {
 		t.Fatalf("write session: %v", err)
@@ -563,7 +564,7 @@ steps:
 	}
 }
 
-// TestAdvancePropagatesStepEnforce verifies that SessionState.Enforce is
+// TestAdvancePropagatesStepEnforce verifies that SessionState.StepEnforce is
 // re-derived from the *current* step on every transition so that a
 // workflow with mixed per-step enforce correctly flips the hook's
 // enforcement mode as the workflow walks from step to step.
@@ -609,8 +610,8 @@ steps:
 	if state.CurrentStep != "review" {
 		t.Fatalf("expected starting step review, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "hard" {
-		t.Errorf("step 1 (review) enforce = %q, want hard (inherited from workflow default)", state.Enforce)
+	if state.StepEnforce != "hard" {
+		t.Errorf("step 1 (review) enforce = %q, want hard (inherited from workflow default)", state.StepEnforce)
 	}
 	sessionID := state.ID
 
@@ -640,8 +641,8 @@ steps:
 	if state.CurrentStep != "apply" {
 		t.Fatalf("expected step apply, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "soft" {
-		t.Errorf("step 2 (apply) enforce = %q, want soft (per-step override)", state.Enforce)
+	if state.StepEnforce != "soft" {
+		t.Errorf("step 2 (apply) enforce = %q, want soft (per-step override)", state.StepEnforce)
 	}
 
 	advance("apply output")
@@ -652,8 +653,8 @@ steps:
 	if state.CurrentStep != "summarize" {
 		t.Fatalf("expected step summarize, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "hard" {
-		t.Errorf("step 3 (summarize) enforce = %q, want hard (back to inherited)", state.Enforce)
+	if state.StepEnforce != "hard" {
+		t.Errorf("step 3 (summarize) enforce = %q, want hard (back to inherited)", state.StepEnforce)
 	}
 }
 
@@ -694,8 +695,8 @@ steps:
 	if state == nil {
 		t.Fatal("no session after start")
 	}
-	if state.Enforce != "soft" {
-		t.Errorf("step 1 (collect) enforce = %q, want soft (inherited from soft default)", state.Enforce)
+	if state.StepEnforce != "soft" {
+		t.Errorf("step 1 (collect) enforce = %q, want soft (inherited from soft default)", state.StepEnforce)
 	}
 	sessionID := state.ID
 
@@ -715,8 +716,8 @@ steps:
 	if state.CurrentStep != "review" {
 		t.Fatalf("expected review, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "hard" {
-		t.Errorf("step 2 (review) enforce = %q, want hard (per-step override flips soft→hard)", state.Enforce)
+	if state.StepEnforce != "hard" {
+		t.Errorf("step 2 (review) enforce = %q, want hard (per-step override flips soft→hard)", state.StepEnforce)
 	}
 
 	advance("reviewed")
@@ -724,15 +725,15 @@ steps:
 	if state.CurrentStep != "write" {
 		t.Fatalf("expected write, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "soft" {
-		t.Errorf("step 3 (write) enforce = %q, want soft (back to inherited default)", state.Enforce)
+	if state.StepEnforce != "soft" {
+		t.Errorf("step 3 (write) enforce = %q, want soft (back to inherited default)", state.StepEnforce)
 	}
 }
 
 // TestAdvancePropagatesStepEnforceAfterLoop exercises the
 // advancePastLoop path: a loop step exits (via max iterations), and the
 // following step has an explicit per-step enforce override. Without
-// state.Enforce re-derivation in advancePastLoop, the post-loop step
+// state.StepEnforce re-derivation in advancePastLoop, the post-loop step
 // would carry the loop step's enforce and the hook would apply the
 // wrong mode.
 func TestAdvancePropagatesStepEnforceAfterLoop(t *testing.T) {
@@ -766,8 +767,8 @@ steps:
 	if state == nil {
 		t.Fatal("no session after start")
 	}
-	if state.CurrentStep != "iterate" || state.Enforce != "soft" {
-		t.Errorf("expected iterate/soft, got %s/%s", state.CurrentStep, state.Enforce)
+	if state.CurrentStep != "iterate" || state.StepEnforce != "soft" {
+		t.Errorf("expected iterate/soft, got %s/%s", state.CurrentStep, state.StepEnforce)
 	}
 	sessionID := state.ID
 
@@ -783,8 +784,8 @@ steps:
 
 	advance() // iteration 1/2
 	state, _ = lib.ReadSessionJSON(dataDir)
-	if state.CurrentStep != "iterate" || state.Enforce != "soft" {
-		t.Errorf("mid-loop iter1: got %s/%s, want iterate/soft", state.CurrentStep, state.Enforce)
+	if state.CurrentStep != "iterate" || state.StepEnforce != "soft" {
+		t.Errorf("mid-loop iter1: got %s/%s, want iterate/soft", state.CurrentStep, state.StepEnforce)
 	}
 
 	advance() // iteration 2/2 — loop hits max, advancePastLoop fires
@@ -795,8 +796,8 @@ steps:
 	if state.CurrentStep != "wrapup" {
 		t.Fatalf("expected wrapup after loop exit, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "hard" {
-		t.Errorf("wrapup enforce = %q, want hard (wrapup has no override, workflow default is hard — advancePastLoop must re-derive)", state.Enforce)
+	if state.StepEnforce != "hard" {
+		t.Errorf("wrapup enforce = %q, want hard (wrapup has no override, workflow default is hard — advancePastLoop must re-derive)", state.StepEnforce)
 	}
 }
 
@@ -837,8 +838,8 @@ steps:
 	}
 
 	state, _ := lib.ReadSessionJSON(dataDir)
-	if state.Enforce != "hard" {
-		t.Errorf("classify enforce = %q, want hard (inherited)", state.Enforce)
+	if state.StepEnforce != "hard" {
+		t.Errorf("classify enforce = %q, want hard (inherited)", state.StepEnforce)
 	}
 	sessionID := state.ID
 
@@ -853,8 +854,8 @@ steps:
 	if state.CurrentStep != "jump-target" {
 		t.Fatalf("expected branch to jump-target, got %s", state.CurrentStep)
 	}
-	if state.Enforce != "soft" {
-		t.Errorf("jump-target enforce = %q, want soft (per-step override on branch target, not on skipped step)", state.Enforce)
+	if state.StepEnforce != "soft" {
+		t.Errorf("jump-target enforce = %q, want soft (per-step override on branch target, not on skipped step)", state.StepEnforce)
 	}
 }
 
@@ -1452,7 +1453,7 @@ func TestAdvanceConcurrentClaim(t *testing.T) {
 		CurrentIndex: 0,
 		TotalSteps:   2,
 		StepType:     "prompt",
-		Enforce:      "hard",
+		StepEnforce:  lib.EnforceHard,
 		Status:       "running",
 		Busy:         true,
 		StartedAt:    time.Now(),
@@ -1765,9 +1766,10 @@ steps:
 func TestUpdateSessionJSONNoChange(t *testing.T) {
 	dir := t.TempDir()
 	seed := &lib.SessionState{
-		ID:      "nochange",
-		Status:  "running",
-		Outputs: map[string]string{"a": "b"},
+		ID:          "nochange",
+		Status:      "running",
+		StepEnforce: lib.EnforceHard,
+		Outputs:     map[string]string{"a": "b"},
 	}
 	if err := lib.WriteSessionJSON(dir, seed); err != nil {
 		t.Fatalf("write: %v", err)
