@@ -10,20 +10,24 @@ import (
 
 // SessionState is the hot-path state file read by hooks on every tool call.
 type SessionState struct {
-	ID           string            `json:"id"`
-	Workflow     string            `json:"workflow"`
-	Input        string            `json:"input"`
-	CurrentStep  string            `json:"current_step"`
-	CurrentIndex int               `json:"current_index"`
-	TotalSteps   int               `json:"total_steps"`
-	StepType     string            `json:"step_type"` // "prompt" | "command" | "parallel"
-	Enforce      string            `json:"enforce"`
-	Branch       bool              `json:"branch"`
-	BudgetUSD    float64           `json:"budget_usd"`
-	SpentUSD     float64           `json:"spent_usd"`
-	StartedAt    time.Time         `json:"started_at"`
-	Outputs      map[string]string `json:"outputs"`
-	Status       string            `json:"status"` // "running" | "done" | "failed"
+	ID           string    `json:"id"`
+	Workflow     string    `json:"workflow"`
+	Input        string    `json:"input"`
+	CurrentStep  string    `json:"current_step"`
+	CurrentIndex int       `json:"current_index"`
+	TotalSteps   int       `json:"total_steps"`
+	StepType     string    `json:"step_type"` // "prompt" | "command" | "parallel"
+	Enforce      string    `json:"enforce"`
+	Branch       bool      `json:"branch"`
+	BudgetUSD    float64   `json:"budget_usd"`
+	SpentUSD     float64   `json:"spent_usd"`
+	StartedAt    time.Time `json:"started_at"`
+	// UpdatedAt is bumped on every WriteSessionJSON. Hooks read this to
+	// detect orphaned sessions (engine crash leaves Status=running but
+	// no process is advancing) and refuse to enforce against them.
+	UpdatedAt time.Time         `json:"updated_at"`
+	Outputs   map[string]string `json:"outputs"`
+	Status    string            `json:"status"` // "running" | "done" | "failed"
 	// Busy is a claim flag held for the duration of an in-flight step
 	// advance. Written under the session lock; a concurrent claimant
 	// seeing it set must abort instead of racing the current writer.
@@ -67,6 +71,9 @@ func withSessionLock(dataDir string, fn func() error) error {
 }
 
 // WriteSessionJSON atomically writes session state under the session lock.
+// Side effect: mutates state.UpdatedAt to time.Now() before serialising.
+// Callers holding the struct for later comparison or retry must account
+// for this — take a copy first if the original timestamp matters.
 func WriteSessionJSON(dataDir string, state *SessionState) error {
 	return withSessionLock(dataDir, func() error {
 		return writeSessionJSONLocked(dataDir, state)
@@ -74,6 +81,9 @@ func WriteSessionJSON(dataDir string, state *SessionState) error {
 }
 
 func writeSessionJSONLocked(dataDir string, state *SessionState) error {
+	// Bump on every write so hooks can spot orphaned sessions via
+	// staleness — see SessionState.UpdatedAt.
+	state.UpdatedAt = time.Now()
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)

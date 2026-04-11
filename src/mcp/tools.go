@@ -24,6 +24,14 @@ const commandTimeout = 5 * time.Minute
 // cannot consume the full commandTimeout budget.
 const gateTimeout = 60 * time.Second
 
+// sessionStaleTTL is the age after which an existing "running" session
+// is considered orphaned — i.e. the previous engine process crashed
+// without clearing state. devkit_start will overwrite such a session
+// instead of rejecting the call, and the PreToolUse hook stops
+// enforcing against it. Tuned to exceed any realistic command step
+// plus a safety margin.
+const sessionStaleTTL = 30 * time.Minute
+
 func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 	tool := mcpmcp.NewTool("devkit_list",
 		mcpmcp.WithDescription("List available workflows"),
@@ -118,9 +126,31 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		// we publish the transition to "running" below.
 		sessionID := lib.NewSessionID()
 		firstStep := wf.Steps[0]
+		var reclaimedNote string
 		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
 			if cur != nil && (cur.Status == "running" || cur.Status == "starting") {
-				return nil, fmt.Errorf("workflow %s already %s (session %s). Call devkit_advance to continue or devkit_status to check", cur.Workflow, cur.Status, cur.ID)
+				// Stale-session recovery: a previous engine process
+				// crashed or was killed without clearing state, so the
+				// slot is wedged. Gate on UpdatedAt (not StartedAt) so a
+				// long-running workflow that is actively advancing keeps
+				// the slot, while one that has genuinely stopped making
+				// progress gets reclaimed. Fall back to StartedAt for
+				// pre-UpdatedAt sessions written by older binaries.
+				lastBump := cur.UpdatedAt
+				if lastBump.IsZero() {
+					lastBump = cur.StartedAt
+				}
+				// Both timestamps zero → malformed state file. Refuse
+				// to silently reclaim; the user needs to see this.
+				if lastBump.IsZero() {
+					return nil, fmt.Errorf("workflow %s is %s (session %s) but has no timestamps — remove session.json manually to recover", cur.Workflow, cur.Status, cur.ID)
+				}
+				if time.Since(lastBump) < sessionStaleTTL {
+					return nil, fmt.Errorf("workflow %s already %s (session %s). Call devkit_advance to continue or devkit_status to check", cur.Workflow, cur.Status, cur.ID)
+				}
+				idle := time.Since(lastBump).Round(time.Second)
+				reclaimedNote = fmt.Sprintf("Note: reclaimed stale session %s (workflow %s, idle %s). Outputs from the previous session were discarded.\n\n", cur.ID, cur.Workflow, idle)
+				fmt.Fprintf(os.Stderr, "devkit_start: reclaiming stale session %s (workflow %s, idle for %s)\n", cur.ID, cur.Workflow, idle)
 			}
 			return &lib.SessionState{
 				ID:           sessionID,
@@ -195,8 +225,10 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 		}
 
-		// Build response with first step + principles
-		response := s.formatStepResponse(wf, state, &firstStep, input)
+		// Build response with first step + principles. Prefix with the
+		// reclaim notice (if any) so the agent sees the discarded
+		// session immediately, not buried in a stderr log file.
+		response := reclaimedNote + s.formatStepResponse(wf, state, &firstStep, input)
 		return mcpmcp.NewToolResultText(response), nil
 	}
 }
