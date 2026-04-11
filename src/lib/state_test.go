@@ -135,12 +135,25 @@ func TestSessionJSONUpdatedAtBumps(t *testing.T) {
 // so the caller can see the corruption.
 func TestSessionJSONRejectsInvalidEnforce(t *testing.T) {
 	cases := []struct {
-		name string
-		raw  string
+		name      string
+		raw       string
+		errSubstr string // expected substring; "" means any error is fine
 	}{
-		{"missing enforce field", `{"id":"x","status":"running"}`},
-		{"empty enforce", `{"id":"x","status":"running","enforce":""}`},
-		{"bogus enforce", `{"id":"x","status":"running","enforce":"medium"}`},
+		// The type-level gate — these all hit UnmarshalJSON's IsValid()
+		// check and surface with "invalid enforce" in the error string.
+		{"missing enforce field", `{"id":"x","status":"running"}`, "invalid enforce"},
+		{"empty enforce", `{"id":"x","status":"running","enforce":""}`, "invalid enforce"},
+		{"bogus enforce", `{"id":"x","status":"running","enforce":"medium"}`, "invalid enforce"},
+		// Case variants — IsValid is strict, no folding.
+		{"uppercase HARD", `{"id":"x","status":"running","enforce":"HARD"}`, "invalid enforce"},
+		{"titlecase Hard", `{"id":"x","status":"running","enforce":"Hard"}`, "invalid enforce"},
+		// Whitespace variants — IsValid does not trim.
+		{"leading space", `{"id":"x","status":"running","enforce":" hard"}`, "invalid enforce"},
+		{"trailing space", `{"id":"x","status":"running","enforce":"hard "}`, "invalid enforce"},
+		// Non-string — encoding/json surfaces a type mismatch from the
+		// underlying string alias before our UnmarshalJSON ever runs.
+		// Still must reject, but the error substring differs.
+		{"non-string enforce", `{"id":"x","status":"running","enforce":42}`, ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -153,8 +166,38 @@ func TestSessionJSONRejectsInvalidEnforce(t *testing.T) {
 			if err == nil {
 				t.Fatalf("expected parse error, got nil")
 			}
-			if !strings.Contains(err.Error(), "invalid enforce") {
-				t.Errorf("error = %q, want substring %q", err.Error(), "invalid enforce")
+			if tc.errSubstr != "" && !strings.Contains(err.Error(), tc.errSubstr) {
+				t.Errorf("error = %q, want substring %q", err.Error(), tc.errSubstr)
+			}
+		})
+	}
+}
+
+// TestEnforceModeIsValid pins the IsValid / IsValidOverride contract
+// so a future "be lenient" refactor (case folding, trimming, adding a
+// third mode) must be a deliberate change rather than an accident.
+func TestEnforceModeIsValid(t *testing.T) {
+	cases := []struct {
+		mode          EnforceMode
+		valid         bool
+		validOverride bool
+	}{
+		{EnforceHard, true, true},
+		{EnforceSoft, true, true},
+		{EnforceInherit, false, true},
+		{"HARD", false, false},
+		{"Hard", false, false},
+		{" hard", false, false},
+		{"hard ", false, false},
+		{"medium", false, false},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.mode), func(t *testing.T) {
+			if got := tc.mode.IsValid(); got != tc.valid {
+				t.Errorf("IsValid(%q) = %v, want %v", tc.mode, got, tc.valid)
+			}
+			if got := tc.mode.IsValidOverride(); got != tc.validOverride {
+				t.Errorf("IsValidOverride(%q) = %v, want %v", tc.mode, got, tc.validOverride)
 			}
 		})
 	}

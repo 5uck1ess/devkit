@@ -22,16 +22,31 @@ import (
 type EnforceMode string
 
 const (
-	EnforceInherit EnforceMode = ""     // step-level only — inherits workflow
+	// EnforceInherit is an authoring-time sentinel meaning "no explicit
+	// mode set at this level." On WfStep.Enforce it inherits from the
+	// enclosing workflow; on Workflow.Enforce it triggers the default
+	// (hard) in validate(). It is NEVER a resolved mode — IsValid()
+	// returns false for it, and SessionState.StepEnforce must never
+	// hold it once a session is running (enforced by UnmarshalJSON).
+	EnforceInherit EnforceMode = ""
 	EnforceHard    EnforceMode = "hard" // default — guard blocks tools mid-step
 	EnforceSoft    EnforceMode = "soft" // allow + nudge; Stop-hook still blocks
 )
 
-// IsValid reports whether m is a concrete enforcement mode. The empty
-// value is valid on a step override (inherit) but not on a resolved
-// SessionState.StepEnforce — callers in that context should reject "".
+// IsValid reports whether m is a concrete (resolved) enforcement mode.
+// Returns false for EnforceInherit — use IsValidOverride for the
+// authoring-time contract that accepts inherit.
 func (m EnforceMode) IsValid() bool {
 	return m == EnforceHard || m == EnforceSoft
+}
+
+// IsValidOverride reports whether m is legal as a WfStep or Workflow
+// enforce override at authoring time: either an explicit resolved
+// mode, or EnforceInherit to fall back to the enclosing level.
+// Collapses the "empty-ok" carveout that validate() previously
+// spelled out at every call site as `m != EnforceInherit && !m.IsValid()`.
+func (m EnforceMode) IsValidOverride() bool {
+	return m == EnforceInherit || m.IsValid()
 }
 
 // SessionState is the hot-path state file read by hooks on every tool call.

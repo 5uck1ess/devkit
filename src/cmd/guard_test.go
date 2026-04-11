@@ -764,6 +764,28 @@ func TestGuardPreToolUseCorruptSession(t *testing.T) {
 	}
 }
 
+// TestGuardPreToolUseMissingEnforceField locks in the #81 fix end-to-end:
+// a stale session.json missing the enforce field must fail closed through
+// SessionState.UnmarshalJSON's rejection, not silently fall through to the
+// pre-PR guard.go `effectiveEnforce` empty-default. Without this test, a
+// refactor that swallowed the parse error between ReadSessionJSON and
+// runPreToolGuard would silently disarm enforcement on stale sessions.
+func TestGuardPreToolUseMissingEnforceField(t *testing.T) {
+	dir := t.TempDir()
+	writeSessionRaw(t, dir, []byte(`{"id":"x","status":"running","step_type":"command","workflow":"test","current_step":"build"}`))
+	env := newGuardTestEnv(t, `{"tool_name":"Bash"}`, "", false, dir)
+	runGuard(guardCmd, nil)
+	if env.exit != 2 {
+		t.Fatalf("missing enforce should fail closed: exit=%d stderr=%s", env.exit, env.stderr.String())
+	}
+	if !strings.Contains(env.stderr.String(), "BLOCKED") {
+		t.Fatalf("expected BLOCKED diagnostic, got: %s", env.stderr.String())
+	}
+	if !strings.Contains(env.stderr.String(), "cannot read session state") {
+		t.Fatalf("expected parse-reject path (cannot read session state), got: %s", env.stderr.String())
+	}
+}
+
 func TestGuardPreToolUseStaleSession(t *testing.T) {
 	dir := t.TempDir()
 	// Stale session: UpdatedAt older than TTL. This is the orphan
@@ -860,6 +882,19 @@ func TestGuardStopHook(t *testing.T) {
 			name:         "corrupt JSON → block (fail closed)",
 			dataDir:      true,
 			rawSession:   []byte("not json"),
+			wantDecision: "block",
+			wantReason:   "unreadable",
+		},
+		{
+			// A stale session.json without an enforce field must flow
+			// through SessionState.UnmarshalJSON's rejection and fail
+			// closed in the stop hook too — not just the pre-tool guard.
+			// Without this test, a refactor that swallowed the parse
+			// error anywhere between ReadSessionJSON and runStopGuard
+			// would silently disarm enforcement on stale sessions.
+			name:         "missing enforce field → block (parse-reject through stop hook)",
+			dataDir:      true,
+			rawSession:   []byte(`{"id":"x","status":"running","workflow":"test"}`),
 			wantDecision: "block",
 			wantReason:   "unreadable",
 		},

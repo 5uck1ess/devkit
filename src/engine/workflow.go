@@ -199,13 +199,11 @@ func validate(wf *Workflow) error {
 		// executing that step. Since command steps are engine-owned
 		// and never need per-step overrides, fail loudly at parse time
 		// instead of producing a sharp edge at runtime.
-		if s.Enforce != EnforceInherit {
-			if !s.Enforce.IsValid() {
-				return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
-			}
-			if s.Command != "" {
-				return fmt.Errorf("step %q has enforce on a command step — enforce is only meaningful for prompt steps (the engine executes command steps directly)", s.ID)
-			}
+		if !s.Enforce.IsValidOverride() {
+			return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
+		}
+		if s.Enforce != EnforceInherit && s.Command != "" {
+			return fmt.Errorf("step %q has enforce on a command step — enforce is only meaningful for prompt steps (the engine executes command steps directly)", s.ID)
 		}
 		if s.Command != "" && s.Loop != nil {
 			return fmt.Errorf("step %q has both command and loop — these are mutually exclusive", s.ID)

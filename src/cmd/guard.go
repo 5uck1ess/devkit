@@ -436,7 +436,7 @@ func runStopGuard() {
 		// state == nil handles the TOCTOU where the file was removed
 		// between sessionFileExists and ReadSessionJSON.
 		// Stop is enforce-agnostic — any running workflow blocks Stop
-		// regardless of soft/hard — so we don't consult effectiveEnforce.
+		// regardless of soft/hard — so we don't branch on state.StepEnforce.
 		writeStopVerdict(stopVerdict{Decision: "approve"})
 		guardExit(0)
 		return
