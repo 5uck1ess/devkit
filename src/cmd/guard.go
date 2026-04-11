@@ -50,12 +50,18 @@ In PreToolUse mode (default) it reads a tool name and exits 0 to allow
 or 2 to block. In --stop mode it emits a Stop-hook JSON verdict on
 stdout ({"decision":"approve"} or {"decision":"block","reason":...}).
 
-The allowlist policy mirrors hooks/devkit-guard.sh exactly:
-  command step + hard  → only devkit MCP + TodoWrite
-  prompt step  + hard  → read-only evidence tools + devkit MCP
+The allowlist policy:
+  command step + hard  → devkit MCP + TodoWrite + Skill
+  prompt step  + hard  → read-only evidence tools + devkit MCP + Skill
   prompt step  + soft  → allow with a stderr nudge
   parallel / unknown   → allow (engine is dispatching)
-  stale session (TTL)  → allow with a stderr warning (orphan recovery)`,
+  stale session (TTL)  → allow with a stderr warning (orphan recovery)
+
+Skill is allowed under both step types so a workflow that's mid-run can
+still load a nested skill (e.g. user asks for tri-review during a feature
+workflow). The dispatched skill calls devkit_start, which the engine
+either accepts (if the current session is reclaimable) or rejects with
+a clear error — the guard does not need to second-guess that.`,
 	// Override the root's PersistentPreRunE: the guard hook runs on
 	// every PreToolUse call and must not require a git repo, must not
 	// open the SQLite DB, and must not fail if the host project has no
@@ -330,7 +336,7 @@ func runPreToolGuard() {
 			guardExit(0)
 			return
 		}
-		if isDevkitMCPTool(tool) || tool == "TodoWrite" {
+		if isDevkitMCPTool(tool) || tool == "TodoWrite" || tool == "Skill" {
 			guardExit(0)
 			return
 		}
@@ -347,7 +353,7 @@ func runPreToolGuard() {
 				return
 			}
 			switch tool {
-			case "Read", "Grep", "Glob", "TodoWrite", "NotebookRead":
+			case "Read", "Grep", "Glob", "TodoWrite", "NotebookRead", "Skill":
 				guardExit(0)
 				return
 			}

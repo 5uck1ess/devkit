@@ -1,6 +1,6 @@
 ---
 name: creating-workflows
-description: How to create devkit workflow YAML files — schema reference, step types, variable interpolation, and examples.
+description: REFERENCE ONLY — schema documentation for authoring devkit workflow YAML files (step types, variable interpolation, loops, parallel groups, examples). NOT a runnable workflow. Load this only when asked to write or modify a workflow YAML, never on natural-language task requests.
 ---
 
 # Writing Workflows

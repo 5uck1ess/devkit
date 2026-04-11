@@ -1,0 +1,69 @@
+name: Test Generation
+description: Generate tests for code, run them, iterate until they pass — analyze → generate via test-writer agent → run-fix loop → report
+
+steps:
+  - id: analyze
+    model: general
+    prompt: |
+      Target: {{input}}
+
+      Read the target file(s) and detect:
+      - Language and test framework (jest, vitest, pytest, go test, cargo test, etc.)
+      - Existing test patterns and conventions in the repo
+      - Public exports, key code paths
+      - Edge cases and error conditions worth covering
+
+      If the test framework isn't obvious, check package.json, pyproject.toml, go.mod, Cargo.toml.
+
+      Output:
+      - Detected framework + test command
+      - List of files to test
+      - List of code paths to cover (happy path, edge cases, errors)
+
+  - id: generate
+    model: smart
+    prompt: |
+      Target: {{input}}
+      Analysis: {{analyze}}
+
+      Spawn the `test-writer` agent via the Task tool with the analysis as context.
+      The agent must:
+      1. Create test files matching project conventions (naming, location, style)
+      2. Cover happy paths, edge cases, error conditions
+      3. Use descriptive test names
+      4. Mock external dependencies only when necessary
+      5. Follow existing test patterns in the repo
+      6. NEVER modify source code — only create/edit test files
+
+      Report which files the agent created.
+
+  - id: run-fix
+    model: general
+    prompt: |
+      Test files just created: {{generate}}
+
+      Run the project's test command and check the result.
+
+      If any tests fail:
+      - Send the failures back to the test-writer agent via Task with the failing output
+      - Re-run after the agent's fix
+      - Loop until all pass or you hit the iteration cap
+
+      If all tests pass, say DONE.
+    loop:
+      max: 3
+      until: DONE
+
+  - id: report
+    model: fast
+    prompt: |
+      Test generation complete.
+
+      Final state: {{run-fix}}
+
+      Produce a short report:
+      - Target: {{input}}
+      - Files created (with test counts)
+      - Pass/fail status
+      - Iterations needed
+      - Any tests skipped + reason
