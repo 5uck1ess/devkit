@@ -45,7 +45,11 @@ fail() { FAIL=$((FAIL + 1)); ERRORS="$ERRORS\n  FAIL: $1"; echo "  FAIL: $1"; }
 run_hook() {
   local script="$1" input="$2" label="$3" expect_json="${4:-false}"
 
-  OUTPUT=$(echo "$input" | bash "$HOOK_DIR/$script" 2>/dev/null) || true
+  # Do NOT add `|| true` here: it would clobber $? with true's exit code
+  # and the EXIT check below would become dead. This suite runs under
+  # `set -uo pipefail` (no -e), so a non-zero exit in the command
+  # substitution does not abort the script — $? captures it faithfully.
+  OUTPUT=$(echo "$input" | bash "$HOOK_DIR/$script" 2>/dev/null)
   EXIT=$?
 
   # Hook must exit 0
@@ -125,6 +129,7 @@ case "$RTK_SHIM_MODE" in
   unknown)     printf 'rtk %s' "$*"; exit 42 ;;
   empty-allow) exit 0 ;;
   noop-rewrite) printf '%s' "$*"; exit 0 ;;  # rewrite equals input
+  ask-noop-rewrite) printf '%s' "$*"; exit 3 ;;  # rc 3 (ask) + rewrite equals input
   *)           exit 1 ;;
 esac
 SHIM
@@ -192,6 +197,16 @@ else
   fail "rtk-rewrite: identity rewrite should no-op (got: $out)"
 fi
 
+# rc 3 (ask) + rewrite == input → no-op. Exercises the intersection of
+# the ask-suppression branch and the identity-rewrite guard; neither
+# should emit a rewrite when the result would be a self-assignment.
+out=$(rtk_shim_run ask-noop-rewrite '{"tool_input":{"command":"foo bar","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: rc 3 + rewrite == input → no-op"
+else
+  fail "rtk-rewrite: rc 3 identity rewrite should no-op (got: $out)"
+fi
+
 # Empty command → no-op
 out=$(rtk_shim_run allow '{"tool_input":{"command":"","description":""}}')
 if [[ -z "$out" ]]; then
@@ -237,10 +252,9 @@ else
 fi
 
 # security-patterns.sh — dedup must survive across hook invocations.
-# This pins the $$→$PPID fix: $$ is the hook's own bash PID, which is
-# brand new every invocation, so dedup was silently disabled and the
-# same warning fired on every save. In production Claude Code spawns
-# the hook directly via fork+exec, so $PPID is the stable CC session PID.
+# Invariant: a repeated (file, pattern) pair warns only on the first call
+# within a CC session. Implementation detail: dedup keys off $PPID so the
+# key is stable across fork+exec invocations of the hook.
 #
 # Topology gotcha: bash's $() command substitution wraps the command in
 # an intermediate subshell (a real fork), which then becomes the hook's
@@ -263,6 +277,18 @@ else
   fail "security-patterns: dedup not working (first=$sec_first second=$sec_second)"
 fi
 
+# Per-pattern dedup: a different pattern on the SAME file must still
+# warn. Regression guard against a key collapse that flattens the dedup
+# key to a global "warn-once-ever" flag.
+SEC_PAYLOAD_EVAL='{"tool_name":"Write","tool_input":{"file_path":"dedup_test.py","content":"eval(user_input)"}}'
+TMPDIR="$sec_tmpdir" bash "$HOOK_DIR/security-patterns.sh" <<< "$SEC_PAYLOAD_EVAL" \
+  > "$sec_tmpdir/out3" 2>/dev/null || true
+if [[ -s "$sec_tmpdir/out3" ]]; then
+  pass "security-patterns: dedup is per-pattern (different pattern, same file, still warns)"
+else
+  fail "security-patterns: per-pattern dedup flattened to warn-once-ever"
+fi
+
 echo ""
 echo "=== PostToolUse Hooks ==="
 
@@ -275,11 +301,8 @@ run_hook "post-validate.sh" \
 run_hook "post-validate.sh" "" "post-validate: empty input" false
 
 # post-validate.sh — relative path inside the repo must NOT trigger the
-# "outside repo" warning. Pins the realpath -m GNU-ism fix: on macOS the
-# old implementation's fallback kept $FILE_PATH unresolved, so a benign
-# "src/foo.go" failed the "$REPO_ROOT"/* match and generated a false
-# warning on every Edit/Write. Run the hook from the repo root with a
-# plain relative path and assert no warning is emitted.
+# "outside repo" warning. Invariant: in-repo relative paths resolve
+# against $(pwd) and match $REPO_ROOT portably on macOS and Linux.
 out=$(cd "$REPO_ROOT" && printf '%s' \
   '{"tool_name":"Write","tool_input":{"file_path":"src/fake.go","content":"package main"}}' \
   | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
@@ -297,6 +320,64 @@ if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null
   pass "post-validate: absolute path outside repo → warn"
 else
   fail "post-validate: absolute out-of-repo path not flagged (got: $out)"
+fi
+
+# post-validate.sh — cwd is a subdirectory of the repo, FILE_PATH uses
+# "../foo" to reach a sibling that's still inside the repo. This is the
+# common Claude Code topology (cwd = a subdir, paths written relative
+# to it). The path must normalize back into REPO_ROOT, not warn.
+out=$(cd "$REPO_ROOT/hooks" && printf '%s' \
+  '{"tool_name":"Write","tool_input":{"file_path":"../README.md","content":"x"}}' \
+  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+if [[ -z "$out" ]]; then
+  pass "post-validate: cwd=subdir + ../in-repo path → no warning"
+else
+  fail "post-validate: subdir relative path wrongly flagged (got: $out)"
+fi
+
+# post-validate.sh — .. escape from repo root. The resolved absolute
+# path is OUTSIDE the repo and must warn. Before the path-normalization
+# fix, "$REPO_ROOT/../sibling.go" matched the "$REPO_ROOT"/* glob and
+# silently passed.
+out=$(cd "$REPO_ROOT" && printf '%s' \
+  '{"tool_name":"Write","tool_input":{"file_path":"../devkit-sibling-outside/foo.go","content":"x"}}' \
+  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  pass "post-validate: .. escape from repo root → warn"
+else
+  fail "post-validate: .. escape not flagged (got: $out)"
+fi
+
+# post-validate.sh — macOS TMPDIR allowlist. /var/folders/... is the
+# BSD TMPDIR and must not warn. Also confirms the /tmp allowlist.
+out=$(printf '%s' \
+  '{"tool_name":"Write","tool_input":{"file_path":"/var/folders/xx/foo.go","content":"package main"}}' \
+  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+if [[ -z "$out" ]]; then
+  pass "post-validate: /var/folders (macOS TMPDIR) → no warning"
+else
+  fail "post-validate: TMPDIR path wrongly flagged (got: $out)"
+fi
+
+# post-validate.sh — symlinked repo root. When the user's cwd is
+# reached via a symlink, REPO_ROOT (from git rev-parse) and $(pwd) can
+# have different prefixes. The hook must normalize both sides so
+# in-repo writes via the symlink path don't get mis-classified.
+# Skipped on platforms where `ln -s` doesn't create a real symlink
+# (Windows Git Bash without developer mode, some FUSE mounts, etc.).
+symlink_tmp=$(mktemp -d)
+GUARD_TMPS+=("$symlink_tmp")
+if ln -s "$REPO_ROOT" "$symlink_tmp/link" 2>/dev/null && [ -L "$symlink_tmp/link" ]; then
+  out=$(cd "$symlink_tmp/link" && printf '%s' \
+    '{"tool_name":"Write","tool_input":{"file_path":"README.md","content":"x"}}' \
+    | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+  if [[ -z "$out" ]]; then
+    pass "post-validate: cwd via symlink to repo → no warning"
+  else
+    fail "post-validate: symlinked repo root wrongly flagged (got: $out)"
+  fi
+else
+  echo "  SKIP: post-validate: cwd via symlink (ln -s unavailable on this platform)"
 fi
 
 # slop-detect.sh — should allow clean code
