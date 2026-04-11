@@ -5,10 +5,16 @@
 # Catches security anti-patterns at the moment of creation rather than in a later review.
 # Warns once per file+pattern per session to avoid spam.
 
+set -euo pipefail
+
+# jq failures on malformed input must not abort the hook — the hook's
+# contract is "fail open" (never block Claude Code on parse errors),
+# so every jq pipeline gets a `|| true` tolerance guard, matching the
+# pattern used in rtk-rewrite.sh.
 INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-NEW_STRING=$(echo "$INPUT" | jq -r '.tool_input.new_string // .tool_input.content // empty')
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+NEW_STRING=$(echo "$INPUT" | jq -r '.tool_input.new_string // .tool_input.content // empty' 2>/dev/null || true)
 
 # Only check Edit and Write
 [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ] || exit 0
@@ -32,7 +38,9 @@ check_pattern() {
     if [ -f "$SEEN_FILE" ] && grep -qF "$key" "$SEEN_FILE" 2>/dev/null; then
       return
     fi
-    echo "$key" >> "$SEEN_FILE" 2>/dev/null
+    # Under set -e, a failed write would abort the hook and turn a
+    # would-be "ask" warning into a hard exit. Tolerate failures.
+    echo "$key" >> "$SEEN_FILE" 2>/dev/null || true
 
     jq -n --arg reason "$message" '{
       hookSpecificOutput: {

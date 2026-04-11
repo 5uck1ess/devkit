@@ -50,25 +50,44 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
     fi
   fi
 
-  # Check for writes outside the git repo.
-  # realpath -m is GNU-only (not on macOS BSD realpath), so the previous
-  # implementation silently fell back to the raw FILE_PATH and mis-classified
-  # every relative path on macOS as "outside repo." Do a portable absolute-path
-  # conversion instead: absolute inputs stay as-is, relative inputs are
-  # prefixed with pwd. We don't normalize "." / ".." — the glob match still
-  # works for in-repo relative paths, and ..-escapes will (correctly) not match.
+  # Check for writes outside the git repo. Must resolve .. segments and
+  # symlinks so REPO_ROOT and ABS_PATH compare against a common canonical
+  # form — GNU `realpath -m` isn't available on macOS BSD realpath, so we
+  # do it portably here.
   if [ -n "$FILE_PATH" ]; then
     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [ -n "$REPO_ROOT" ]; then
+      # Canonicalize REPO_ROOT so a symlinked repo path (e.g. /Users/x/dev
+      # → /Volumes/Work/dev) matches $(pwd -P) inside the repo.
+      REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P) || REPO_ROOT=""
+    fi
     if [ -n "$REPO_ROOT" ]; then
       case "$FILE_PATH" in
         /*) ABS_PATH="$FILE_PATH" ;;
         *)  ABS_PATH="$(pwd)/$FILE_PATH" ;;
       esac
+      # Normalize the absolute path: resolve .. / . and symlinks. Prefer
+      # python3 (ubiquitous on macOS/Linux); fall back to a dirname+pwd
+      # trick which works whenever the parent directory exists (the common
+      # case for Write/Edit since the parent must already exist).
+      if command -v python3 >/dev/null 2>&1; then
+        NORMALIZED=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$ABS_PATH" 2>/dev/null || true)
+      else
+        NORMALIZED=""
+        _dir=$(dirname -- "$ABS_PATH")
+        _base=$(basename -- "$ABS_PATH")
+        if [ -d "$_dir" ]; then
+          NORMALIZED="$(cd -- "$_dir" && pwd -P)/$_base"
+        fi
+      fi
+      [ -n "$NORMALIZED" ] && ABS_PATH="$NORMALIZED"
       case "$ABS_PATH" in
-        "$REPO_ROOT"/*)
+        "$REPO_ROOT"/*|"$REPO_ROOT")
           ;; # within repo, OK
-        /tmp/*|/private/tmp/*|/var/folders/*)
-          ;; # temp files (/var/folders/* is macOS TMPDIR), OK
+        /tmp/*|/private/tmp/*|/var/folders/*|/private/var/folders/*)
+          ;; # temp files (/var/folders is macOS TMPDIR; /private/var/folders
+             # is its realpath-resolved form since /var is a symlink to
+             # /private/var on macOS), OK
         *)
           jq -n --arg file "$FILE_PATH" --arg repo "$REPO_ROOT" '{
             hookSpecificOutput: {
