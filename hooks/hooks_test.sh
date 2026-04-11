@@ -363,16 +363,21 @@ fi
 # reached via a symlink, REPO_ROOT (from git rev-parse) and $(pwd) can
 # have different prefixes. The hook must normalize both sides so
 # in-repo writes via the symlink path don't get mis-classified.
+# Skipped on platforms where `ln -s` doesn't create a real symlink
+# (Windows Git Bash without developer mode, some FUSE mounts, etc.).
 symlink_tmp=$(mktemp -d)
 GUARD_TMPS+=("$symlink_tmp")
-ln -s "$REPO_ROOT" "$symlink_tmp/link"
-out=$(cd "$symlink_tmp/link" && printf '%s' \
-  '{"tool_name":"Write","tool_input":{"file_path":"README.md","content":"x"}}' \
-  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
-if [[ -z "$out" ]]; then
-  pass "post-validate: cwd via symlink to repo → no warning"
+if ln -s "$REPO_ROOT" "$symlink_tmp/link" 2>/dev/null && [ -L "$symlink_tmp/link" ]; then
+  out=$(cd "$symlink_tmp/link" && printf '%s' \
+    '{"tool_name":"Write","tool_input":{"file_path":"README.md","content":"x"}}' \
+    | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+  if [[ -z "$out" ]]; then
+    pass "post-validate: cwd via symlink to repo → no warning"
+  else
+    fail "post-validate: symlinked repo root wrongly flagged (got: $out)"
+  fi
 else
-  fail "post-validate: symlinked repo root wrongly flagged (got: $out)"
+  echo "  SKIP: post-validate: cwd via symlink (ln -s unavailable on this platform)"
 fi
 
 # slop-detect.sh — should allow clean code

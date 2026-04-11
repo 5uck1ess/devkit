@@ -62,23 +62,48 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
       REPO_ROOT=$(cd "$REPO_ROOT" 2>/dev/null && pwd -P) || REPO_ROOT=""
     fi
     if [ -n "$REPO_ROOT" ]; then
+      # Absolute-path detection handles POSIX (/foo) and Windows
+      # drive-letter (C:\foo or C:/foo) forms. On Git Bash / WSL the
+      # paths are usually MSYS-style (/c/Users/...) which already
+      # matches the /* arm, but Claude Code may also pass native
+      # Windows paths depending on how the tool_input was produced.
       case "$FILE_PATH" in
-        /*) ABS_PATH="$FILE_PATH" ;;
+        /*|[A-Za-z]:[/\\]*) ABS_PATH="$FILE_PATH" ;;
         *)  ABS_PATH="$(pwd)/$FILE_PATH" ;;
       esac
       # Normalize the absolute path: resolve .. / . and symlinks. Prefer
-      # python3 (ubiquitous on macOS/Linux); fall back to a dirname+pwd
-      # trick which works whenever the parent directory exists (the common
-      # case for Write/Edit since the parent must already exist).
+      # python3, fall back to python (Windows often ships just `python`),
+      # then to a dirname+pwd trick which works whenever the parent
+      # directory exists (the common case for Write/Edit since the
+      # parent must already exist).
+      NORMALIZED=""
       if command -v python3 >/dev/null 2>&1; then
         NORMALIZED=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$ABS_PATH" 2>/dev/null || true)
-      else
-        NORMALIZED=""
+      elif command -v python >/dev/null 2>&1; then
+        NORMALIZED=$(python -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$ABS_PATH" 2>/dev/null || true)
+      fi
+      if [ -z "$NORMALIZED" ]; then
         _dir=$(dirname -- "$ABS_PATH")
         _base=$(basename -- "$ABS_PATH")
         if [ -d "$_dir" ]; then
           NORMALIZED="$(cd -- "$_dir" && pwd -P)/$_base"
         fi
+      fi
+      if [ -z "$NORMALIZED" ]; then
+        # Final fallback: collapse ./ and ../ segments with sed. Won't
+        # resolve symlinks, but preserves the outside-repo detection
+        # when neither python nor the parent directory is available
+        # (pre-mkdir writes, minimal Git Bash installs, etc.).
+        NORMALIZED="$ABS_PATH"
+        while : ; do
+          _prev="$NORMALIZED"
+          NORMALIZED=$(printf '%s' "$NORMALIZED" | sed -E \
+            -e 's|/\./|/|g' \
+            -e 's|/[^/]+/\.\./|/|g' \
+            -e 's|/[^/]+/\.\.$||' \
+            -e 's|/\.$||')
+          [ "$NORMALIZED" = "$_prev" ] && break
+        done
       fi
       [ -n "$NORMALIZED" ] && ABS_PATH="$NORMALIZED"
       case "$ABS_PATH" in
