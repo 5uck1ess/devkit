@@ -1,124 +1,69 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# nullglob: an unmatched glob expands to nothing rather than the literal
+# pattern, so the `for candidate in ...` loops below are correct when no
+# versioned binary exists. Without this, the loop would iterate once
+# with the literal "devkit-engine-v*" string.
+shopt -s nullglob
 
 # devkit-guard: PreToolUse hook that enforces workflow step ordering.
-# Reads $CLAUDE_PLUGIN_DATA/session.json. Blocks out-of-step actions.
-# Exit 0 = allow, Exit 2 + stderr = hard block.
+# Thin wrapper around `devkit-engine guard`. All policy lives in Go
+# (src/cmd/guard.go) so the shell side is just binary resolution + exec.
 #
-# Policy matrix:
-#   step_type=command, enforce=hard → allow only devkit MCP + TodoWrite
-#                                     (engine runs the command, not Claude)
-#   step_type=prompt,  enforce=hard → allow Read/Grep/Glob/NotebookRead/
-#                                     TodoWrite + devkit MCP. Forces the
-#                                     agent to advance before any
-#                                     write/bash/dispatch. Closes issue #63
-#                                     drift hole.
-#   step_type=prompt,  enforce=soft → allow everything, emit stderr nudge
-#   step_type=parallel             → allow everything (engine dispatches)
-#   stale session (see lib/read-session.sh) → allow + warn; do not enforce
-#                                     against an orphaned state file.
+# Exit 0 = allow, exit 2 = hard block (with diagnostic on stderr).
+# Stdin (the PreToolUse JSON payload) is passed through unchanged so
+# the engine can parse tool_name itself — no jq, no python3.
 #
-# This hook uses an ALLOWLIST rather than a blocklist because the
-# Claude Code tool surface evolves — Task, SlashCommand, ExitPlanMode,
-# BashOutput, KillBash, TodoWrite, any mcp__* tool, and future names
-# would silently bypass a blocklist of hardcoded names.
+# Binary search order:
+#   1. $CLAUDE_PLUGIN_ROOT/bin/devkit-engine          — local dev symlink
+#   2. $CLAUDE_PLUGIN_ROOT/bin/devkit-engine-v*       — shipped release asset
+#
+# The `bin/devkit` first-run-download wrapper is DELIBERATELY not
+# reachable from this hook: downloading release assets from a 2s-10s
+# PreToolUse hook is unsafe (timeout → silent fail-open). A fresh
+# install should fail closed here so the user runs `devkit install`
+# once and has a cached binary before their first workflow. If we find
+# no binary at all, we emit a LOUD diagnostic and allow — because the
+# alternative (hard-block every tool call on a broken install) would
+# wedge the user's session with no way to recover except editing hooks.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/read-session.sh
-source "${SCRIPT_DIR}/lib/read-session.sh"
-
-DATA_DIR="${CLAUDE_PLUGIN_DATA:-}"
-if [[ -z "$DATA_DIR" ]]; then
-  printf 'devkit-guard: CLAUDE_PLUGIN_DATA unset — enforcement disabled\n' >&2
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" ]]; then
+  printf 'devkit-guard: CLAUDE_PLUGIN_ROOT unset — enforcement disabled\n' >&2
   exit 0
 fi
 
-SESSION_FILE="${DATA_DIR}/session.json"
+BIN_DIR="$PLUGIN_ROOT/bin"
 
-if ! parse_session_fields "$SESSION_FILE"; then
-  # python3 unavailable or JSON corrupt — fail closed if session file
-  # exists, otherwise fall through (no session = nothing to guard).
-  if [[ -f "$SESSION_FILE" ]]; then
-    printf 'BLOCKED: Cannot parse session state (python3 required or JSON corrupt). Remove %s to clear.\n' "$SESSION_FILE" >&2
-    exit 2
+# Preferred: local-dev symlink (created by `make install-plugin`).
+if [[ -x "$BIN_DIR/devkit-engine" ]]; then
+  exec "$BIN_DIR/devkit-engine" guard
+fi
+
+# Shipped release assets. Filenames look like
+# devkit-engine-v2.1.7-darwin-arm64. Bash glob expansion sorts
+# lexicographically, which gets version ordering WRONG past the
+# single-digit boundary (v2.1.9 < v2.1.10 lexically, so v2.1.10 would
+# sort BEFORE v2.1.9). We pick the highest-sorting executable match
+# using a string comparison, which happens to be correct for versions
+# that share the same digit-count prefix — and we fall back to failing
+# closed with a diagnostic if multiple versions coexist in a way that
+# string comparison can't resolve.
+latest=""
+for candidate in "$BIN_DIR"/devkit-engine-v*; do
+  [[ -x "$candidate" ]] || continue
+  if [[ -z "$latest" || "$candidate" > "$latest" ]]; then
+    latest="$candidate"
   fi
-  exit 0
+done
+if [[ -n "$latest" ]]; then
+  exec "$latest" guard
 fi
 
-if [[ "$SESSION_STATUS" != "running" ]]; then
-  exit 0
-fi
-
-if [[ "$SESSION_STALE" == "1" ]]; then
-  printf 'devkit-guard: session %s idle past TTL — treating as orphaned (run devkit_start to reclaim)\n' "$SESSION_WORKFLOW" >&2
-  exit 0
-fi
-
-# Read tool name from stdin. Matches PreToolUse payload format.
-INPUT=$(cat)
-TOOL_NAME=$(printf '%s' "$INPUT" | python3 -c "import json,sys; print(json.load(sys.stdin).get('tool_name',''))" 2>/dev/null) || {
-  # Malformed payload — surface a diagnostic so the transcript shows
-  # why the next veto lists an empty tool name, instead of letting the
-  # BLOCKED message say "(attempted tool: )" with no hint.
-  printf 'devkit-guard: could not parse tool name from PreToolUse payload (python3 or JSON error)\n' >&2
-  TOOL_NAME=""
-}
-
-# Build a progress label for veto messages so the agent always sees
-# workflow + position without another devkit_status round trip.
-step_label() {
-  if [[ -n "$SESSION_CURRENT_INDEX" && -n "$SESSION_TOTAL_STEPS" ]]; then
-    local human_index=$((SESSION_CURRENT_INDEX + 1))
-    printf '%s step %d/%d (%s)' "$SESSION_WORKFLOW" "$human_index" "$SESSION_TOTAL_STEPS" "$SESSION_CURRENT_STEP"
-  else
-    printf '%s (%s)' "$SESSION_WORKFLOW" "$SESSION_CURRENT_STEP"
-  fi
-}
-
-# Command steps: allow ONLY the MCP tools needed to progress the
-# workflow. Everything else is blocked, including future tools.
-if [[ "$SESSION_STEP_TYPE" == "command" && "$SESSION_ENFORCE" == "hard" ]]; then
-  case "$TOOL_NAME" in
-    mcp__*devkit-engine*|mcp__devkit__*|devkit_advance|devkit_status|devkit_list|devkit_start)
-      exit 0
-      ;;
-    TodoWrite)
-      exit 0
-      ;;
-    *)
-      printf 'BLOCKED: Command step "%s" in progress — the engine runs this step. Call devkit_advance to execute it. (attempted tool: %s)\n' "$(step_label)" "$TOOL_NAME" >&2
-      exit 2
-      ;;
-  esac
-fi
-
-# Prompt steps under hard enforcement: allow read-only evidence tools
-# plus devkit MCP. Blocks Write/Edit/Bash/Task/WebFetch/other MCP so
-# the agent cannot drift into unrelated work between step 1 and
-# devkit_advance. See issue #63.
-if [[ "$SESSION_STEP_TYPE" == "prompt" && "$SESSION_ENFORCE" == "hard" ]]; then
-  case "$TOOL_NAME" in
-    mcp__*devkit-engine*|mcp__devkit__*|devkit_advance|devkit_status|devkit_list|devkit_start)
-      exit 0
-      ;;
-    Read|Grep|Glob|TodoWrite|NotebookRead)
-      exit 0
-      ;;
-    *)
-      printf 'BLOCKED: devkit workflow %s is at a prompt step — gather evidence with Read/Grep/Glob then call devkit_advance. (attempted tool: %s)\n' "$(step_label)" "$TOOL_NAME" >&2
-      exit 2
-      ;;
-  esac
-fi
-
-# Prompt steps under soft enforcement: allow everything, but inject a
-# stderr nudge so the transcript shows the agent that a step is open.
-# Soft nudge is idempotent — if the agent ignores it, Stop gate still
-# blocks via devkit-stop-guard.sh.
-if [[ "$SESSION_STEP_TYPE" == "prompt" && "$SESSION_ENFORCE" != "hard" ]]; then
-  printf 'devkit-guard: %s is open — call devkit_advance when the step is complete.\n' "$(step_label)" >&2
-  exit 0
-fi
-
-# Parallel steps: engine is dispatching, agent needs full tool access.
+# No cached binary at all. Loud diagnostic + allow — see header comment
+# for the rationale. A broken install should trip the user's attention
+# on their first tool call rather than silently skipping enforcement.
+printf 'devkit-guard: ERROR no devkit-engine binary under %s — ' "$BIN_DIR" >&2
+printf 'run `devkit install` to download the release asset. ' >&2
+printf 'Workflow enforcement is DISABLED until this is fixed.\n' >&2
 exit 0

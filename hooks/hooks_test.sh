@@ -353,6 +353,111 @@ else
 fi
 
 echo ""
+echo "=== Shell wrapper binary resolution ==="
+
+# These tests exercise the 3-tier binary resolution in the wrappers
+# themselves, not the Go guard logic. Previously untested — the thin
+# wrappers are exactly where silent bugs hide on fresh installs.
+
+# CLAUDE_PLUGIN_ROOT unset → disabled warning + exit 0 (guard)
+out=$(CLAUDE_PLUGIN_ROOT="" printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="" bash "$HOOK_DIR/devkit-guard.sh" 2>&1)
+exit_code=$?
+if [[ $exit_code -eq 0 && "$out" == *"CLAUDE_PLUGIN_ROOT unset"* ]]; then
+  pass "devkit-guard: CLAUDE_PLUGIN_ROOT unset → disabled + exit 0"
+else
+  fail "devkit-guard: CLAUDE_PLUGIN_ROOT unset (exit=$exit_code out=$out)"
+fi
+
+# CLAUDE_PLUGIN_ROOT unset → {"decision":"approve"} (stop-guard)
+out=$(CLAUDE_PLUGIN_ROOT="" printf '{}' \
+  | CLAUDE_PLUGIN_ROOT="" bash "$HOOK_DIR/devkit-stop-guard.sh" 2>/dev/null)
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "devkit-stop-guard: CLAUDE_PLUGIN_ROOT unset → approve"
+else
+  fail "devkit-stop-guard: CLAUDE_PLUGIN_ROOT unset (out=$out)"
+fi
+
+# Empty bin/ directory — simulates a fresh install before the binary
+# has been built or downloaded. Wrappers must log + allow (guard) /
+# log + approve (stop-guard). Point PLUGIN_ROOT at a tmp dir with
+# only an empty bin/ subdir and the real hook scripts copied in.
+empty_root=$(mktemp -d)
+track_tmp "$empty_root"
+mkdir -p "$empty_root/bin" "$empty_root/hooks"
+cp "$HOOK_DIR/devkit-guard.sh" "$HOOK_DIR/devkit-stop-guard.sh" "$empty_root/hooks/"
+chmod +x "$empty_root/hooks/"*.sh
+
+out=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$empty_root" bash "$empty_root/hooks/devkit-guard.sh" 2>&1)
+exit_code=$?
+if [[ $exit_code -eq 0 && "$out" == *"no devkit-engine binary"* ]]; then
+  pass "devkit-guard: empty bin/ → loud warning + allow"
+else
+  fail "devkit-guard: empty bin/ (exit=$exit_code out=$out)"
+fi
+
+out=$(printf '{}' \
+  | CLAUDE_PLUGIN_ROOT="$empty_root" bash "$empty_root/hooks/devkit-stop-guard.sh" 2>/dev/null)
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "devkit-stop-guard: empty bin/ → approve"
+else
+  fail "devkit-stop-guard: empty bin/ (out=$out)"
+fi
+
+# Versioned binary only (no local-dev symlink). The wrapper should
+# pick up the versioned binary via the glob. Create a stub that prints
+# its argv so we can verify `guard` was passed through.
+versioned_root=$(mktemp -d)
+track_tmp "$versioned_root"
+mkdir -p "$versioned_root/bin" "$versioned_root/hooks"
+cat > "$versioned_root/bin/devkit-engine-v2.1.7-fake" <<'STUB'
+#!/bin/sh
+echo "STUB_INVOKED args=$*" >&2
+exit 0
+STUB
+chmod +x "$versioned_root/bin/devkit-engine-v2.1.7-fake"
+cp "$HOOK_DIR/devkit-guard.sh" "$versioned_root/hooks/"
+chmod +x "$versioned_root/hooks/devkit-guard.sh"
+
+err=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$versioned_root" bash "$versioned_root/hooks/devkit-guard.sh" 2>&1 >/dev/null)
+if [[ "$err" == *"STUB_INVOKED args=guard"* ]]; then
+  pass "devkit-guard: versioned binary → exec with guard arg"
+else
+  fail "devkit-guard: versioned binary not picked up (err=$err)"
+fi
+
+# Multiple versioned binaries — wrapper picks the lexicographically
+# highest match. Pin this contract: if someone changes the selection
+# strategy we want to catch it. (Note: string-comparison order is NOT
+# true semver — flagged as a known limitation in the wrapper comment.)
+multi_root=$(mktemp -d)
+track_tmp "$multi_root"
+mkdir -p "$multi_root/bin" "$multi_root/hooks"
+cat > "$multi_root/bin/devkit-engine-v2.1.6-fake" <<'STUB'
+#!/bin/sh
+echo "WRONG_OLD" >&2
+exit 0
+STUB
+cat > "$multi_root/bin/devkit-engine-v2.1.7-fake" <<'STUB'
+#!/bin/sh
+echo "CORRECT_NEW" >&2
+exit 0
+STUB
+chmod +x "$multi_root/bin/devkit-engine-v2.1.6-fake" "$multi_root/bin/devkit-engine-v2.1.7-fake"
+cp "$HOOK_DIR/devkit-guard.sh" "$multi_root/hooks/"
+chmod +x "$multi_root/hooks/devkit-guard.sh"
+
+err=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$multi_root" bash "$multi_root/hooks/devkit-guard.sh" 2>&1 >/dev/null)
+if [[ "$err" == *"CORRECT_NEW"* ]]; then
+  pass "devkit-guard: multiple versioned binaries → pick highest"
+else
+  fail "devkit-guard: multi-version picked wrong binary (err=$err)"
+fi
+
+echo ""
 echo "========================================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ $FAIL -gt 0 ]; then
