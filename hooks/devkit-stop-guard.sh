@@ -1,73 +1,49 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob
 
-# devkit-stop-guard: Stop hook that blocks session end during active workflows.
-# Outputs JSON: {"decision":"approve"} or {"decision":"block","reason":"..."}.
+# devkit-stop-guard: Stop hook that blocks session end during active
+# workflows. Thin wrapper around `devkit-engine guard --stop`. Emits
+# JSON ({"decision":"approve"} or {"decision":"block","reason":"..."})
+# on stdout and always exits 0 — Stop hooks communicate via verdict
+# payload, not exit code.
 #
-# Policy: symmetric with devkit-guard.sh. If the session file exists but
-# cannot be parsed, we fail CLOSED (block with a clear reason) rather
-# than silently approve — a corrupted state file during an active
-# workflow is a bug the user needs to see, not something to paper over.
-# Stale sessions (see lib/read-session.sh TTL) are treated as orphaned
-# and the Stop is approved so the user is never wedged by a crashed
-# engine process.
+# Binary search order and no-binary fallback rationale: see
+# devkit-guard.sh header comment.
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=lib/read-session.sh
-source "${SCRIPT_DIR}/lib/read-session.sh"
-
-DATA_DIR="${CLAUDE_PLUGIN_DATA:-}"
-if [[ -z "$DATA_DIR" ]]; then
-  printf 'devkit-stop-guard: CLAUDE_PLUGIN_DATA unset — enforcement disabled\n' >&2
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$PLUGIN_ROOT" ]]; then
+  printf 'devkit-stop-guard: CLAUDE_PLUGIN_ROOT unset — enforcement disabled\n' >&2
   printf '{"decision":"approve"}'
   exit 0
 fi
 
-SESSION_FILE="${DATA_DIR}/session.json"
+BIN_DIR="$PLUGIN_ROOT/bin"
 
-if ! parse_session_fields "$SESSION_FILE"; then
-  if [[ -f "$SESSION_FILE" ]]; then
-    printf 'devkit-stop-guard: cannot parse session state (python3 missing or JSON corrupt); blocking Stop\n' >&2
-    printf '{"decision":"block","reason":"devkit session state corrupted — remove %s to clear"}' "$SESSION_FILE"
-    exit 0
+if [[ -x "$BIN_DIR/devkit-engine" ]]; then
+  exec "$BIN_DIR/devkit-engine" guard --stop
+fi
+
+# Pick the highest semver via sort -V. See devkit-guard.sh for the
+# rationale on why a naive string comparison is wrong (v2.1.9 would
+# lexicographically sort above v2.1.10).
+candidates=()
+for candidate in "$BIN_DIR"/devkit-engine-v*; do
+  [[ -x "$candidate" ]] && candidates+=("$candidate")
+done
+if (( ${#candidates[@]} > 0 )); then
+  latest=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -n1)
+  if [[ -n "$latest" && -x "$latest" ]]; then
+    exec "$latest" guard --stop
   fi
-  printf '{"decision":"approve"}'
-  exit 0
 fi
 
-if [[ "$SESSION_STATUS" != "running" ]]; then
-  printf '{"decision":"approve"}'
-  exit 0
-fi
-
-if [[ "$SESSION_STALE" == "1" ]]; then
-  printf 'devkit-stop-guard: session %s idle past TTL — approving Stop (reclaim on next devkit_start)\n' "$SESSION_WORKFLOW" >&2
-  printf '{"decision":"approve"}'
-  exit 0
-fi
-
-REMAINING=0
-if [[ -n "$SESSION_TOTAL_STEPS" && -n "$SESSION_CURRENT_INDEX" ]]; then
-  REMAINING=$((SESSION_TOTAL_STEPS - SESSION_CURRENT_INDEX))
-fi
-WF="${SESSION_WORKFLOW:-unknown}"
-
-# Emit the block verdict via python3 json.dumps so the reason string is
-# escaped safely — workflow names and step IDs flow from workflow YAML
-# and could theoretically contain characters that need escaping.
-# Fail-closed fallback: if python3 crashes (OOM, broken pipe, PATH race)
-# after parse_session_fields already succeeded, emit a plain-ASCII block
-# verdict manually so Claude Code still sees a decision — without this
-# the script would exit under `set -e` and the Stop hook behaviour
-# becomes undefined.
-if ! python3 -c '
-import json, sys
-print(json.dumps({
-    "decision": "block",
-    "reason": f"Workflow {sys.argv[1]} incomplete — {sys.argv[2]} steps remaining. Call devkit_advance to continue."
-}))
-' "$WF" "$REMAINING" 2>/dev/null; then
-  printf 'devkit-stop-guard: verdict emit failed; falling back to manual JSON\n' >&2
-  printf '{"decision":"block","reason":"devkit workflow incomplete — call devkit_advance to continue"}'
-fi
+# No engine binary: approve so the user is never wedged in an
+# un-stoppable session. Loud stderr so the broken install is visible.
+# Point at the real self-downloader at $BIN_DIR/devkit, not a
+# non-existent `devkit install` subcommand.
+printf 'devkit-stop-guard: ERROR no devkit-engine binary under %s — ' "$BIN_DIR" >&2
+printf 'run `%s/devkit --version` once to cache the engine. ' "$BIN_DIR" >&2
+printf 'Stop enforcement DISABLED.\n' >&2
+printf '{"decision":"approve"}'
 exit 0

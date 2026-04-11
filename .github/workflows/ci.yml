@@ -44,6 +44,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The devkit-guard shell wrappers exec the Go engine binary.
+      # Provide Go so hooks_test.sh can build it on first run (the
+      # script auto-builds if $CLAUDE_PLUGIN_ROOT/bin/devkit-engine is
+      # missing) — without this, every "expected exit 2" fixture would
+      # silently fall through the no-binary path and fail.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
       - name: Run hook smoke tests
         run: bash hooks/hooks_test.sh
 

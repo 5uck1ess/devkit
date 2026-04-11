@@ -8,6 +8,32 @@
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# The devkit-guard.sh / devkit-stop-guard.sh wrappers need
+# CLAUDE_PLUGIN_ROOT to locate the engine binary. Default it to the
+# repo root when unset so `bash hooks/hooks_test.sh` just works from
+# a fresh clone (CI and local dev alike), matching how the wrappers
+# behave in production (CLAUDE_PLUGIN_ROOT points at the installed
+# plugin dir, which has the same layout as the repo root).
+REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+
+# Ensure the Go engine binary exists so the devkit-guard wrapper tests
+# exercise the real binary, not the "no binary → loud warn + allow"
+# fallback. That fallback is correct production behavior (don't wedge
+# the session on a broken install) but in tests it silently turns
+# every "expected exit 2" fixture into a false pass.
+ENGINE_BIN="$CLAUDE_PLUGIN_ROOT/bin/devkit-engine"
+if [[ ! -x "$ENGINE_BIN" ]]; then
+  if command -v go >/dev/null 2>&1 && [[ -f "$REPO_ROOT/src/go.mod" ]]; then
+    printf 'hooks_test.sh: building devkit-engine for guard tests...\n' >&2
+    (cd "$REPO_ROOT/src" && go build -o "$ENGINE_BIN" .) || {
+      printf 'hooks_test.sh: failed to build devkit-engine — guard tests will fall through the no-binary path and some fixtures will be skipped\n' >&2
+    }
+  else
+    printf 'hooks_test.sh: go unavailable and no devkit-engine binary at %s — guard tests will use the no-binary fallback path\n' "$ENGINE_BIN" >&2
+  fi
+fi
+
 PASS=0
 FAIL=0
 ERRORS=""
@@ -350,6 +376,112 @@ if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
   pass "devkit-stop-guard: corrupt JSON → block (fail closed)"
 else
   fail "devkit-stop-guard: corrupt JSON (got: $out)"
+fi
+
+echo ""
+echo "=== Shell wrapper binary resolution ==="
+
+# These tests exercise the 3-tier binary resolution in the wrappers
+# themselves, not the Go guard logic. Previously untested — the thin
+# wrappers are exactly where silent bugs hide on fresh installs.
+
+# CLAUDE_PLUGIN_ROOT unset → disabled warning + exit 0 (guard)
+out=$(CLAUDE_PLUGIN_ROOT="" printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="" bash "$HOOK_DIR/devkit-guard.sh" 2>&1)
+exit_code=$?
+if [[ $exit_code -eq 0 && "$out" == *"CLAUDE_PLUGIN_ROOT unset"* ]]; then
+  pass "devkit-guard: CLAUDE_PLUGIN_ROOT unset → disabled + exit 0"
+else
+  fail "devkit-guard: CLAUDE_PLUGIN_ROOT unset (exit=$exit_code out=$out)"
+fi
+
+# CLAUDE_PLUGIN_ROOT unset → {"decision":"approve"} (stop-guard)
+out=$(CLAUDE_PLUGIN_ROOT="" printf '{}' \
+  | CLAUDE_PLUGIN_ROOT="" bash "$HOOK_DIR/devkit-stop-guard.sh" 2>/dev/null)
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "devkit-stop-guard: CLAUDE_PLUGIN_ROOT unset → approve"
+else
+  fail "devkit-stop-guard: CLAUDE_PLUGIN_ROOT unset (out=$out)"
+fi
+
+# Empty bin/ directory — simulates a fresh install before the binary
+# has been built or downloaded. Wrappers must log + allow (guard) /
+# log + approve (stop-guard). Point PLUGIN_ROOT at a tmp dir with
+# only an empty bin/ subdir and the real hook scripts copied in.
+empty_root=$(mktemp -d)
+track_tmp "$empty_root"
+mkdir -p "$empty_root/bin" "$empty_root/hooks"
+cp "$HOOK_DIR/devkit-guard.sh" "$HOOK_DIR/devkit-stop-guard.sh" "$empty_root/hooks/"
+chmod +x "$empty_root/hooks/"*.sh
+
+out=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$empty_root" bash "$empty_root/hooks/devkit-guard.sh" 2>&1)
+exit_code=$?
+if [[ $exit_code -eq 0 && "$out" == *"no devkit-engine binary"* ]]; then
+  pass "devkit-guard: empty bin/ → loud warning + allow"
+else
+  fail "devkit-guard: empty bin/ (exit=$exit_code out=$out)"
+fi
+
+out=$(printf '{}' \
+  | CLAUDE_PLUGIN_ROOT="$empty_root" bash "$empty_root/hooks/devkit-stop-guard.sh" 2>/dev/null)
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "devkit-stop-guard: empty bin/ → approve"
+else
+  fail "devkit-stop-guard: empty bin/ (out=$out)"
+fi
+
+# Versioned binary only (no local-dev symlink). The wrapper should
+# pick up the versioned binary via the glob. Create a stub that prints
+# its argv so we can verify `guard` was passed through.
+versioned_root=$(mktemp -d)
+track_tmp "$versioned_root"
+mkdir -p "$versioned_root/bin" "$versioned_root/hooks"
+cat > "$versioned_root/bin/devkit-engine-v2.1.7-fake" <<'STUB'
+#!/bin/sh
+echo "STUB_INVOKED args=$*" >&2
+exit 0
+STUB
+chmod +x "$versioned_root/bin/devkit-engine-v2.1.7-fake"
+cp "$HOOK_DIR/devkit-guard.sh" "$versioned_root/hooks/"
+chmod +x "$versioned_root/hooks/devkit-guard.sh"
+
+err=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$versioned_root" bash "$versioned_root/hooks/devkit-guard.sh" 2>&1 >/dev/null)
+if [[ "$err" == *"STUB_INVOKED args=guard"* ]]; then
+  pass "devkit-guard: versioned binary → exec with guard arg"
+else
+  fail "devkit-guard: versioned binary not picked up (err=$err)"
+fi
+
+# Multiple versioned binaries — wrapper must pick the highest SEMVER
+# via sort -V, not lexicographic order. The 9→10 digit-count boundary
+# is the exact case where naive string comparison goes wrong
+# ("v2.1.9" sorts above "v2.1.10" lexicographically because `9 > 1`).
+# This pins the sort -V fix from the second-pass review.
+multi_root=$(mktemp -d)
+track_tmp "$multi_root"
+mkdir -p "$multi_root/bin" "$multi_root/hooks"
+cat > "$multi_root/bin/devkit-engine-v2.1.9-fake" <<'STUB'
+#!/bin/sh
+echo "WRONG_OLD_v2.1.9" >&2
+exit 0
+STUB
+cat > "$multi_root/bin/devkit-engine-v2.1.10-fake" <<'STUB'
+#!/bin/sh
+echo "CORRECT_NEW_v2.1.10" >&2
+exit 0
+STUB
+chmod +x "$multi_root/bin/devkit-engine-v2.1.9-fake" "$multi_root/bin/devkit-engine-v2.1.10-fake"
+cp "$HOOK_DIR/devkit-guard.sh" "$multi_root/hooks/"
+chmod +x "$multi_root/hooks/devkit-guard.sh"
+
+err=$(printf '{"tool_name":"Bash"}' \
+  | CLAUDE_PLUGIN_ROOT="$multi_root" bash "$multi_root/hooks/devkit-guard.sh" 2>&1 >/dev/null)
+if [[ "$err" == *"CORRECT_NEW_v2.1.10"* ]]; then
+  pass "devkit-guard: multi-version v2.1.9 vs v2.1.10 → picks v2.1.10 (semver, not lex)"
+else
+  fail "devkit-guard: multi-version picked wrong binary (err=$err)"
 fi
 
 echo ""
