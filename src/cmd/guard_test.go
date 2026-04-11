@@ -583,16 +583,16 @@ func TestGuardPreToolUse(t *testing.T) {
 // returned value AND the warning text.
 func TestGuardStaleTTLGarbageValues(t *testing.T) {
 	tests := []struct {
-		name      string
-		envValue  string
-		wantWarn  bool
+		name           string
+		envValue       string
+		wantWarn       bool
 		wantWarnSubstr string
 	}{
 		{"non-numeric", "abc", true, "is not an integer"},
 		{"negative", "-5", true, "must be positive"},
 		{"zero", "0", true, "must be positive"},
 		{"trailing space (handled)", "1800 ", false, ""}, // TrimSpace normalises this
-		{"empty (falls through)", "", false, ""},          // early return, no warn
+		{"empty (falls through)", "", false, ""},         // early return, no warn
 		{"overflow", "99999999999999999999", true, "is not an integer"},
 	}
 	for _, tc := range tests {

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # nullglob: an unmatched glob expands to nothing rather than the literal
-# pattern, so the `for candidate in ...` loops below are correct when no
-# versioned binary exists. Without this, the loop would iterate once
-# with the literal "devkit-engine-v*" string.
+# pattern, so the array-glob construct below is correct when no
+# versioned binary exists.
 shopt -s nullglob
 
 # devkit-guard: PreToolUse hook that enforces workflow step ordering.
@@ -19,13 +18,12 @@ shopt -s nullglob
 #   2. $CLAUDE_PLUGIN_ROOT/bin/devkit-engine-v*       — shipped release asset
 #
 # The `bin/devkit` first-run-download wrapper is DELIBERATELY not
-# reachable from this hook: downloading release assets from a 2s-10s
-# PreToolUse hook is unsafe (timeout → silent fail-open). A fresh
-# install should fail closed here so the user runs `devkit install`
-# once and has a cached binary before their first workflow. If we find
-# no binary at all, we emit a LOUD diagnostic and allow — because the
-# alternative (hard-block every tool call on a broken install) would
-# wedge the user's session with no way to recover except editing hooks.
+# reachable from this hook: downloading release assets from a
+# time-limited PreToolUse hook is unsafe (timeout → silent fail-open).
+# When no binary is found we fail OPEN with a LOUD diagnostic so the
+# user notices on their first tool call — blocking every tool call on
+# a broken install would wedge the session with no recovery path
+# except manually editing hooks.
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
 if [[ -z "$PLUGIN_ROOT" ]]; then
@@ -41,29 +39,29 @@ if [[ -x "$BIN_DIR/devkit-engine" ]]; then
 fi
 
 # Shipped release assets. Filenames look like
-# devkit-engine-v2.1.7-darwin-arm64. Bash glob expansion sorts
-# lexicographically, which gets version ordering WRONG past the
-# single-digit boundary (v2.1.9 < v2.1.10 lexically, so v2.1.10 would
-# sort BEFORE v2.1.9). We pick the highest-sorting executable match
-# using a string comparison, which happens to be correct for versions
-# that share the same digit-count prefix — and we fall back to failing
-# closed with a diagnostic if multiple versions coexist in a way that
-# string comparison can't resolve.
-latest=""
+# devkit-engine-v2.1.7-darwin-arm64. Pick the highest semver via
+# `sort -V` (GNU coreutils; available on Ubuntu runners and recent
+# macOS). A naive string comparison would pick v2.1.9 over v2.1.10
+# because `9 > 1` lexicographically — sort -V understands version
+# fields and orders them correctly.
+candidates=()
 for candidate in "$BIN_DIR"/devkit-engine-v*; do
-  [[ -x "$candidate" ]] || continue
-  if [[ -z "$latest" || "$candidate" > "$latest" ]]; then
-    latest="$candidate"
-  fi
+  [[ -x "$candidate" ]] && candidates+=("$candidate")
 done
-if [[ -n "$latest" ]]; then
-  exec "$latest" guard
+if (( ${#candidates[@]} > 0 )); then
+  latest=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -n1)
+  if [[ -n "$latest" && -x "$latest" ]]; then
+    exec "$latest" guard
+  fi
 fi
 
-# No cached binary at all. Loud diagnostic + allow — see header comment
-# for the rationale. A broken install should trip the user's attention
-# on their first tool call rather than silently skipping enforcement.
+# No cached binary at all. Loud diagnostic + allow — see header
+# comment for the fail-open rationale. Point the user at the real
+# self-downloader at $BIN_DIR/devkit (that wrapper handles the
+# download + verify + cache flow on first run). There is no
+# `devkit install` subcommand — `devkit --version` triggers the same
+# cache-if-missing path with zero side effects.
 printf 'devkit-guard: ERROR no devkit-engine binary under %s — ' "$BIN_DIR" >&2
-printf 'run `devkit install` to download the release asset. ' >&2
+printf 'run `%s/devkit --version` once to download and cache the engine. ' "$BIN_DIR" >&2
 printf 'Workflow enforcement is DISABLED until this is fixed.\n' >&2
 exit 0

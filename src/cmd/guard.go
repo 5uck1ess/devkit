@@ -211,17 +211,17 @@ func effectiveEnforce(s *lib.SessionState) string {
 // or prompt step because they drive the engine, not the agent.
 //
 // Iteration history:
-//   1. Pre-#64: mcp__*devkit* — unanchored substring. Any third-party
-//      tool name containing "devkit" would bypass (e.g.
-//      mcp__plugin_evil__devkit_masquerade).
-//   2. PR #64: mcp__*devkit-engine*|mcp__devkit__* — required the
-//      server name somewhere in the string. Still loose enough that
-//      a plugin with "devkit-engine" elsewhere in its tool name would
-//      pass.
-//   3. This PR: anchored on the full plugin+server prefix. Even a
-//      future second MCP server under the devkit plugin cannot
-//      silently inherit command-step permissions — it would have to
-//      be added to this allowlist deliberately.
+//  1. Pre-#64: mcp__*devkit* — unanchored substring. Any third-party
+//     tool name containing "devkit" would bypass (e.g.
+//     mcp__plugin_evil__devkit_masquerade).
+//  2. PR #64: mcp__*devkit-engine*|mcp__devkit__* — required the
+//     server name somewhere in the string. Still loose enough that
+//     a plugin with "devkit-engine" elsewhere in its tool name would
+//     pass.
+//  3. This PR: anchored on the full plugin+server prefix. Even a
+//     future second MCP server under the devkit plugin cannot
+//     silently inherit command-step permissions — it would have to
+//     be added to this allowlist deliberately.
 //
 // Accepted forms:
 //   - devkit_advance / devkit_status / devkit_list / devkit_start

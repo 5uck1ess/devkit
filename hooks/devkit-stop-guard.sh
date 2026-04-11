@@ -24,20 +24,26 @@ if [[ -x "$BIN_DIR/devkit-engine" ]]; then
   exec "$BIN_DIR/devkit-engine" guard --stop
 fi
 
-latest=""
+# Pick the highest semver via sort -V. See devkit-guard.sh for the
+# rationale on why a naive string comparison is wrong (v2.1.9 would
+# lexicographically sort above v2.1.10).
+candidates=()
 for candidate in "$BIN_DIR"/devkit-engine-v*; do
-  [[ -x "$candidate" ]] || continue
-  if [[ -z "$latest" || "$candidate" > "$latest" ]]; then
-    latest="$candidate"
-  fi
+  [[ -x "$candidate" ]] && candidates+=("$candidate")
 done
-if [[ -n "$latest" ]]; then
-  exec "$latest" guard --stop
+if (( ${#candidates[@]} > 0 )); then
+  latest=$(printf '%s\n' "${candidates[@]}" | sort -V | tail -n1)
+  if [[ -n "$latest" && -x "$latest" ]]; then
+    exec "$latest" guard --stop
+  fi
 fi
 
 # No engine binary: approve so the user is never wedged in an
 # un-stoppable session. Loud stderr so the broken install is visible.
+# Point at the real self-downloader at $BIN_DIR/devkit, not a
+# non-existent `devkit install` subcommand.
 printf 'devkit-stop-guard: ERROR no devkit-engine binary under %s — ' "$BIN_DIR" >&2
-printf 'run `devkit install`. Stop enforcement DISABLED.\n' >&2
+printf 'run `%s/devkit --version` once to cache the engine. ' "$BIN_DIR" >&2
+printf 'Stop enforcement DISABLED.\n' >&2
 printf '{"decision":"approve"}'
 exit 0

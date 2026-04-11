@@ -8,6 +8,32 @@
 set -uo pipefail
 
 HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+# The devkit-guard.sh / devkit-stop-guard.sh wrappers need
+# CLAUDE_PLUGIN_ROOT to locate the engine binary. Default it to the
+# repo root when unset so `bash hooks/hooks_test.sh` just works from
+# a fresh clone (CI and local dev alike), matching how the wrappers
+# behave in production (CLAUDE_PLUGIN_ROOT points at the installed
+# plugin dir, which has the same layout as the repo root).
+REPO_ROOT="$(cd "$HOOK_DIR/.." && pwd)"
+export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"
+
+# Ensure the Go engine binary exists so the devkit-guard wrapper tests
+# exercise the real binary, not the "no binary → loud warn + allow"
+# fallback. That fallback is correct production behavior (don't wedge
+# the session on a broken install) but in tests it silently turns
+# every "expected exit 2" fixture into a false pass.
+ENGINE_BIN="$CLAUDE_PLUGIN_ROOT/bin/devkit-engine"
+if [[ ! -x "$ENGINE_BIN" ]]; then
+  if command -v go >/dev/null 2>&1 && [[ -f "$REPO_ROOT/src/go.mod" ]]; then
+    printf 'hooks_test.sh: building devkit-engine for guard tests...\n' >&2
+    (cd "$REPO_ROOT/src" && go build -o "$ENGINE_BIN" .) || {
+      printf 'hooks_test.sh: failed to build devkit-engine — guard tests will fall through the no-binary path and some fixtures will be skipped\n' >&2
+    }
+  else
+    printf 'hooks_test.sh: go unavailable and no devkit-engine binary at %s — guard tests will use the no-binary fallback path\n' "$ENGINE_BIN" >&2
+  fi
+fi
+
 PASS=0
 FAIL=0
 ERRORS=""
@@ -428,31 +454,32 @@ else
   fail "devkit-guard: versioned binary not picked up (err=$err)"
 fi
 
-# Multiple versioned binaries — wrapper picks the lexicographically
-# highest match. Pin this contract: if someone changes the selection
-# strategy we want to catch it. (Note: string-comparison order is NOT
-# true semver — flagged as a known limitation in the wrapper comment.)
+# Multiple versioned binaries — wrapper must pick the highest SEMVER
+# via sort -V, not lexicographic order. The 9→10 digit-count boundary
+# is the exact case where naive string comparison goes wrong
+# ("v2.1.9" sorts above "v2.1.10" lexicographically because `9 > 1`).
+# This pins the sort -V fix from the second-pass review.
 multi_root=$(mktemp -d)
 track_tmp "$multi_root"
 mkdir -p "$multi_root/bin" "$multi_root/hooks"
-cat > "$multi_root/bin/devkit-engine-v2.1.6-fake" <<'STUB'
+cat > "$multi_root/bin/devkit-engine-v2.1.9-fake" <<'STUB'
 #!/bin/sh
-echo "WRONG_OLD" >&2
+echo "WRONG_OLD_v2.1.9" >&2
 exit 0
 STUB
-cat > "$multi_root/bin/devkit-engine-v2.1.7-fake" <<'STUB'
+cat > "$multi_root/bin/devkit-engine-v2.1.10-fake" <<'STUB'
 #!/bin/sh
-echo "CORRECT_NEW" >&2
+echo "CORRECT_NEW_v2.1.10" >&2
 exit 0
 STUB
-chmod +x "$multi_root/bin/devkit-engine-v2.1.6-fake" "$multi_root/bin/devkit-engine-v2.1.7-fake"
+chmod +x "$multi_root/bin/devkit-engine-v2.1.9-fake" "$multi_root/bin/devkit-engine-v2.1.10-fake"
 cp "$HOOK_DIR/devkit-guard.sh" "$multi_root/hooks/"
 chmod +x "$multi_root/hooks/devkit-guard.sh"
 
 err=$(printf '{"tool_name":"Bash"}' \
   | CLAUDE_PLUGIN_ROOT="$multi_root" bash "$multi_root/hooks/devkit-guard.sh" 2>&1 >/dev/null)
-if [[ "$err" == *"CORRECT_NEW"* ]]; then
-  pass "devkit-guard: multiple versioned binaries → pick highest"
+if [[ "$err" == *"CORRECT_NEW_v2.1.10"* ]]; then
+  pass "devkit-guard: multi-version v2.1.9 vs v2.1.10 → picks v2.1.10 (semver, not lex)"
 else
   fail "devkit-guard: multi-version picked wrong binary (err=$err)"
 fi
