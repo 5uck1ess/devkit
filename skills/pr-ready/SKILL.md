@@ -1,6 +1,22 @@
 ---
 name: pr-ready
-description: Full end-to-end PR pipeline — validate → necessity-check → lint (loop) → test (loop) → security scan → doc-check → changelog → create-pr → monitor reviews (loop). Takes a branch from "code done" to "merged" with every gate enforced. Use when the user asks to "submit a PR", "open a pull request", "ship this", "make this PR-ready", "finalize this branch", or wants the full pipeline run end-to-end with CI monitoring and reviewer-comment handling automated. Worth the ceremony when: lint and test gates must pass before the PR opens, docs need syncing alongside code (README, ROADMAP, SKILL.md, workflows), security scan is required, or the user wants reviewer comments automatically classified and responded to. Do NOT use for a quick commit+push+PR without gates — use `/commit-commands:commit-push-pr` for that lighter path. Do NOT use when already mid-PR and just handling existing review comments in isolation. Do NOT use on the main branch or with uncommitted changes — the validate step will block you. This is devkit's heaviest PR workflow; pick it when you want everything run.
+description: >-
+  Full end-to-end PR pipeline — validate → necessity-check → lint (loop) →
+  test (loop) → security scan → doc-check → changelog → create-pr → monitor
+  reviews (loop). Takes a branch from "code done" to "merged" with every gate
+  enforced. Use when the user asks to "submit a PR", "open a pull request",
+  "ship this", "make this PR-ready", "finalize this branch", or wants the
+  full pipeline run end-to-end with CI monitoring and reviewer-comment
+  handling automated. Worth the ceremony when: lint and test gates must pass
+  before the PR opens, docs need syncing alongside code (README, ROADMAP,
+  SKILL.md, workflows), security scan is required, or the user wants
+  reviewer comments automatically classified and responded to. Do NOT use
+  for a quick commit+push+PR without gates — use
+  `/commit-commands:commit-push-pr` for that lighter path. Do NOT use when
+  already mid-PR and just handling existing review comments in isolation. Do
+  NOT use on the main branch or with uncommitted changes — the validate step
+  will block you. This is devkit's heaviest PR workflow; pick it when you
+  want everything run.
 ---
 
 # PR Ready
