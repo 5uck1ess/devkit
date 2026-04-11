@@ -14,8 +14,13 @@ NEW_STRING=$(echo "$INPUT" | jq -r '.tool_input.new_string // .tool_input.conten
 [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ] || exit 0
 [ -z "$NEW_STRING" ] && exit 0
 
-# Session dedup — warn once per file+pattern
-SEEN_FILE="/tmp/devkit-security-seen-$$"
+# Session dedup — warn once per file+pattern per session.
+# $$ is the hook's own bash PID, which is brand new for every invocation
+# (Claude Code spawns a fresh bash per hook call), so using it silently
+# disabled dedup: every call wrote to a unique file and never found a
+# prior warning. $PPID is the parent — the Claude Code hook runner — which
+# is stable for the entire session, matching the "per session" intent.
+SEEN_FILE="${TMPDIR:-/tmp}/devkit-security-seen-${PPID}"
 
 check_pattern() {
   local pattern="$1"

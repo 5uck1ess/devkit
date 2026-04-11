@@ -50,16 +50,25 @@ if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
     fi
   fi
 
-  # Check for writes outside the git repo
+  # Check for writes outside the git repo.
+  # realpath -m is GNU-only (not on macOS BSD realpath), so the previous
+  # implementation silently fell back to the raw FILE_PATH and mis-classified
+  # every relative path on macOS as "outside repo." Do a portable absolute-path
+  # conversion instead: absolute inputs stay as-is, relative inputs are
+  # prefixed with pwd. We don't normalize "." / ".." — the glob match still
+  # works for in-repo relative paths, and ..-escapes will (correctly) not match.
   if [ -n "$FILE_PATH" ]; then
     REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$REPO_ROOT" ]; then
-      ABS_PATH=$(realpath -m "$FILE_PATH" 2>/dev/null || echo "$FILE_PATH")
+      case "$FILE_PATH" in
+        /*) ABS_PATH="$FILE_PATH" ;;
+        *)  ABS_PATH="$(pwd)/$FILE_PATH" ;;
+      esac
       case "$ABS_PATH" in
         "$REPO_ROOT"/*)
           ;; # within repo, OK
-        /tmp/*|/private/tmp/*)
-          ;; # temp files, OK
+        /tmp/*|/private/tmp/*|/var/folders/*)
+          ;; # temp files (/var/folders/* is macOS TMPDIR), OK
         *)
           jq -n --arg file "$FILE_PATH" --arg repo "$REPO_ROOT" '{
             hookSpecificOutput: {
