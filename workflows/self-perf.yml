@@ -1,6 +1,5 @@
 name: Self-Perf
 description: Profile performance, optimize hot paths deterministically, verify improvement
-enforce: soft
 
 steps:
   - id: baseline
@@ -8,6 +7,7 @@ steps:
 
   - id: optimize
     model: smart
+    enforce: soft  # edits source to apply optimization
     prompt: |
       Performance baseline:
 

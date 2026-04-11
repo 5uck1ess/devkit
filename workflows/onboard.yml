@@ -1,10 +1,10 @@
 name: Codebase Onboarding
 description: Generate an onboarding guide for new contributors — analyze structure → spawn researcher → write guide
-enforce: soft
 
 steps:
   - id: analyze
     model: general
+    # analyze stays hard: Read/Glob-only structural scan.
     prompt: |
       Target codebase: {{input}}
 
@@ -24,6 +24,7 @@ steps:
 
   - id: architect
     model: smart
+    enforce: soft  # spawns researcher agent via Task tool
     prompt: |
       Target codebase: {{input}}
       Initial analysis: {{analyze}}
@@ -44,6 +45,7 @@ steps:
 
   - id: guide
     model: smart
+    enforce: soft  # writes docs/ONBOARDING.md
     prompt: |
       Initial analysis: {{analyze}}
       Architecture: {{architect}}

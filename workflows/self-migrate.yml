@@ -1,6 +1,5 @@
 name: Self-Migrate
 description: Incremental migration loop — migrate code one piece at a time with tests as safety gate
-enforce: soft
 
 steps:
   - id: baseline
@@ -8,6 +7,7 @@ steps:
 
   - id: migrate
     model: smart
+    enforce: soft  # edits source + updates imports/references
     prompt: |
       Test baseline:
 

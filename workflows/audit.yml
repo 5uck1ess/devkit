@@ -1,6 +1,5 @@
 name: Project Audit
 description: Unified project health audit — detect ecosystem, audit deps, lint, security, report
-enforce: soft
 
 steps:
   - id: detect
@@ -12,6 +11,7 @@ steps:
 
   - id: deps
     model: smart
+    enforce: soft  # runs npm audit / govulncheck / pip-audit / cargo audit
     prompt: |
       Detected ecosystems: {{detect}}
 
@@ -25,6 +25,7 @@ steps:
 
   - id: lint
     model: smart
+    enforce: soft  # runs eslint / golangci-lint / ruff / clippy
     prompt: |
       Detected ecosystems: {{detect}}
 

@@ -260,6 +260,11 @@ steps:
     prompt: x
   - id: fetch_data
     prompt: y`, "collide under env key"},
+		{"invalid step enforce", `name: T
+steps:
+  - id: a
+    prompt: x
+    enforce: maybe`, `invalid enforce "maybe"`},
 	}
 
 	for _, tt := range tests {
@@ -1412,6 +1417,75 @@ steps:
 	}
 	if len(wf.Steps[0].Principles) != 1 || wf.Steps[0].Principles[0] != "clean-code" {
 		t.Errorf("step principles = %v, want [clean-code]", wf.Steps[0].Principles)
+	}
+}
+
+func TestParseStepLevelEnforceOverride(t *testing.T) {
+	yaml := []byte(`
+name: mixed-enforce
+steps:
+  - id: review
+    prompt: Pure reasoning, stays hard.
+  - id: fix
+    prompt: Writes files, needs soft.
+    enforce: soft
+  - id: summary
+    prompt: Pure reasoning again.
+    enforce: hard
+`)
+	wf, err := Parse(yaml)
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if wf.Enforce != "hard" {
+		t.Errorf("workflow enforce = %q, want default hard", wf.Enforce)
+	}
+	if wf.Steps[0].Enforce != "" {
+		t.Errorf("step 0 enforce = %q, want empty (inherit)", wf.Steps[0].Enforce)
+	}
+	if wf.Steps[1].Enforce != "soft" {
+		t.Errorf("step 1 enforce = %q, want soft", wf.Steps[1].Enforce)
+	}
+	if wf.Steps[2].Enforce != "hard" {
+		t.Errorf("step 2 enforce = %q, want hard", wf.Steps[2].Enforce)
+	}
+}
+
+func TestEffectiveEnforce(t *testing.T) {
+	tests := []struct {
+		name     string
+		wfField  string
+		stepField string
+		want     string
+	}{
+		{"step soft overrides wf hard", "hard", "soft", "soft"},
+		{"step hard overrides wf soft", "soft", "hard", "hard"},
+		{"empty step inherits wf soft", "soft", "", "soft"},
+		{"empty step inherits wf hard", "hard", "", "hard"},
+		{"both empty → default hard", "", "", "hard"},
+		{"nil workflow → default hard", "", "", "hard"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wf := &Workflow{Enforce: tt.wfField}
+			step := &WfStep{Enforce: tt.stepField}
+			got := EffectiveEnforce(wf, step)
+			if got != tt.want {
+				t.Errorf("EffectiveEnforce = %q, want %q", got, tt.want)
+			}
+		})
+	}
+
+	// Nil-safety: caller might pass nil for either arg during early
+	// setup paths. Should not panic; should fall through to "hard".
+	if got := EffectiveEnforce(nil, nil); got != "hard" {
+		t.Errorf("EffectiveEnforce(nil, nil) = %q, want hard", got)
+	}
+	if got := EffectiveEnforce(nil, &WfStep{Enforce: "soft"}); got != "soft" {
+		t.Errorf("EffectiveEnforce(nil, soft) = %q, want soft", got)
+	}
+	if got := EffectiveEnforce(&Workflow{Enforce: "soft"}, nil); got != "soft" {
+		t.Errorf("EffectiveEnforce(soft, nil) = %q, want soft", got)
 	}
 }
 

@@ -1,10 +1,10 @@
 name: Documentation Generation
 description: Generate code documentation via the documenter agent — analyze code → spawn documenter → write output
-enforce: soft
 
 steps:
   - id: analyze
     model: general
+    # analyze stays hard: Read-only surface extraction.
     prompt: |
       Target: {{input}}
 
@@ -23,6 +23,7 @@ steps:
 
   - id: generate
     model: smart
+    enforce: soft  # spawns documenter agent via Task tool
     prompt: |
       Target: {{input}}
       Analysis: {{analyze}}
@@ -44,6 +45,7 @@ steps:
 
   - id: write
     model: fast
+    enforce: soft  # writes doc files to disk
     prompt: |
       Generated docs: {{generate}}
 

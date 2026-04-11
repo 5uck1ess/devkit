@@ -160,11 +160,16 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				CurrentIndex: 0,
 				TotalSteps:   len(wf.Steps),
 				StepType:     stepType(firstStep),
-				Enforce:      wf.Enforce,
-				Branch:       wf.BranchMode,
-				Status:       "starting",
-				StartedAt:    time.Now(),
-				Outputs:      map[string]string{},
+				// Per-step enforce override falls back to workflow level;
+				// SessionState.Enforce is always the *current step's*
+				// effective enforce, re-derived on every transition so
+				// the hook sees the right value without needing to know
+				// the step index.
+				Enforce:   engine.EffectiveEnforce(wf, &firstStep),
+				Branch:    wf.BranchMode,
+				Status:    "starting",
+				StartedAt: time.Now(),
+				Outputs:   map[string]string{},
 			}, nil
 		})
 		if err != nil {
@@ -478,6 +483,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		state.CurrentStep = nextStep.ID
 		state.CurrentIndex = nextIndex
 		state.StepType = stepType(nextStep)
+		state.Enforce = engine.EffectiveEnforce(wf, &nextStep)
 		state.Busy = false
 		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
@@ -665,6 +671,7 @@ func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (
 	state.CurrentStep = nextStep.ID
 	state.CurrentIndex = nextIndex
 	state.StepType = stepType(nextStep)
+	state.Enforce = engine.EffectiveEnforce(wf, &nextStep)
 	state.Busy = false
 	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil

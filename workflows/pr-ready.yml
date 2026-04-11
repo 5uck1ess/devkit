@@ -1,10 +1,10 @@
 name: PR Ready
 description: Full PR preparation pipeline — validate, drop unrelated changes, lint, test, security, changelog, create PR, monitor CI and reviews until resolved
-enforce: soft
 
 steps:
   - id: validate
     model: fast
+    enforce: soft  # runs git status / git log
     prompt: |
       Validate the current branch is ready for PR preparation:
       - Not on main/master
@@ -15,6 +15,7 @@ steps:
 
   - id: necessity
     model: smart
+    enforce: soft  # may Edit files to remove debug artifacts
     prompt: |
       Review the diff (git diff main...HEAD) for unnecessary changes:
       - Debug artifacts (console.log, print statements)
@@ -25,6 +26,7 @@ steps:
 
   - id: lint
     model: smart
+    enforce: soft  # runs linter + edits violations
     prompt: |
       Run the project's linter on changed files.
       Fix any violations.
@@ -36,6 +38,7 @@ steps:
 
   - id: test
     model: smart
+    enforce: soft  # runs test suite + edits failing tests
     prompt: |
       Run the full test suite.
       Fix any failures.
@@ -47,6 +50,7 @@ steps:
 
   - id: security
     model: smart
+    # security stays hard: read-only review, no file writes.
     prompt: |
       Review changed files for security issues:
       - Hardcoded secrets or API keys
@@ -60,6 +64,7 @@ steps:
 
   - id: doc-check
     model: smart
+    enforce: soft  # commits docs edits when the rule is mechanical
     prompt: |
       Classify the diff (git diff main...HEAD) and decide which project
       docs need updating so the user does not have to ask every PR.
@@ -152,6 +157,7 @@ steps:
 
   - id: changelog
     model: fast
+    enforce: soft  # runs git diff main...HEAD
     prompt: |
       Generate a changelog entry from git diff main...HEAD.
       Summarize what changed and why. Any `docs: update ...` commit
@@ -160,6 +166,7 @@ steps:
 
   - id: create-pr
     model: smart
+    enforce: soft  # git push + gh pr create
     prompt: |
       Create the PR:
       1. Push the branch to remote
@@ -175,6 +182,7 @@ steps:
 
   - id: monitor
     model: smart
+    enforce: soft  # gh pr checks, gh api, git push for review fixes
     prompt: |
       The PR was just created. Watch it until merge-ready.
 

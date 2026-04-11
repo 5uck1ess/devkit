@@ -41,6 +41,26 @@ type WfStep struct {
 	Loop       *Loop    `yaml:"loop"`
 	Branch     []Branch `yaml:"branch"`
 	Principles []string `yaml:"principles"` // per-step override
+	// Enforce overrides the workflow-level enforce for this step only.
+	// Empty inherits from Workflow.Enforce. Lets a workflow keep most
+	// prompt steps under hard (mid-step tool block) while allowing
+	// specific steps whose body needs Bash/Edit/Write/WebFetch to run
+	// under soft. The Stop-hook still blocks session end on soft steps.
+	Enforce string `yaml:"enforce"`
+}
+
+// EffectiveEnforce returns the enforcement mode for a step, falling back
+// to the workflow-level setting when the step does not override it.
+// Callers should use this instead of reading step.Enforce directly so
+// that the fall-through is consistent everywhere state transitions.
+func EffectiveEnforce(wf *Workflow, step *WfStep) string {
+	if step != nil && step.Enforce != "" {
+		return step.Enforce
+	}
+	if wf != nil && wf.Enforce != "" {
+		return wf.Enforce
+	}
+	return "hard"
 }
 
 // Loop controls step repetition.
@@ -150,6 +170,13 @@ func validate(wf *Workflow) error {
 		}
 		if s.Expect != "" && s.Expect != "success" && s.Expect != "failure" {
 			return fmt.Errorf("step %q has invalid expect %q — must be \"success\" or \"failure\"", s.ID, s.Expect)
+		}
+		// Step-level enforce override: empty inherits from workflow,
+		// otherwise must be hard|soft. Command steps get guarded
+		// differently (engine runs them), but allow the field anyway
+		// for symmetry — it's a no-op there rather than a parse error.
+		if s.Enforce != "" && s.Enforce != "hard" && s.Enforce != "soft" {
+			return fmt.Errorf("step %q has invalid enforce %q — must be \"hard\" or \"soft\"", s.ID, s.Enforce)
 		}
 		if s.Command != "" && s.Loop != nil {
 			return fmt.Errorf("step %q has both command and loop — these are mutually exclusive", s.ID)

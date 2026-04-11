@@ -1,6 +1,5 @@
 name: Bug Fix
 description: Full lifecycle bug fix — triage, reproduce, diagnose, fix, test, review (with fast path for trivial fixes)
-enforce: soft
 
 budget:
   limit: 300000
@@ -27,6 +26,7 @@ steps:
 
   - id: reproduce
     model: smart
+    enforce: soft  # "run the failing case" requires Bash
     prompt: |
       Bug report: {{input}}
 
@@ -38,6 +38,7 @@ steps:
 
   - id: diagnose
     model: smart
+    enforce: soft  # appends to scratchpad
     prompt: |
       Reproduction:
 
@@ -55,6 +56,7 @@ steps:
 
   - id: fix
     model: smart
+    enforce: soft  # edits source to implement the fix
     prompt: |
       Diagnosis:
 
@@ -65,6 +67,7 @@ steps:
 
   - id: regression-test
     model: smart
+    enforce: soft  # writes a new test file
     prompt: |
       A bug was fixed:
 
@@ -78,6 +81,7 @@ steps:
 
   - id: run-tests
     model: fast
+    enforce: soft  # runs the full test suite
     prompt: |
       Run the full test suite including the new regression test.
       Report results.
@@ -86,6 +90,7 @@ steps:
 
   - id: fix-tests
     model: smart
+    enforce: soft  # edits code/tests + re-runs
     prompt: |
       Test results:
 
@@ -105,6 +110,7 @@ steps:
 
   - id: summary
     model: fast
+    enforce: soft  # deletes scratchpad file
     prompt: |
       Bug fix complete. Summary:
 
@@ -127,6 +133,7 @@ steps:
 
   - id: quick-fix
     model: smart
+    enforce: soft  # edits + writes test + runs tests
     prompt: |
       This is a trivial bug — no deep investigation needed.
 

@@ -1,6 +1,5 @@
 name: Autoloop
 description: Autonomous improvement loop inspired by karpathy/autoresearch — audit, fix, measure, keep or revert, repeat
-enforce: soft
 
 budget:
   limit: 500000
@@ -9,6 +8,7 @@ budget:
 steps:
   - id: baseline
     model: fast
+    enforce: soft  # runs user-supplied metric command via Bash
     prompt: |
       Run the user's metric command to establish a baseline measurement.
 
@@ -57,6 +57,7 @@ steps:
 
   - id: fix
     model: smart
+    enforce: soft  # edits source to apply hypothesis
     prompt: |
       Make the change recommended by the audit.
 
@@ -77,6 +78,7 @@ steps:
 
   - id: measure
     model: fast
+    enforce: soft  # re-runs the metric command
     prompt: |
       Run the EXACT same metric command from the baseline to measure the result.
 
@@ -118,6 +120,7 @@ steps:
 
   - id: keep
     model: fast
+    enforce: soft  # git add + git commit + scratchpad edit
     prompt: |
       The change IMPROVED the metric. Keep it.
 
@@ -146,6 +149,7 @@ steps:
 
   - id: revert
     model: fast
+    enforce: soft  # git checkout + scratchpad edit
     prompt: |
       The change REGRESSED or had no effect. Revert it.
 
@@ -174,6 +178,7 @@ steps:
 
   - id: report
     model: smart
+    enforce: soft  # deletes scratchpad at the end
     prompt: |
       The autoloop session is complete. Write a final report.
 

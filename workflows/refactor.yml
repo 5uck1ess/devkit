@@ -1,6 +1,5 @@
 name: Refactor
 description: Full lifecycle refactor — analyze, plan, restructure, verify nothing broke
-enforce: soft
 
 budget:
   limit: 400000
@@ -35,6 +34,7 @@ steps:
 
   - id: refactor
     model: smart
+    enforce: soft  # edits source + runs compiler to verify
     prompt: |
       Refactoring plan:
 
@@ -50,6 +50,7 @@ steps:
 
   - id: run-tests
     model: fast
+    enforce: soft  # runs test suite
     prompt: |
       Run the full test suite to verify the refactoring didn't break anything.
       Report results.
@@ -58,6 +59,7 @@ steps:
 
   - id: fix-tests
     model: smart
+    enforce: soft  # edits code/tests + re-runs
     prompt: |
       Test results after refactoring:
 

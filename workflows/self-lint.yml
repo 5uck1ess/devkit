@@ -1,6 +1,5 @@
 name: Self-Lint
 description: Run linter, fix violations deterministically, repeat until clean
-enforce: soft
 
 steps:
   - id: baseline
@@ -8,6 +7,7 @@ steps:
 
   - id: fix
     model: smart
+    enforce: soft  # edits source to fix violations
     prompt: |
       Current lint output:
 

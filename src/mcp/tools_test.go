@@ -563,6 +563,100 @@ steps:
 	}
 }
 
+// TestAdvancePropagatesStepEnforce verifies that SessionState.Enforce is
+// re-derived from the *current* step on every transition so that a
+// workflow with mixed per-step enforce correctly flips the hook's
+// enforcement mode as the workflow walks from step to step.
+//
+// This is the structural guarantee that backs per-step `enforce:` as a
+// meaningful override: the hot-state file the hook reads must reflect
+// the step the agent is currently on, not the workflow default.
+func TestAdvancePropagatesStepEnforce(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	// Workflow-level default is hard. Middle step overrides to soft.
+	// Third step inherits (stays hard). Verifies all three transition
+	// paths: start (seeds first step), advance (normal), advance
+	// (back to inherited hard).
+	writeFile(t, filepath.Join(wfDir, "mixed.yml"), `name: mixed
+description: Mixed per-step enforce test
+steps:
+  - id: review
+    prompt: Read-only review.
+  - id: apply
+    prompt: Apply the fix.
+    enforce: soft
+  - id: summarize
+    prompt: Summarize what happened.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "mixed",
+		"input":    "demo",
+	}
+	if _, err := startHandler(context.Background(), startReq); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after start: %v", err)
+	}
+	if state.CurrentStep != "review" {
+		t.Fatalf("expected starting step review, got %s", state.CurrentStep)
+	}
+	if state.Enforce != "hard" {
+		t.Errorf("step 1 (review) enforce = %q, want hard (inherited from workflow default)", state.Enforce)
+	}
+	sessionID := state.ID
+
+	_, advHandler := srv.advanceTool()
+	advance := func(output string) {
+		t.Helper()
+		req := mcpmcp.CallToolRequest{}
+		req.Params.Arguments = map[string]interface{}{
+			"session": sessionID,
+			"output":  output,
+		}
+		res, err := advHandler(context.Background(), req)
+		if err != nil {
+			t.Fatalf("advance: %v", err)
+		}
+		if res.IsError {
+			tc, _ := res.Content[0].(mcpmcp.TextContent)
+			t.Fatalf("advance error: %s", tc.Text)
+		}
+	}
+
+	advance("review output")
+	state, _ = lib.ReadSessionJSON(dataDir)
+	if state == nil {
+		t.Fatal("session gone after advance 1")
+	}
+	if state.CurrentStep != "apply" {
+		t.Fatalf("expected step apply, got %s", state.CurrentStep)
+	}
+	if state.Enforce != "soft" {
+		t.Errorf("step 2 (apply) enforce = %q, want soft (per-step override)", state.Enforce)
+	}
+
+	advance("apply output")
+	state, _ = lib.ReadSessionJSON(dataDir)
+	if state == nil {
+		t.Fatal("session gone after advance 2")
+	}
+	if state.CurrentStep != "summarize" {
+		t.Fatalf("expected step summarize, got %s", state.CurrentStep)
+	}
+	if state.Enforce != "hard" {
+		t.Errorf("step 3 (summarize) enforce = %q, want hard (back to inherited)", state.Enforce)
+	}
+}
+
 func TestAdvanceCommandStep(t *testing.T) {
 	wfDir := t.TempDir()
 	dataDir := t.TempDir()

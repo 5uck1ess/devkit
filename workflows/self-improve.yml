@@ -1,6 +1,5 @@
 name: Self-Improve
 description: Metric-gated improvement loop — run command, fix issues, repeat until passing
-enforce: soft
 
 steps:
   - id: baseline
@@ -8,6 +7,7 @@ steps:
 
   - id: improve
     model: smart
+    enforce: soft  # edits source to apply fixes
     prompt: |
       Current metric output:
 
