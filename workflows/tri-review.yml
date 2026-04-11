@@ -1,5 +1,6 @@
 name: Tri-Review
 description: Three-tier model review — reviews run in parallel, then consolidated
+enforce: soft
 
 steps:
   - id: gather
