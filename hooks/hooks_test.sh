@@ -199,10 +199,36 @@ run_guard '{"status":"done","step_type":"command","enforce":"hard","current_step
   '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
   0 "status=done → allow"
 
-# Prompt step (any enforce) → allow everything
+# Prompt step + hard enforce: read-only evidence tools allowed,
+# Write/Bash/Task blocked. Closes the drift hole from issue #63.
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Read","tool_input":{"file_path":"main.go"}}' \
+  0 "prompt+hard+Read → allow"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Grep","tool_input":{"pattern":"foo"}}' \
+  0 "prompt+hard+Grep → allow"
 run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
   '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
-  0 "prompt step hard enforce → allow Bash"
+  2 "prompt+hard+Bash → block (drift hole #63)"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Write","tool_input":{"file_path":"x.go","content":"x"}}' \
+  2 "prompt+hard+Write → block"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Task","tool_input":{}}' \
+  2 "prompt+hard+Task → block"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"devkit_advance"}' \
+  0 "prompt+hard+devkit_advance → allow"
+
+# Prompt step + soft enforce: allow everything (with stderr nudge).
+run_guard '{"status":"running","step_type":"prompt","enforce":"soft","current_step":"analyse"}' \
+  '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
+  0 "prompt+soft+Bash → allow with nudge"
+
+# Parallel step: engine dispatches, agent needs full tool access.
+run_guard '{"status":"running","step_type":"parallel","enforce":"hard","current_step":"fanout"}' \
+  '{"tool_name":"Task","tool_input":{}}' \
+  0 "parallel+hard+Task → allow"
 
 # Command step + hard enforce + Bash → block (exit 2)
 run_guard '{"status":"running","step_type":"command","enforce":"hard","current_step":"build"}' \
