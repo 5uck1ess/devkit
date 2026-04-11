@@ -1,5 +1,6 @@
 name: Autoloop
 description: Autonomous improvement loop inspired by karpathy/autoresearch — audit, fix, measure, keep or revert, repeat
+enforce: soft
 
 budget:
   limit: 500000

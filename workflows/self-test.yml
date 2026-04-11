@@ -1,5 +1,6 @@
 name: Self-Test
 description: Run tests, fix failures deterministically, repeat until all pass
+enforce: soft
 
 steps:
   # $DEVKIT_INPUT is the shell command provided by the caller (e.g.

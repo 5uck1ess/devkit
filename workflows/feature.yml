@@ -1,5 +1,6 @@
 name: Feature
 description: Full lifecycle — triage, brainstorm, plan, implement, test, lint, review (with fast path for small changes)
+enforce: soft
 
 budget:
   limit: 500000

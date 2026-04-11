@@ -1,5 +1,6 @@
 name: Test Generation
 description: Generate tests for code, run them, iterate until they pass — analyze → generate via test-writer agent → run-fix loop → report
+enforce: soft
 
 steps:
   - id: analyze

@@ -1,5 +1,6 @@
 name: Bug Fix
 description: Full lifecycle bug fix — triage, reproduce, diagnose, fix, test, review (with fast path for trivial fixes)
+enforce: soft
 
 budget:
   limit: 300000

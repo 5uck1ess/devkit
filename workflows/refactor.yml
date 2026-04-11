@@ -1,5 +1,6 @@
 name: Refactor
 description: Full lifecycle refactor — analyze, plan, restructure, verify nothing broke
+enforce: soft
 
 budget:
   limit: 400000

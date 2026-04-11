@@ -1,5 +1,6 @@
 name: Research
 description: Research workflow — clarify, decompose, parallel search, summarize, corroborate, synthesize
+enforce: soft
 
 budget:
   limit: 200000

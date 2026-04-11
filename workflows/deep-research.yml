@@ -1,5 +1,6 @@
 name: Deep Research
 description: ACH-enhanced deep research — perspective discovery, competing hypotheses, directed disconfirmation, evidence matrix
+enforce: soft
 
 budget:
   limit: 400000

@@ -1,5 +1,6 @@
 name: Project Audit
 description: Unified project health audit — detect ecosystem, audit deps, lint, security, report
+enforce: soft
 
 steps:
   - id: detect

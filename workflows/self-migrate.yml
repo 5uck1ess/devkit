@@ -1,5 +1,6 @@
 name: Self-Migrate
 description: Incremental migration loop — migrate code one piece at a time with tests as safety gate
+enforce: soft
 
 steps:
   - id: baseline

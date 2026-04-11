@@ -1,5 +1,6 @@
 name: Documentation Generation
 description: Generate code documentation via the documenter agent — analyze code → spawn documenter → write output
+enforce: soft
 
 steps:
   - id: analyze

@@ -1,5 +1,6 @@
 name: Self-Lint
 description: Run linter, fix violations deterministically, repeat until clean
+enforce: soft
 
 steps:
   - id: baseline

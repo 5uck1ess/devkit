@@ -1,5 +1,6 @@
 name: Self-Audit
 description: Codebase audit inspired by karpathy/autoresearch — measure everything, rank hypotheses by evidence, present actionable plan
+enforce: soft
 
 budget:
   limit: 200000
