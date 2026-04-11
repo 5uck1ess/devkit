@@ -1,5 +1,6 @@
 name: PR Ready
 description: Full PR preparation pipeline — validate, drop unrelated changes, lint, test, security, changelog, create PR, monitor CI and reviews until resolved
+enforce: soft
 
 steps:
   - id: validate
