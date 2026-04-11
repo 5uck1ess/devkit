@@ -1,0 +1,91 @@
+name: Codebase Onboarding
+description: Generate an onboarding guide for new contributors — analyze structure → spawn researcher → write guide
+
+steps:
+  - id: analyze
+    model: general
+    prompt: |
+      Target codebase: {{input}}
+
+      Read and analyze:
+      - Directory structure and organization
+      - Package manifests (package.json, go.mod, pyproject.toml, Cargo.toml, etc.)
+      - Entry points (main files, index files, cmd/ directories)
+      - Configuration files
+      - CI/CD setup
+      - README, CONTRIBUTING, CLAUDE.md if they exist
+
+      Output:
+      - Project type (language, framework)
+      - Install/test/dev commands from manifests
+      - Top-level directory map
+      - Existing docs to reference
+
+  - id: architect
+    model: smart
+    prompt: |
+      Target codebase: {{input}}
+      Initial analysis: {{analyze}}
+
+      Spawn the `researcher` agent via the Task tool with the analysis as context.
+      The agent must identify:
+      1. Architecture pattern (monolith, microservices, MVC, layered, etc.)
+      2. Key directories and what lives in each
+      3. Data flow — how a request/event moves through the system
+      4. Core abstractions — important types, interfaces, classes
+      5. External dependencies — APIs, databases, services
+      6. Build and deploy — how to build, test, and deploy
+      7. Non-obvious gotchas a new contributor will hit
+
+      Read actual code, don't guess from file names.
+
+      Return the architectural summary.
+
+  - id: guide
+    model: smart
+    prompt: |
+      Initial analysis: {{analyze}}
+      Architecture: {{architect}}
+
+      Generate the onboarding guide in this exact shape:
+
+      ## Onboarding: <project name>
+
+      ### Quick Start
+      1. Install dependencies: <command>
+      2. Run tests: <command>
+      3. Start dev server: <command>
+
+      ### Architecture
+      <2-4 paragraphs from {{architect}}>
+
+      ### Directory Map
+      | Directory | Purpose |
+      |---|---|
+      | ... | ... |
+
+      ### Key Files
+      | File | Why it matters |
+      |---|---|
+      | ... | ... |
+
+      ### Data Flow
+      <request/event lifecycle>
+
+      ### Patterns & Conventions
+      - <pattern 1>
+      - <pattern 2>
+
+      ### Gotchas
+      - <non-obvious thing 1>
+      - <non-obvious thing 2>
+
+      ### Common Tasks
+      | Task | How |
+      |---|---|
+      | Add a new endpoint | ... |
+      | Add a DB migration | ... |
+      | Run specific tests | ... |
+
+      Write the guide to `docs/ONBOARDING.md` (create the directory if needed).
+      Report the final file path.

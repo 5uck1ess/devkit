@@ -210,6 +210,20 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			// Mid-workflow skill dispatch must work so a nested
+			// "do tri-review" inside an active feature workflow
+			// can load the trigger skill — engine still gates the
+			// devkit_start it issues, so guard does not need to.
+			name:       "command+hard+Skill → allow",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "command", Enforce: "hard", CurrentStep: "build",
+			},
+			stdin:    `{"tool_name":"Skill"}`,
+			wantExit: 0,
+		},
+		{
 			name:       "command+soft → allow",
 			dataDir:    true,
 			hasSession: true,
@@ -419,6 +433,19 @@ func TestGuardPreToolUse(t *testing.T) {
 				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
 			},
 			stdin:    `{"tool_name":"TodoWrite"}`,
+			wantExit: 0,
+		},
+		{
+			// Mid-workflow skill dispatch under prompt+hard so a
+			// nested keyword ("do deep research") loads its trigger
+			// skill instead of being silently blocked.
+			name:       "prompt+hard+Skill → allow",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", Enforce: "hard", CurrentStep: "analyse",
+			},
+			stdin:    `{"tool_name":"Skill"}`,
 			wantExit: 0,
 		},
 		{

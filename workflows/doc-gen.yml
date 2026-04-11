@@ -1,0 +1,54 @@
+name: Documentation Generation
+description: Generate code documentation via the documenter agent — analyze code → spawn documenter → write output
+
+steps:
+  - id: analyze
+    model: general
+    prompt: |
+      Target: {{input}}
+
+      Read the target files and identify:
+      - Public exports, classes, functions, types
+      - API surface and interfaces
+      - Configuration options
+      - Dependencies and relationships
+      - Usage patterns from existing code/tests
+      - Existing doc style if docs already exist (match it)
+
+      Output:
+      - List of public surface items to document
+      - Existing doc location (if any)
+      - Doc style to match
+
+  - id: generate
+    model: smart
+    prompt: |
+      Target: {{input}}
+      Analysis: {{analyze}}
+
+      Spawn the `documenter` agent via the Task tool with the analysis as context.
+      The agent must produce:
+      1. Overview — what the module/package does
+      2. API Reference — every public export with signature, params, return type, description
+      3. Usage Examples — realistic code snippets (not placeholders)
+      4. Configuration — options and defaults if applicable
+
+      Rules:
+      - Read actual code — don't guess signatures or behavior
+      - Match existing doc style if docs already exist
+      - Don't document internal/private code unless asked
+      - Concise — one line per param, one paragraph per function
+
+      Return the generated content.
+
+  - id: write
+    model: fast
+    prompt: |
+      Generated docs: {{generate}}
+
+      Write to the appropriate location:
+      - If a `docs/` directory exists, write there
+      - If a specific output path was requested in {{input}}, use that
+      - Otherwise, output inline and tell the user where they want it saved
+
+      Report the final file path(s).
