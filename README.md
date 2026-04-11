@@ -79,7 +79,7 @@ npx playwright install chromium
 ### Verify
 
 ```bash
-/devkit:status
+/health
 ```
 
 This shows which CLIs are installed, which agents are available, and which commands are ready.
@@ -96,7 +96,7 @@ This shows which CLIs are installed, which agents are available, and which comma
 # "research the best auth library for Node"
 
 # Slash commands for complex workflows:
-/tri:review                   # Multi-agent code review
+/tri-review                   # Multi-agent code review
 # Or just describe: "submit a PR", "ship this" → pr-ready skill auto-activates
 ```
 
@@ -123,23 +123,11 @@ Enforcement (runs automatically):
 
 ---
 
-## Commands
-
-All skills are tab-completable slash commands in current Claude Code. The primary user-facing entry points:
-
-| Command | What it does |
-|---|---|
-| `/tri-review` | Code review from 1-3 agents, consolidated report |
-| `/tri-debug` | Independent root-cause analysis from each agent |
-| `/tri-security` | Security audit with severity-ranked consensus |
-| `/devkit:status` | Health check |
-| `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` (user-only — `disable-model-invocation` prevents auto-trigger) |
-
-Every workflow also has a dedicated slash command: `/feature`, `/bugfix`, `/audit`, `/refactor`, `/pr-ready`, `/self-*`, etc. Tasks like "ship this PR" or "submit a PR" also auto-activate the `pr-ready` skill via natural language.
-
-### Workflows
+## Workflows
 
 All 21 YAML workflows are invoked via the MCP engine. Every workflow has a trigger skill so natural-language keywords dispatch deterministically — saying "build a feature", "fix this bug", "tri review", or "deep research X" fires the matching skill, which calls `devkit_start` and the engine takes over.
+
+Every workflow is also a tab-completable slash command. Bare names work (`/feature`, `/bugfix`, `/tri-review`, `/health`, `/setup-rules`); the fully-qualified `/devkit:<name>` form also works if you want to disambiguate from another plugin or a Claude Code built-in.
 
 | Workflow | What it does |
 |---|---|
@@ -254,7 +242,7 @@ All agents run in worktree isolation.
 Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` — rules guide how to write, hooks catch what you missed.
 
 ```bash
-/devkit:setup-rules
+/setup-rules
 ```
 
 | Language | Examples |

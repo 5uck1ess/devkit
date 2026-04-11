@@ -1,6 +1,6 @@
 ---
-name: status
-description: Check devkit health — which external CLIs (codex, gemini, gh, rtk, sg, gcli) are installed, which agents are available, which skills are ready to use. Use when asked about devkit status, "is devkit working?", "what's installed?", "what devkit capabilities do I have?", diagnosing devkit setup issues, or running /devkit:status. Read-only diagnostic, safe to auto-invoke.
+name: health
+description: Check devkit health — which external CLIs (codex, gemini, gh, rtk, sg, gcli) are installed, which agents are available, which skills are ready to use. Use when asked about devkit health, devkit status, "is devkit working?", "what's installed?", "what devkit capabilities do I have?", diagnosing devkit setup issues, or running /devkit:health. Read-only diagnostic, safe to auto-invoke.
 ---
 
 # Devkit Status
@@ -74,8 +74,8 @@ List all skills from `skills/` directory, marking which ones need external CLIs:
 | /tri-review | ⚠ partial | 2/3 agents available (no gemini) |
 | /tri-debug | ⚠ partial | 2/3 agents available |
 | /tri-security | ⚠ partial | 2/3 agents available |
-| /devkit:status | ✓ ready | This skill |
-| /devkit:setup-rules | ✓ ready | One-time setup |
+| /health | ✓ ready | This skill |
+| /setup-rules | ✓ ready | One-time setup |
 
 ### Agents
 | Agent | Model | Isolation | Status |
