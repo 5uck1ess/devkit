@@ -1,5 +1,6 @@
 ---
-description: Check devkit health — which external CLIs are installed, which agents are available, and which commands are ready to use.
+name: status
+description: Check devkit health — which external CLIs (codex, gemini, gh, rtk, sg, gcli) are installed, which agents are available, which skills are ready to use. Use when asked about devkit status, "is devkit working?", "what's installed?", "what devkit capabilities do I have?", diagnosing devkit setup issues, or running /devkit:status. Read-only diagnostic, safe to auto-invoke.
 ---
 
 # Devkit Status
@@ -46,15 +47,15 @@ fi
 
 List all agents from `agents/` directory with their model and isolation settings.
 
-### Command Availability
+### Skill Availability
 
-List all commands, marking which ones need external CLIs:
+List all skills from `skills/` directory, marking which ones need external CLIs:
 
 ```
 ## Devkit Status
 
 ### Plugins
-| Plugin | Status | Commands |
+| Plugin | Status | Skills |
 |--------|--------|----------|
 | codex | ✓ installed | /codex:rescue, /codex:review, /codex:result |
 | gemini | ✗ not installed | /gemini:rescue, /gemini:review, /gemini:result |
@@ -62,19 +63,18 @@ List all commands, marking which ones need external CLIs:
 ### External CLIs (fallback if plugins not installed)
 | CLI | Status | Required by |
 |-----|--------|------------|
-| codex | ✓ installed (v1.2.0) | tri:* commands (fallback) |
-| gemini | ✗ not installed | tri:* commands (fallback) |
+| codex | ✓ installed (v1.2.0) | tri:* skills (fallback) |
+| gemini | ✗ not installed | tri:* skills (fallback) |
 | gh | ✓ installed (v2.40.0) | pr-ready skill |
 | rtk | ✓ installed (v0.34.2) | token optimization (optional) |
 
-### Commands
-| Command | Status | Notes |
-|---------|--------|-------|
-| /tri:review | ⚠ partial | 2/3 agents available (no gemini) |
-| /tri:debug | ⚠ partial | 2/3 agents available |
-| /tri:security | ⚠ partial | 2/3 agents available |
-| /devkit:workflow | ✓ ready | Runs YAML workflows via Go engine |
-| /devkit:status | ✓ ready | This command |
+### Skills
+| Skill | Status | Notes |
+|-------|--------|-------|
+| /tri-review | ⚠ partial | 2/3 agents available (no gemini) |
+| /tri-debug | ⚠ partial | 2/3 agents available |
+| /tri-security | ⚠ partial | 2/3 agents available |
+| /devkit:status | ✓ ready | This skill |
 | /devkit:setup-rules | ✓ ready | One-time setup |
 
 ### Agents

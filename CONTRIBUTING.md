@@ -2,7 +2,7 @@
 
 ## Adding a Workflow
 
-Most command logic lives in YAML workflows executed by the Go engine. Only 6 slash commands remain as tab-completable entry points — everything else is context-activated via skills.
+Most command logic lives in YAML workflows executed by the Go engine. In current Claude Code all skills are tab-completable slash commands — new entry points go in `skills/`, not `commands/` (which is legacy).
 
 1. Create `workflows/my-workflow.yml` with steps, model assignments, and loop/gate definitions
 2. Test with `devkit_start` MCP tool or `devkit workflow my-workflow "input"` from terminal
@@ -10,19 +10,22 @@ Most command logic lives in YAML workflows executed by the Go engine. Only 6 sla
 
 See `skills/creating-workflows/SKILL.md` for YAML schema reference.
 
-### Adding a Slash Command (rare — only for top-level entry points)
+### Adding a User-Only Entry Point
 
-Only add a command if it needs tab-completion. Most workflows are invoked via MCP tools (`devkit_start`/`devkit_advance`) or context-activated skills.
+For side-effecting actions (install / deploy / setup) that should only run when the user explicitly invokes them, create a skill with `disable-model-invocation: true`:
 
-1. Create `commands/my-command.md` with YAML frontmatter:
+1. Create `skills/my-skill/SKILL.md` with YAML frontmatter:
    ```markdown
    ---
-   description: What this command does.
+   name: my-skill
+   description: What this skill does and when to use it.
+   disable-model-invocation: true
    ---
-   Use `devkit_start` MCP tool with workflow name to execute.
+   # Skill Title
+   Instructions...
    ```
 
-The command name is derived from the filename: `commands/my-command.md` becomes `/devkit:my-command`.
+This makes `/devkit:my-skill` tab-completable but prevents Claude from auto-triggering it — useful for installers (`setup-rules`) and other side-effecting operations. The `commands/` directory is legacy; don't add new files there.
 
 ## Adding a Context-Activated Skill
 
@@ -49,7 +52,7 @@ The skill will be auto-discovered as `devkit:my-skill`.
 
 1. Create a YAML file in `workflows/`
 2. See the `creating-workflows` skill for schema reference
-3. Run with `/devkit:workflow my-workflow`
+3. Run with `/my-workflow` — every workflow has its own tab-completable skill
 
 ## Guidelines
 

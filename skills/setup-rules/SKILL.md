@@ -1,5 +1,7 @@
 ---
-description: Install devkit coding rules to ~/.claude/rules/ for language-specific auto-activation
+name: setup-rules
+description: Install devkit coding rules to ~/.claude/rules/ for language-specific auto-activation. Use when the user explicitly asks to set up devkit rules, install language rules, or run /devkit:setup-rules. One-shot installer with side effects (writes to ~/.claude/rules/) — user-only invocation, never auto-triggered.
+disable-model-invocation: true
 ---
 
 # Setup Coding Rules

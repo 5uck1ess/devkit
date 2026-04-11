@@ -125,18 +125,17 @@ Enforcement (runs automatically):
 
 ## Commands
 
-6 tab-completable slash commands. All other workflows are context-activated via skills (auto-triggered by natural language) or invoked via MCP tools.
+All skills are tab-completable slash commands in current Claude Code. The primary user-facing entry points:
 
 | Command | What it does |
 |---|---|
-| `/tri:review` | Code review from 1-3 agents, consolidated report |
-| `/tri:debug` | Independent root-cause analysis from each agent |
-| `/tri:security` | Security audit with severity-ranked consensus |
-| `/devkit:workflow` | Run any YAML workflow by name |
+| `/tri-review` | Code review from 1-3 agents, consolidated report |
+| `/tri-debug` | Independent root-cause analysis from each agent |
+| `/tri-security` | Security audit with severity-ranked consensus |
 | `/devkit:status` | Health check |
-| `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` |
+| `/devkit:setup-rules` | Install language-specific coding rules to `~/.claude/rules/` (user-only — `disable-model-invocation` prevents auto-trigger) |
 
-Tasks like "ship this PR" or "submit a PR" auto-activate the `pr-ready` skill — no slash command needed.
+Every workflow also has a dedicated slash command: `/feature`, `/bugfix`, `/audit`, `/refactor`, `/pr-ready`, `/self-*`, etc. Tasks like "ship this PR" or "submit a PR" also auto-activate the `pr-ready` skill via natural language.
 
 ### Workflows
 
@@ -305,8 +304,8 @@ Terminal usage (devkit workflow <name> "<description>"):
 
 ```
 devkit/
-├── commands/          # 6 slash commands (tab-completable entry points)
-├── skills/            # 36 context-activated skills + _principles.yml
+├── commands/          # Legacy (references/ only); new entry points go in skills/
+├── skills/            # 38 skills (workflow triggers, principles, tools, utilities) + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 21 YAML workflow definitions
