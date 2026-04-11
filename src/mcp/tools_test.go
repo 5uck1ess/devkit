@@ -292,6 +292,170 @@ steps:
 	}
 }
 
+// TestStartReclaimsStaleSession verifies the orphan-recovery path: a
+// session older than sessionStaleTTL must be overwritten by a new
+// devkit_start rather than rejected. Without this, a crashed engine
+// process wedges the slot forever and the user has to manually clear
+// session.json.
+func TestStartReclaimsStaleSession(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "review.yml"), `name: review
+description: Code review workflow
+steps:
+  - id: analyse
+    prompt: Analyse {{input}} and identify issues.
+`)
+
+	// Pre-seed an orphaned session: status=running but UpdatedAt far
+	// enough in the past that the TTL check fires. The write path
+	// bumps UpdatedAt to now, so we have to rewrite the raw file
+	// after to backdate it.
+	stale := &lib.SessionState{
+		ID:        "stale1234567",
+		Workflow:  "review",
+		Status:    "running",
+		StartedAt: time.Now().Add(-2 * time.Hour),
+		UpdatedAt: time.Now().Add(-2 * time.Hour),
+		Outputs:   map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dataDir, stale); err != nil {
+		t.Fatalf("seed stale session: %v", err)
+	}
+	// WriteSessionJSON bumped UpdatedAt to now — rewrite via Update
+	// to force the stale timestamp back onto disk.
+	if _, err := lib.UpdateSessionJSON(dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
+		cur.UpdatedAt = time.Now().Add(-2 * time.Hour)
+		cur.StartedAt = time.Now().Add(-2 * time.Hour)
+		return cur, nil
+	}); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	// And writeSessionJSONLocked will have bumped it again, so do a
+	// raw marshal bypassing the helper. Instead: use os.Chtimes-style
+	// trick isn't enough since we need the field inside the JSON.
+	// Easiest: write the JSON file directly.
+	rawPath := filepath.Join(dataDir, "session.json")
+	raw := []byte(`{
+  "id": "stale1234567",
+  "workflow": "review",
+  "input": "",
+  "current_step": "",
+  "current_index": 0,
+  "total_steps": 1,
+  "step_type": "prompt",
+  "enforce": "hard",
+  "branch": false,
+  "budget_usd": 0,
+  "spent_usd": 0,
+  "started_at": "2020-01-01T00:00:00Z",
+  "updated_at": "2020-01-01T00:00:00Z",
+  "outputs": {},
+  "status": "running"
+}
+`)
+	if err := os.WriteFile(rawPath, raw, 0o600); err != nil {
+		t.Fatalf("write raw: %v", err)
+	}
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "review",
+		"input":    "main.go",
+	}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("expected reclaim to succeed, got error: %s", tc.Text)
+	}
+
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read reclaimed session: %v", err)
+	}
+	if state.ID == "stale1234567" {
+		t.Errorf("expected a fresh session ID after reclaim, still got the stale one")
+	}
+	if state.Input != "main.go" {
+		t.Errorf("expected new input 'main.go', got %q", state.Input)
+	}
+}
+
+// TestStartRejectsFreshSession is the inverse: TestStartAlreadyRunning
+// covers the case where an in-progress session has a fresh UpdatedAt.
+// This test adds the explicit guarantee that the TTL cutoff is real —
+// a session 29 minutes old must still reject, only >30min reclaims.
+func TestStartRejectsFreshSession(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "review.yml"), `name: review
+description: Code review workflow
+steps:
+  - id: analyse
+    prompt: Analyse {{input}} and identify issues.
+`)
+
+	// 29 minutes old — below the 30-minute TTL.
+	fresh := &lib.SessionState{
+		ID:        "fresh1234567",
+		Workflow:  "review",
+		Status:    "running",
+		StartedAt: time.Now().Add(-29 * time.Minute),
+		UpdatedAt: time.Now().Add(-29 * time.Minute),
+		Outputs:   map[string]string{},
+	}
+	if err := lib.WriteSessionJSON(dataDir, fresh); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	// WriteSessionJSON bumps UpdatedAt; rewrite raw so the test
+	// actually exercises the 29-minute case.
+	rawPath := filepath.Join(dataDir, "session.json")
+	raw := []byte(`{
+  "id": "fresh1234567",
+  "workflow": "review",
+  "input": "",
+  "current_step": "",
+  "current_index": 0,
+  "total_steps": 1,
+  "step_type": "prompt",
+  "enforce": "hard",
+  "branch": false,
+  "budget_usd": 0,
+  "spent_usd": 0,
+  "started_at": "` + time.Now().Add(-29*time.Minute).UTC().Format(time.RFC3339Nano) + `",
+  "updated_at": "` + time.Now().Add(-29*time.Minute).UTC().Format(time.RFC3339Nano) + `",
+  "outputs": {},
+  "status": "running"
+}
+`)
+	if err := os.WriteFile(rawPath, raw, 0o600); err != nil {
+		t.Fatalf("write raw: %v", err)
+	}
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "review",
+		"input":    "main.go",
+	}
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError=true for fresh session below TTL")
+	}
+}
+
 func TestAdvancePromptSteps(t *testing.T) {
 	wfDir := t.TempDir()
 	dataDir := t.TempDir()

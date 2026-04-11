@@ -3,6 +3,7 @@ package lib
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestNewSessionID(t *testing.T) {
@@ -76,5 +77,50 @@ func TestSessionJSON(t *testing.T) {
 	}
 	if got != nil {
 		t.Error("expected nil after clear")
+	}
+}
+
+// TestSessionJSONUpdatedAtBumps guards the staleness signal hooks rely
+// on: every Write/Update call must move UpdatedAt forward. A regression
+// here would wedge hooks into permanent "fresh session" mode and let
+// orphaned sessions block tool calls forever.
+func TestSessionJSONUpdatedAtBumps(t *testing.T) {
+	dir := t.TempDir()
+	state := &SessionState{
+		ID:       "abc123",
+		Workflow: "research",
+		StepType: "prompt",
+		Enforce:  "hard",
+		Status:   "running",
+		Outputs:  map[string]string{},
+	}
+
+	if err := WriteSessionJSON(dir, state); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	first, err := ReadSessionJSON(dir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if first.UpdatedAt.IsZero() {
+		t.Fatal("UpdatedAt should be set after WriteSessionJSON")
+	}
+
+	// Sleep a hair past the timestamp resolution so the second bump is
+	// observable even on systems with 1ms time granularity.
+	time.Sleep(2 * time.Millisecond)
+
+	if _, err := UpdateSessionJSON(dir, func(cur *SessionState) (*SessionState, error) {
+		cur.CurrentStep = "next"
+		return cur, nil
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	second, err := ReadSessionJSON(dir)
+	if err != nil {
+		t.Fatalf("read after update: %v", err)
+	}
+	if !second.UpdatedAt.After(first.UpdatedAt) {
+		t.Errorf("UpdatedAt did not advance: first=%v second=%v", first.UpdatedAt, second.UpdatedAt)
 	}
 }

@@ -75,7 +75,7 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/devkit-guard.sh",
             "statusMessage": "Workflow guard...",
-            "timeout": 2
+            "timeout": 5
           }
         ]
       }

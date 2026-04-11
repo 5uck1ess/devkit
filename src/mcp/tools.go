@@ -24,6 +24,14 @@ const commandTimeout = 5 * time.Minute
 // cannot consume the full commandTimeout budget.
 const gateTimeout = 60 * time.Second
 
+// sessionStaleTTL is the age after which an existing "running" session
+// is considered orphaned — i.e. the previous engine process crashed
+// without clearing state. devkit_start will overwrite such a session
+// instead of rejecting the call, and the PreToolUse hook stops
+// enforcing against it. Tuned to exceed any realistic command step
+// plus a safety margin.
+const sessionStaleTTL = 30 * time.Minute
+
 func (s *Server) listTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 	tool := mcpmcp.NewTool("devkit_list",
 		mcpmcp.WithDescription("List available workflows"),
@@ -120,7 +128,21 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		firstStep := wf.Steps[0]
 		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
 			if cur != nil && (cur.Status == "running" || cur.Status == "starting") {
-				return nil, fmt.Errorf("workflow %s already %s (session %s). Call devkit_advance to continue or devkit_status to check", cur.Workflow, cur.Status, cur.ID)
+				// Stale-session recovery: a previous engine process
+				// crashed or was killed without clearing state, so the
+				// slot is wedged. Gate on UpdatedAt (not StartedAt) so a
+				// long-running workflow that is actively advancing keeps
+				// the slot, while one that has genuinely stopped making
+				// progress gets reclaimed. Fall back to StartedAt for
+				// pre-UpdatedAt sessions written by older binaries.
+				lastBump := cur.UpdatedAt
+				if lastBump.IsZero() {
+					lastBump = cur.StartedAt
+				}
+				if !lastBump.IsZero() && time.Since(lastBump) < sessionStaleTTL {
+					return nil, fmt.Errorf("workflow %s already %s (session %s). Call devkit_advance to continue or devkit_status to check", cur.Workflow, cur.Status, cur.ID)
+				}
+				fmt.Fprintf(os.Stderr, "devkit_start: reclaiming stale session %s (workflow %s, idle for %s)\n", cur.ID, cur.Workflow, time.Since(lastBump).Round(time.Second))
 			}
 			return &lib.SessionState{
 				ID:           sessionID,

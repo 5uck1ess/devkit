@@ -197,7 +197,7 @@ Coding principles (`clean-code`, `dry`, `yagni`, `dont-reinvent`, `executing`, `
 | PreToolUse | **audit-trail** | Logs every command to `.devkit/audit.log` |
 | PreToolUse | **pr-gate** | Prompts to run the pr-ready skill before `gh pr create` |
 | PreToolUse | **rtk-rewrite** | Compresses Bash output via RTK (no-op if not installed) |
-| PreToolUse | **devkit-guard** | Blocks out-of-step tools during workflow command steps |
+| PreToolUse | **devkit-guard** | Blocks out-of-step tools during workflow command AND prompt steps (hard enforce); soft enforce emits a reminder. Skills are intentionally unguarded. |
 | PostToolUse | **post-validate** | Suppressed errors, leaked secrets, writes outside repo |
 | PostToolUse | **slop-detect** | AI code patterns — doc/code imbalance, restating comments |
 | PostToolUse | **lang-review** | Language-aware checks: Go, TypeScript, Rust, Python, Shell |

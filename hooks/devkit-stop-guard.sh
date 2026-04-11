@@ -8,6 +8,13 @@ set -euo pipefail
 # cannot be parsed, we fail CLOSED (block with a clear reason) rather
 # than silently approve — a corrupted state file during an active
 # workflow is a bug the user needs to see, not something to paper over.
+# Stale sessions (see lib/read-session.sh TTL) are treated as orphaned
+# and the Stop is approved so the user is never wedged by a crashed
+# engine process.
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/read-session.sh
+source "${SCRIPT_DIR}/lib/read-session.sh"
 
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-}"
 if [[ -z "$DATA_DIR" ]]; then
@@ -17,38 +24,42 @@ if [[ -z "$DATA_DIR" ]]; then
 fi
 
 SESSION_FILE="${DATA_DIR}/session.json"
-if [[ ! -f "$SESSION_FILE" ]]; then
+
+if ! parse_session_fields "$SESSION_FILE"; then
+  if [[ -f "$SESSION_FILE" ]]; then
+    printf 'devkit-stop-guard: cannot parse session state (python3 missing or JSON corrupt); blocking Stop\n' >&2
+    printf '{"decision":"block","reason":"devkit session state corrupted — remove %s to clear"}' "$SESSION_FILE"
+    exit 0
+  fi
   printf '{"decision":"approve"}'
   exit 0
 fi
 
-# Parse all fields in a single python3 call. Passes path via sys.argv
-# to prevent shell injection. Outputs valid JSON directly. Handles the
-# TOCTOU race (file cleared between -f test and open) as "no session"
-# so we don't spuriously block a completed workflow.
-PARSED=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1]))
-except FileNotFoundError:
-    print(json.dumps({'decision': 'approve'}))
-    sys.exit(0)
-if d.get('status') == 'running':
-    remaining = d.get('total_steps', 0) - d.get('current_index', 0)
-    wf = d.get('workflow', 'unknown')
-    print(json.dumps({
-        'decision': 'block',
-        'reason': f'Workflow {wf} incomplete — {remaining} steps remaining. Call devkit_advance to continue.'
-    }))
-else:
-    print(json.dumps({'decision': 'approve'}))
-" "$SESSION_FILE" 2>/dev/null) || {
-  # Cannot parse — fail closed with diagnostic. User must either
-  # complete the workflow or remove the stale file manually.
-  printf 'devkit-stop-guard: cannot parse session state (python3 missing or JSON corrupt); blocking Stop\n' >&2
-  printf '{"decision":"block","reason":"devkit session state corrupted — remove %s to clear"}' "$SESSION_FILE"
+if [[ "$SESSION_STATUS" != "running" ]]; then
+  printf '{"decision":"approve"}'
   exit 0
-}
+fi
 
-printf '%s' "$PARSED"
+if [[ "$SESSION_STALE" == "1" ]]; then
+  printf 'devkit-stop-guard: session %s idle past TTL — approving Stop (reclaim on next devkit_start)\n' "$SESSION_WORKFLOW" >&2
+  printf '{"decision":"approve"}'
+  exit 0
+fi
+
+REMAINING=0
+if [[ -n "$SESSION_TOTAL_STEPS" && -n "$SESSION_CURRENT_INDEX" ]]; then
+  REMAINING=$((SESSION_TOTAL_STEPS - SESSION_CURRENT_INDEX))
+fi
+WF="${SESSION_WORKFLOW:-unknown}"
+
+# Emit the block verdict via python3 json.dumps so the reason string is
+# escaped safely — workflow names and step IDs flow from workflow YAML
+# and could theoretically contain characters that need escaping.
+python3 -c '
+import json, sys
+print(json.dumps({
+    "decision": "block",
+    "reason": f"Workflow {sys.argv[1]} incomplete — {sys.argv[2]} steps remaining. Call devkit_advance to continue."
+}))
+' "$WF" "$REMAINING"
 exit 0
