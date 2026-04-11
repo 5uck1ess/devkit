@@ -1,6 +1,6 @@
 ---
 name: tri-security
-description: Triple-agent security audit — use when asked for tri security, triple security audit, three-way security review, multi-agent vulnerability scan, or parallel security audit. Three-tier parallel review focused on injection, auth, and config. Triggers the deterministic tri-security workflow.
+description: Three-tier parallel security audit (injection + auth + config, each examined by a different model tier) with severity-ranked consolidation — use when the user asks for tri-security, triple security audit, three-way security review, multi-model vulnerability scan, or parallel security audit of a code change, branch, module, or endpoint. Worth the extra cost when: touching auth/payments/user-uploads/admin surfaces, before prod deploy of security-sensitive code, after a security incident, or when the user is paranoid about a specific attack class. Do NOT use for general code quality review (use tri-review), bug diagnosis (use tri-debug), or approach comparison on greenfield work (use tri-dispatch). Do NOT use for a single-line "is this XSS safe" question, or for running pre-existing scanners like npm audit / gosec / semgrep — those are single-tool tasks, not a tri workflow.
 ---
 
 # Tri-Security

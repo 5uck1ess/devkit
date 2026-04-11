@@ -1,6 +1,6 @@
 ---
 name: tri-review
-description: Triple-agent code review — use when asked for a tri review, triple review, three-way review, multi-agent review, parallel review, or consensus review. Dispatches Claude/Codex/Gemini in parallel and consolidates findings. Triggers the deterministic tri-review workflow.
+description: Three independent code reviews (smart + general + fast model tiers running Claude, Codex, and Gemini) with consolidated findings — use when the user asks for tri-review, triple code review, three-way code review, multi-model code review, consensus code review, or says "get three opinions on this diff/PR/change before I ship". Worth the extra cost when the change is high-stakes, the user doesn't trust a single-model review, or they want breadth of perspectives over depth. Do NOT use for bug diagnosis (use tri-debug), security audits (use tri-security), or comparing implementation approaches on greenfield work (use tri-dispatch). Do NOT use for routine "can you review this PR" requests where a single-model pass is fine.
 ---
 
 # Tri-Review
