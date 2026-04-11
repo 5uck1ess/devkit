@@ -97,6 +97,78 @@ run_hook "rtk-rewrite.sh" \
   '{"tool_name":"Bash","tool_input":{"command":"go test ./..."}}' \
   "rtk-rewrite: pass through" false
 
+# rtk-rewrite.sh — exit-code protocol coverage via a PATH shim.
+# rtk's documented contract (from the binary):
+#   0 + stdout  rewrite found, auto-allow
+#   1           no RTK equivalent → pass through
+#   2           deny rule matched → pass through (CC handles natively)
+#   3 + stdout  ask rule matched → rewrite with permissionDecision=ask
+# The shim lets us test each branch deterministically without depending on
+# the real rtk version's rule set.
+rtk_shim_dir=$(mktemp -d)
+GUARD_TMPS+=("$rtk_shim_dir")
+cat > "$rtk_shim_dir/rtk" <<'SHIM'
+#!/bin/sh
+# Fake rtk: first arg selects mode via $RTK_SHIM_MODE.
+# Usage: RTK_SHIM_MODE=allow|ask|no-equiv|deny rtk rewrite <cmd>
+[ "$1" = "rewrite" ] || exit 0
+shift
+case "$RTK_SHIM_MODE" in
+  allow)    printf 'rtk %s' "$*"; exit 0 ;;
+  ask)      printf 'rtk %s' "$*"; exit 3 ;;
+  no-equiv) exit 1 ;;
+  deny)     exit 2 ;;
+  *)        exit 1 ;;
+esac
+SHIM
+chmod +x "$rtk_shim_dir/rtk"
+
+rtk_shim_run() {
+  local mode="$1" input="$2"
+  PATH="$rtk_shim_dir:$PATH" RTK_SHIM_MODE="$mode" \
+    bash "$HOOK_DIR/rtk-rewrite.sh" <<< "$input" 2>/dev/null || true
+}
+
+# exit 0 → permissionDecision=allow + rewrite
+out=$(rtk_shim_run allow '{"tool_input":{"command":"ls -la","description":"list"}}')
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="allow" and .hookSpecificOutput.updatedInput.command=="rtk ls -la"' >/dev/null 2>&1; then
+  pass "rtk-rewrite: exit 0 → allow + rewrite"
+else
+  fail "rtk-rewrite: exit 0 (got: $out)"
+fi
+
+# exit 3 → permissionDecision=ask + rewrite
+out=$(rtk_shim_run ask '{"tool_input":{"command":"git status","description":"status"}}')
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="ask" and .hookSpecificOutput.updatedInput.command=="rtk git status"' >/dev/null 2>&1; then
+  pass "rtk-rewrite: exit 3 → ask + rewrite"
+else
+  fail "rtk-rewrite: exit 3 (got: $out)"
+fi
+
+# exit 1 → silent pass-through
+out=$(rtk_shim_run no-equiv '{"tool_input":{"command":"nothing","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: exit 1 → pass through"
+else
+  fail "rtk-rewrite: exit 1 should no-op (got: $out)"
+fi
+
+# exit 2 → silent pass-through (CC handles deny natively)
+out=$(rtk_shim_run deny '{"tool_input":{"command":"rm -rf /","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: exit 2 → pass through"
+else
+  fail "rtk-rewrite: exit 2 should no-op (got: $out)"
+fi
+
+# Empty command → no-op
+out=$(rtk_shim_run allow '{"tool_input":{"command":"","description":""}}')
+if [[ -z "$out" ]]; then
+  pass "rtk-rewrite: empty command → no-op"
+else
+  fail "rtk-rewrite: empty command should no-op (got: $out)"
+fi
+
 # pr-gate.sh — should allow non-push commands
 run_hook "pr-gate.sh" \
   '{"tool_name":"Bash","tool_input":{"command":"git status"}}' \
@@ -116,6 +188,33 @@ else
   pass "security-patterns: exits cleanly (pattern matching is format-sensitive)"
 fi
 
+# security-patterns.sh — dedup must survive across hook invocations.
+# This pins the $$→$PPID fix: $$ is the hook's own bash PID, which is
+# brand new every invocation, so dedup was silently disabled and the
+# same warning fired on every save. In production Claude Code spawns
+# the hook directly via fork+exec, so $PPID is the stable CC session PID.
+#
+# Topology gotcha: bash's $() command substitution wraps the command in
+# an intermediate subshell (a real fork), which then becomes the hook's
+# parent — so $PPID would change per call under $() capture and this
+# test would spuriously fail. We redirect output to files instead, so
+# each hook invocation is a direct child of the test script and
+# $PPID == $$ of this script (matching production topology).
+sec_tmpdir=$(mktemp -d)
+GUARD_TMPS+=("$sec_tmpdir")
+SEC_PAYLOAD='{"tool_name":"Write","tool_input":{"file_path":"dedup_test.py","content":"import pickle; pickle.load(f)"}}'
+TMPDIR="$sec_tmpdir" bash "$HOOK_DIR/security-patterns.sh" <<< "$SEC_PAYLOAD" \
+  > "$sec_tmpdir/out1" 2>/dev/null || true
+TMPDIR="$sec_tmpdir" bash "$HOOK_DIR/security-patterns.sh" <<< "$SEC_PAYLOAD" \
+  > "$sec_tmpdir/out2" 2>/dev/null || true
+if [[ -s "$sec_tmpdir/out1" ]] && [[ ! -s "$sec_tmpdir/out2" ]]; then
+  pass "security-patterns: dedup suppresses repeat warning (PPID fix)"
+else
+  sec_first=$(cat "$sec_tmpdir/out1" 2>/dev/null || true)
+  sec_second=$(cat "$sec_tmpdir/out2" 2>/dev/null || true)
+  fail "security-patterns: dedup not working (first=$sec_first second=$sec_second)"
+fi
+
 echo ""
 echo "=== PostToolUse Hooks ==="
 
@@ -126,6 +225,31 @@ run_hook "post-validate.sh" \
 
 # post-validate.sh — empty input
 run_hook "post-validate.sh" "" "post-validate: empty input" false
+
+# post-validate.sh — relative path inside the repo must NOT trigger the
+# "outside repo" warning. Pins the realpath -m GNU-ism fix: on macOS the
+# old implementation's fallback kept $FILE_PATH unresolved, so a benign
+# "src/foo.go" failed the "$REPO_ROOT"/* match and generated a false
+# warning on every Edit/Write. Run the hook from the repo root with a
+# plain relative path and assert no warning is emitted.
+out=$(cd "$REPO_ROOT" && printf '%s' \
+  '{"tool_name":"Write","tool_input":{"file_path":"src/fake.go","content":"package main"}}' \
+  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+if [[ -z "$out" ]]; then
+  pass "post-validate: relative path inside repo → no warning (macOS realpath fix)"
+else
+  fail "post-validate: relative in-repo path wrongly flagged (got: $out)"
+fi
+
+# post-validate.sh — absolute path outside repo SHOULD trigger warning.
+out=$(printf '%s' \
+  '{"tool_name":"Write","tool_input":{"file_path":"/opt/nonexistent/foo.go","content":"package main"}}' \
+  | bash "$HOOK_DIR/post-validate.sh" 2>/dev/null || true)
+if printf '%s' "$out" | jq -e '.hookSpecificOutput.additionalContext' >/dev/null 2>&1; then
+  pass "post-validate: absolute path outside repo → warn"
+else
+  fail "post-validate: absolute out-of-repo path not flagged (got: $out)"
+fi
 
 # slop-detect.sh — should allow clean code
 run_hook "slop-detect.sh" \
