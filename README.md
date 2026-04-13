@@ -125,7 +125,7 @@ Enforcement (runs automatically):
 
 ## Workflows
 
-All 21 YAML workflows are invoked via the MCP engine. Every workflow has a trigger skill so natural-language keywords dispatch deterministically — saying "build a feature", "fix this bug", "tri review", or "deep research X" fires the matching skill, which calls `devkit_start` and the engine takes over.
+All 22 YAML workflows are invoked via the MCP engine. Every workflow has a trigger skill so natural-language keywords dispatch deterministically — saying "build a feature", "fix this bug", "tri review", or "deep research X" fires the matching skill, which calls `devkit_start` and the engine takes over.
 
 Every workflow is also a tab-completable slash command. Bare names work (`/feature`, `/bugfix`, `/tri-review`, `/health`, `/setup-rules`); the fully-qualified `/devkit:<name>` form also works if you want to disambiguate from another plugin or a Claude Code built-in.
 
@@ -247,11 +247,16 @@ Language-specific rules that auto-activate when Claude reads matching files. Ins
 
 | Language | Examples |
 |---|---|
+| Common | Cross-platform paths, assumption-surfacing, error messages, temp dirs |
 | Go | Error wrapping, context.Context, defer traps, JSON float64 gotcha |
 | TypeScript | `unknown` not `any`, discriminated unions, catch narrowing |
 | Python | Exception chains, type hints, dataclasses, pathlib |
 | Rust | Ownership, `?` propagation, newtypes, clippy-as-errors |
 | Shell | `set -euo pipefail`, quoting, macOS portability |
+| Java | Optional, records, try-with-resources, BigDecimal for money |
+| Kotlin | `val` default, sealed classes, coroutines, Elvis operator |
+| Swift | `guard let`, struct-first, async/await, weak self |
+| C# | Records, pattern matching, async Task, Path.Combine |
 
 ---
 
@@ -293,10 +298,10 @@ Terminal usage (devkit workflow <name> "<description>"):
 ```
 devkit/
 ├── commands/          # Legacy (references/ only); new entry points go in skills/
-├── skills/            # 38 skills (workflow triggers, principles, tools, utilities) + _principles.yml
+├── skills/            # 39 skills (workflow triggers, principles, tools, utilities) + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
-├── workflows/         # 21 YAML workflow definitions
+├── workflows/         # 22 YAML workflow definitions
 ├── resources/rules/   # Language-specific coding rules
 ├── src/               # Go engine + MCP server
 │   ├── mcp/           # MCP server (tools, principles loader, session management)

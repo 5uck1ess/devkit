@@ -1,0 +1,74 @@
+name: Harness Audit
+description: Audit the agent harness configuration — CLAUDE.md, hooks, MCP configs, agent definitions, skills — for misconfigurations, injection risks, and permission issues
+
+steps:
+  - id: inventory
+    model: general
+    enforce: soft
+    prompt: |
+      Inventory the agent harness configuration in this project. Find and read:
+
+      1. CLAUDE.md / AGENTS.md / GEMINI.md (root-level instruction files)
+      2. .claude/settings.json and .claude/settings.local.json (permissions, MCP servers)
+      3. hooks/ directory (hooks.json + all referenced scripts)
+      4. agents/ directory (all .md agent definitions)
+      5. skills/ directory (all SKILL.md files — frontmatter only, not full content)
+      6. .mcp.json or any MCP config files
+      7. .claude-plugin/plugin.json (plugin manifest)
+
+      For each file found, note: path, size, what it configures.
+      For files NOT found, note their absence — missing configs can be a finding too.
+
+      Output a structured inventory. Do NOT evaluate yet — just collect.
+
+  - id: analyze
+    model: smart
+    prompt: |
+      Review the harness inventory for security and configuration issues.
+
+      Inventory: {{inventory}}
+
+      Check each category:
+
+      **Injection risks in instruction files:**
+      - CLAUDE.md containing instructions that could be overridden by repo content
+      - Overly broad tool permissions ("allow all", wildcard patterns)
+      - Instructions that disable safety checks or skip verification
+
+      **Hook security:**
+      - Hook scripts that execute unvalidated input
+      - Missing hooks for dangerous operations (force push, file deletion)
+      - Hook scripts with hardcoded secrets or tokens
+      - Shell commands that break on Windows (no cross-platform fallback)
+
+      **MCP configuration:**
+      - MCP servers with overly broad permissions
+      - Servers pointing to untrusted or external endpoints
+      - Missing authentication on sensitive MCP servers
+
+      **Agent definitions:**
+      - Agents with excessive tool access (Write + Bash + no isolation)
+      - Missing isolation: worktree for agents that edit files
+      - Agents without maxTurns limits
+
+      **Permission gaps:**
+      - Sensitive operations not gated by hooks
+      - Missing deny patterns for destructive commands
+
+      For each finding: severity (critical/high/medium/low), category, file:line, description, remediation.
+
+  - id: report
+    model: fast
+    prompt: |
+      Compile the harness audit into a final report.
+
+      Analysis: {{analyze}}
+
+      Format:
+      1. **Grade** (A-F) based on overall harness security posture
+      2. **Critical/High findings** — must fix before trusting this harness with autonomous work
+      3. **Medium/Low findings** — hardening opportunities
+      4. **What's good** — things configured correctly (acknowledge good practice)
+      5. **Recommendations** — prioritized list of changes
+
+      Be direct. A clean harness with no findings gets an A and a short report.
