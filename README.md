@@ -247,11 +247,16 @@ Language-specific rules that auto-activate when Claude reads matching files. Ins
 
 | Language | Examples |
 |---|---|
+| Common | Cross-platform paths, assumption-surfacing, error messages, temp dirs |
 | Go | Error wrapping, context.Context, defer traps, JSON float64 gotcha |
 | TypeScript | `unknown` not `any`, discriminated unions, catch narrowing |
 | Python | Exception chains, type hints, dataclasses, pathlib |
 | Rust | Ownership, `?` propagation, newtypes, clippy-as-errors |
 | Shell | `set -euo pipefail`, quoting, macOS portability |
+| Java | Optional, records, try-with-resources, BigDecimal for money |
+| Kotlin | `val` default, sealed classes, coroutines, Elvis operator |
+| Swift | `guard let`, struct-first, async/await, weak self |
+| C# | Records, pattern matching, async Task, Path.Combine |
 
 ---
 
@@ -293,7 +298,7 @@ Terminal usage (devkit workflow <name> "<description>"):
 ```
 devkit/
 ├── commands/          # Legacy (references/ only); new entry points go in skills/
-├── skills/            # 38 skills (workflow triggers, principles, tools, utilities) + _principles.yml
+├── skills/            # 39 skills (workflow triggers, principles, tools, utilities) + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 21 YAML workflow definitions
