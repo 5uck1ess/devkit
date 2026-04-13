@@ -125,7 +125,7 @@ Enforcement (runs automatically):
 
 ## Workflows
 
-All 21 YAML workflows are invoked via the MCP engine. Every workflow has a trigger skill so natural-language keywords dispatch deterministically — saying "build a feature", "fix this bug", "tri review", or "deep research X" fires the matching skill, which calls `devkit_start` and the engine takes over.
+All 22 YAML workflows are invoked via the MCP engine. Every workflow has a trigger skill so natural-language keywords dispatch deterministically — saying "build a feature", "fix this bug", "tri review", or "deep research X" fires the matching skill, which calls `devkit_start` and the engine takes over.
 
 Every workflow is also a tab-completable slash command. Bare names work (`/feature`, `/bugfix`, `/tri-review`, `/health`, `/setup-rules`); the fully-qualified `/devkit:<name>` form also works if you want to disambiguate from another plugin or a Claude Code built-in.
 
@@ -301,7 +301,7 @@ devkit/
 ├── skills/            # 39 skills (workflow triggers, principles, tools, utilities) + _principles.yml
 ├── agents/            # 6 agents (reviewer, researcher, improver, ...)
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
-├── workflows/         # 21 YAML workflow definitions
+├── workflows/         # 22 YAML workflow definitions
 ├── resources/rules/   # Language-specific coding rules
 ├── src/               # Go engine + MCP server
 │   ├── mcp/           # MCP server (tools, principles loader, session management)
