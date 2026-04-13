@@ -31,7 +31,7 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 | `agents/*.md` | 6 subagent definitions | documenter, improver, researcher, reviewer, security-auditor, test-writer |
 | `mcpb/` | MCPB bundle (launcher, manifest.json, server) | Packaged distribution artifact |
 | `bin/devkit` | User-facing CLI wrapper | Shells out to the `devkit-engine` Go binary |
-| `resources/rules/` | Language coding rules | Installed via the `setup-rules` skill |
+| `resources/rules/` | Language coding rules (common + go/python/rust/typescript/shell/java/kotlin/swift/csharp) | Installed via the `setup-rules` skill |
 | `.claude-plugin/plugin.json` | Plugin manifest | Name, version, `mcpServers` pointer |
 | `src/Makefile` | Build + test + version sync | `make build`, `make test`, `make check`, `make sync-version` |
 | `commands/references/` | 3 reference files pulled in by skills (`debug-checklists.md`, `domain-probes.md`, `stub-patterns.md`) | Shared checklist/probe/stub content; write new work as skills |
@@ -46,6 +46,7 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 
 ## Conventions
 
+- State assumptions before implementing. If multiple interpretations exist, present them — don't pick silently.
 - Never push directly to `main`. Always PR. Direct push bypasses the version-bump and release pipeline.
 - Never amend commits — create new ones, even after pre-commit hook failures.
 - Never skip hooks (`--no-verify`, `--no-gpg-sign`) without explicit user consent.
