@@ -1,6 +1,6 @@
 ---
 name: scrape
-description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Playwright, Firecrawl, or WebFetch.
+description: Scrape a URL to clean Markdown — use when asked to scrape, fetch, extract content from, or read a webpage and convert it to Markdown. Uses Jina Reader, Playwright, Camoufox (TLS-spoofing Firefox), Scweet (X/Twitter), Firecrawl, or WebFetch.
 ---
 
 # Web Scrape to Markdown
@@ -26,8 +26,10 @@ Fetch a URL and convert it to clean, LLM-ready Markdown. Supports multiple backe
 
 1. **Jina Reader** — prepend `https://r.jina.ai/` to the URL. Returns Markdown by default. Use if `JINA_API_KEY` is set (higher rate limits) or anonymously (~20 RPM). Best for articles and docs.
 2. **Playwright** — use if `npx playwright --version` succeeds (optional dep, install with `npx playwright install chromium`). Best for JS-heavy SPAs and sites that block headless scrapers. Free and local — no API keys.
-3. **Firecrawl** — use if `FIRECRAWL_API_KEY` is set. Paid API. Good for anti-bot bypass when Playwright isn't enough.
-4. **WebFetch fallback** — use Claude's built-in `WebFetch` tool. No API key needed, but returns raw content (less clean).
+3. **Camoufox** — patched Firefox with leak-fixed JA3/TLS fingerprints. Use if `python -m camoufox version` succeeds (install: `pip install -U camoufox[geoip] && python -m camoufox fetch`). Free and local. Use when Playwright returns a challenge page (Cloudflare "Just a moment...", DataDome, PerimeterX). Auto-triggered when Playwright response body matches challenge signatures (`cf-chl-bypass`, `__cf_chl_`, `_Incapsula_Resource`).
+4. **Scweet (X/Twitter only)** — specialized scraper for `x.com` / `twitter.com` URLs. Use if `SCWEET_AUTH_TOKEN` and `SCWEET_CT0` env vars are set (or cookies file). Auto-routed when host is `x.com` or `twitter.com` — other backends don't work reliably on X post-API lockdown.
+5. **Firecrawl** — use if `FIRECRAWL_API_KEY` is set. Paid API. Last-resort anti-bot bypass when stealth browsers still get blocked.
+6. **WebFetch fallback** — use Claude's built-in `WebFetch` tool. No API key needed, but returns raw content (less clean).
 
 ## Execution
 
@@ -83,6 +85,51 @@ Pass the URL as a shell variable (`URL=https://example.com`), never inline into 
 
 Then convert HTML → Markdown. Prefer a local converter if available (pandoc, turndown). If none available, strip script/style/nav/footer tags and extract text from article/main/body.
 
+**Camoufox (when Playwright returns a challenge page or `--backend camoufox`):**
+
+Check availability: `python -m camoufox version`. If missing, print once per session: `Camoufox not installed. Install with: pip install -U camoufox[geoip] && python -m camoufox fetch`, then fall through.
+
+Write the driver to a file (never inline `-c "..."` — same reasoning as Playwright). Pass the URL as an env var, never interpolated into the command string:
+
+```bash
+cat > /tmp/devkit-camoufox.py <<'EOF'
+import os, json, sys
+from camoufox.sync_api import Camoufox
+
+url = os.environ["DEVKIT_SCRAPE_URL"]
+with Camoufox(headless=True, humanize=True) as browser:
+    page = browser.new_page()
+    page.goto(url, wait_until="networkidle", timeout=30000)
+    print(json.dumps({"title": page.title(), "html": page.content()}))
+EOF
+
+DEVKIT_SCRAPE_URL="$URL" python /tmp/devkit-camoufox.py
+```
+
+Then convert HTML → Markdown (same converter as Playwright).
+
+**Challenge-page detection** (triggers auto-fallback Playwright → Camoufox): if response HTML contains `cf-chl-bypass`, `__cf_chl_`, `_Incapsula_Resource`, `DDG_`, `<title>Just a moment...</title>`, or is under 2KB with no `<article>`/`<main>` tag, treat as blocked and retry with Camoufox.
+
+**Scweet (X/Twitter — host is `x.com` or `twitter.com`):**
+
+Check availability: `python -c "import Scweet"`. If missing: `pip install Scweet`. Requires `SCWEET_AUTH_TOKEN` and `SCWEET_CT0` env vars (extract from browser dev tools → Application → Cookies on x.com).
+
+```bash
+cat > /tmp/devkit-scweet.py <<'EOF'
+import os, json, sys
+from Scweet.scweet import scrape
+
+url = os.environ["DEVKIT_SCRAPE_URL"]
+cookies = {"auth_token": os.environ["SCWEET_AUTH_TOKEN"], "ct0": os.environ["SCWEET_CT0"]}
+data = scrape(url=url, cookies=cookies, headless=True)
+print(json.dumps(data))
+EOF
+
+DEVKIT_SCRAPE_URL="$URL" python /tmp/devkit-scweet.py
+```
+
+Output is structured tweet data — render to Markdown with username + timestamp + text + engagement stats.
+
 **Firecrawl (if FIRECRAWL_API_KEY is set and --backend firecrawl):**
 ```
 Use Bash to call (use jq to safely construct JSON — never interpolate URLs directly):
@@ -110,7 +157,7 @@ When given multiple URLs, scrape them in parallel:
 
 ### Error Handling
 
-**Fallback chain (single linear order):** Jina Reader → Playwright → Firecrawl → WebFetch. Each backend is tried in order. Move to the next only on error, empty content, or missing dependency.
+**Fallback chain (single linear order):** Jina Reader → Playwright → Camoufox → Firecrawl → WebFetch. Each backend is tried in order. Move to the next only on error, empty content, challenge-page detection, or missing dependency. **Exception:** URLs on `x.com` / `twitter.com` route directly to Scweet (skip the chain) when `SCWEET_AUTH_TOKEN` is set; if Scweet is unavailable or fails, fall back to Jina.
 
 - **Report which backend actually ran** for each URL, and (if fallbacks happened) why the earlier ones failed. Never silently substitute content — the user must know a paywall/cookie-wall/SPA-skeleton from one backend wasn't the real page fetched by another.
 - If a URL is unreachable by every backend, report the error and continue with remaining URLs.
