@@ -934,6 +934,235 @@ func TestGuardStopHook(t *testing.T) {
 	}
 }
 
+// TestGuardStopHookRepoScope pins the issue-#91 scope restriction:
+// the stop-guard nag fires only when the current Claude Code session's
+// repo matches the repo that started the workflow. Cross-repo sessions
+// approve silently; the block remains active when the user returns to
+// the originating repo. The legacy empty-RepoRoot case (pre-#91
+// sessions) falls through to the historical block behavior — no silent
+// bypass on missing scope signal.
+func TestGuardStopHookRepoScope(t *testing.T) {
+	tests := []struct {
+		name             string
+		stateRepoRoot    string
+		claudeProjectDir string
+		wantDecision     string
+	}{
+		{
+			name:             "matching repo → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-a",
+			wantDecision:     "block",
+		},
+		{
+			name:             "matching repo with trailing slash → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-a/",
+			wantDecision:     "block",
+		},
+		{
+			name:             "different repo → approve",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-b",
+			wantDecision:     "approve",
+		},
+		{
+			name:             "empty state.RepoRoot (pre-#91) → block",
+			stateRepoRoot:    "",
+			claudeProjectDir: "/tmp/repo-b",
+			wantDecision:     "block",
+		},
+		{
+			name:             "empty CLAUDE_PROJECT_DIR (cannot resolve current) → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "",
+			wantDecision:     "block",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSession(t, dir, lib.SessionState{
+				Status:      "running",
+				Workflow:    "pr-ready",
+				StepEnforce: lib.EnforceHard,
+				TotalSteps:  5,
+				RepoRoot:    tc.stateRepoRoot,
+			})
+			env := newGuardTestEnv(t, "", "", true, dir)
+			// CLAUDE_PROJECT_DIR drives currentRepoRoot() for the
+			// stop-guard's repo-match check. Unset forces the
+			// pwd-walk fallback, which tempdirs won't satisfy → "".
+			if tc.claudeProjectDir != "" {
+				t.Setenv("CLAUDE_PROJECT_DIR", tc.claudeProjectDir)
+			} else {
+				t.Setenv("CLAUDE_PROJECT_DIR", "")
+				// Also move pwd into a non-git tempdir so the
+				// fallback walk returns "" deterministically.
+				prev, _ := os.Getwd()
+				nowhere := t.TempDir()
+				if err := os.Chdir(nowhere); err != nil {
+					t.Fatalf("chdir: %v", err)
+				}
+				t.Cleanup(func() { os.Chdir(prev) })
+			}
+			runGuard(guardCmd, nil)
+			var v stopVerdict
+			if err := json.Unmarshal(env.stdout.Bytes(), &v); err != nil {
+				t.Fatalf("invalid JSON: %v", err)
+			}
+			if v.Decision != tc.wantDecision {
+				t.Fatalf("decision=%q want=%q (stderr=%q)", v.Decision, tc.wantDecision, env.stderr.String())
+			}
+		})
+	}
+}
+
+// TestGuardStopHookRepoScopeWalkUp covers the pwd-walk fallback path in
+// currentRepoRoot() — all cases in TestGuardStopHookRepoScope set
+// CLAUDE_PROJECT_DIR, so the `.git`-finding loop never executes there.
+// Also covers the subdirectory case (session cwd several levels below
+// the repo root).
+func TestGuardStopHookRepoScopeWalkUp(t *testing.T) {
+	// Build a fake repo with a nested subdir: repo/a/b.
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	sub := filepath.Join(repo, "a", "b")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatalf("mkdir sub: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		stateRepoRoot string
+		cwd           string
+		wantDecision  string
+	}{
+		{
+			name:          "walk-up from repo root resolves match → block",
+			stateRepoRoot: repo,
+			cwd:           repo,
+			wantDecision:  "block",
+		},
+		{
+			name:          "walk-up from nested subdir resolves match → block",
+			stateRepoRoot: repo,
+			cwd:           sub,
+			wantDecision:  "block",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSession(t, dir, lib.SessionState{
+				Status:      "running",
+				Workflow:    "pr-ready",
+				StepEnforce: lib.EnforceHard,
+				TotalSteps:  5,
+				RepoRoot:    tc.stateRepoRoot,
+			})
+			env := newGuardTestEnv(t, "", "", true, dir)
+			// Unset CLAUDE_PROJECT_DIR to force the pwd-walk
+			// branch of currentRepoRoot().
+			t.Setenv("CLAUDE_PROJECT_DIR", "")
+			prev, _ := os.Getwd()
+			if err := os.Chdir(tc.cwd); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { os.Chdir(prev) })
+			runGuard(guardCmd, nil)
+			var v stopVerdict
+			if err := json.Unmarshal(env.stdout.Bytes(), &v); err != nil {
+				t.Fatalf("invalid JSON: %v", err)
+			}
+			if v.Decision != tc.wantDecision {
+				t.Fatalf("decision=%q want=%q (stderr=%q)", v.Decision, tc.wantDecision, env.stderr.String())
+			}
+		})
+	}
+}
+
+// TestGuardStopHookRepoScopeSymlink proves samePath() actually uses
+// EvalSymlinks rather than bare Clean(): a symlinked path pointing at
+// the originating repo must compare equal and keep the block active.
+// Regression guard for macOS /var → /private/var and user-created
+// symlinks to worktrees.
+func TestGuardStopHookRepoScopeSymlink(t *testing.T) {
+	real := t.TempDir()
+	if err := os.Mkdir(filepath.Join(real, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	linkParent := t.TempDir()
+	link := filepath.Join(linkParent, "linked-repo")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeSession(t, dir, lib.SessionState{
+		Status:      "running",
+		Workflow:    "pr-ready",
+		StepEnforce: lib.EnforceHard,
+		TotalSteps:  5,
+		RepoRoot:    real,
+	})
+	env := newGuardTestEnv(t, "", "", true, dir)
+	t.Setenv("CLAUDE_PROJECT_DIR", link)
+
+	runGuard(guardCmd, nil)
+	var v stopVerdict
+	if err := json.Unmarshal(env.stdout.Bytes(), &v); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if v.Decision != "block" {
+		t.Fatalf("decision=%q want=%q — samePath should resolve the symlink (stderr=%q)", v.Decision, "block", env.stderr.String())
+	}
+}
+
+// TestGuardStopHookRepoScopeWorktree pins currentRepoRoot()'s support
+// for git worktrees, where `.git` is a FILE (gitlink) instead of a
+// directory. devkit itself runs from worktrees; a future refactor to
+// IsDir() on the walk-up check would silently bypass the block for
+// every worktree user without this test.
+func TestGuardStopHookRepoScopeWorktree(t *testing.T) {
+	worktree := t.TempDir()
+	// Worktrees have .git as a regular file containing `gitdir: ...`.
+	if err := os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: /tmp/fake-main/.git/worktrees/wt\n"), 0o644); err != nil {
+		t.Fatalf("write .git file: %v", err)
+	}
+
+	dir := t.TempDir()
+	writeSession(t, dir, lib.SessionState{
+		Status:      "running",
+		Workflow:    "pr-ready",
+		StepEnforce: lib.EnforceHard,
+		TotalSteps:  5,
+		RepoRoot:    worktree,
+	})
+	env := newGuardTestEnv(t, "", "", true, dir)
+	t.Setenv("CLAUDE_PROJECT_DIR", "")
+	prev, _ := os.Getwd()
+	if err := os.Chdir(worktree); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(prev) })
+
+	runGuard(guardCmd, nil)
+	var v stopVerdict
+	if err := json.Unmarshal(env.stdout.Bytes(), &v); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if v.Decision != "block" {
+		t.Fatalf("decision=%q want=%q — worktree .git as file must still resolve as repo root (stderr=%q)", v.Decision, "block", env.stderr.String())
+	}
+}
+
 func TestGuardStopHookStaleSession(t *testing.T) {
 	// Stale-during-Stop → approve so a crashed engine doesn't trap the
 	// user in an un-stoppable session.

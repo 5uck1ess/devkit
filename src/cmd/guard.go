@@ -155,6 +155,53 @@ func staleTTL() time.Duration {
 	return time.Duration(n) * time.Second
 }
 
+// currentRepoRoot resolves the absolute repo root the current Claude
+// Code session is operating in, for the stop-guard scope check (issue
+// #91). Prefer CLAUDE_PROJECT_DIR because Claude Code sets it per
+// session for every hook invocation and it is not spoofable from
+// within a prompt — Claude cannot edit its own session env. Fall back
+// to walking up from pwd so a non-Claude-Code caller (direct stdio
+// test) still resolves something sensible. Returns "" if no repo root
+// can be determined; callers fall through to the legacy block in that
+// case so a missing signal never silently approves.
+func currentRepoRoot() string {
+	if dir := strings.TrimSpace(os.Getenv("CLAUDE_PROJECT_DIR")); dir != "" {
+		return dir
+	}
+	if dir, err := os.Getwd(); err == nil {
+		for {
+			if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				return ""
+			}
+			dir = parent
+		}
+	}
+	return ""
+}
+
+// samePath compares two filesystem paths by resolving symlinks and
+// cleaning separators. Used by the stop-guard repo-match check so
+// symlinked checkouts ("/Users/me/repos/x" via "/tmp/x") resolve
+// equal. Falls back to cleaned-path comparison if EvalSymlinks fails
+// (path does not exist yet, permission denied) so the check never
+// panics on transient filesystem state.
+func samePath(a, b string) bool {
+	norm := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Clean(resolved)
+		}
+		return filepath.Clean(p)
+	}
+	return norm(a) == norm(b)
+}
+
 // sessionIsStale mirrors the lib/read-session.sh TTL rule: prefer
 // UpdatedAt, fall back to StartedAt for pre-UpdatedAt state files
 // written by older engine binaries. An unparseable (zero) timestamp is
@@ -449,6 +496,27 @@ func runStopGuard() {
 		writeStopVerdict(stopVerdict{Decision: "approve"})
 		guardExit(0)
 		return
+	}
+
+	// Scope restriction (issue #91): if the workflow was started in a
+	// different repo than the one the current Claude Code session is
+	// operating in, approve silently. The block is not a bypass — it
+	// remains active when the user returns to the originating repo;
+	// this only prevents a stuck workflow in repo A from nagging every
+	// turn of unrelated work in repo B. No TTL escape, no env override,
+	// no branch carve-out: if the session started in repo A, only repo A
+	// sees the block. Empty state.RepoRoot (pre-#91 sessions) or empty
+	// current repo root (hook env missing) falls through to the legacy
+	// block behavior — we do not silently approve on missing signals.
+	if state.RepoRoot != "" {
+		if cur := currentRepoRoot(); cur != "" && !samePath(state.RepoRoot, cur) {
+			fmt.Fprintf(guardStderr,
+				"devkit-stop-guard: session %s belongs to %s, current repo is %s — approving Stop (block remains active in originating repo)\n",
+				state.Workflow, state.RepoRoot, cur)
+			writeStopVerdict(stopVerdict{Decision: "approve"})
+			guardExit(0)
+			return
+		}
 	}
 
 	remaining := 0

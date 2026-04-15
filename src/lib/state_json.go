@@ -75,6 +75,16 @@ type SessionState struct {
 	Busy          bool `json:"busy,omitempty"`
 	LoopIteration int  `json:"loop_iteration,omitempty"` // current loop count for loop steps
 	LoopMax       int  `json:"loop_max,omitempty"`       // max iterations for current loop
+	// RepoRoot is the absolute path of the repository whose MCP server
+	// started this workflow. The Stop hook uses it to scope the
+	// incomplete-workflow nag to the originating repo: opening a Claude
+	// Code session in a different repo sees an approve verdict instead
+	// of blocking on a workflow that does not belong to that project.
+	// This is scope restriction, not a bypass — returning to the
+	// originating repo resumes the block. Empty on sessions written by
+	// pre-#91 engines; the guard treats empty as "no scoping, preserve
+	// legacy block behavior."
+	RepoRoot string `json:"repo_root,omitempty"`
 }
 
 // UnmarshalJSON validates StepEnforce at read time so a stale or
