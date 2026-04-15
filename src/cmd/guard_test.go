@@ -934,6 +934,92 @@ func TestGuardStopHook(t *testing.T) {
 	}
 }
 
+// TestGuardStopHookRepoScope pins the issue-#91 scope restriction:
+// the stop-guard nag fires only when the current Claude Code session's
+// repo matches the repo that started the workflow. Cross-repo sessions
+// approve silently; the block remains active when the user returns to
+// the originating repo. The legacy empty-RepoRoot case (pre-#91
+// sessions) falls through to the historical block behavior — no silent
+// bypass on missing scope signal.
+func TestGuardStopHookRepoScope(t *testing.T) {
+	tests := []struct {
+		name             string
+		stateRepoRoot    string
+		claudeProjectDir string
+		wantDecision     string
+	}{
+		{
+			name:             "matching repo → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-a",
+			wantDecision:     "block",
+		},
+		{
+			name:             "matching repo with trailing slash → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-a/",
+			wantDecision:     "block",
+		},
+		{
+			name:             "different repo → approve",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-b",
+			wantDecision:     "approve",
+		},
+		{
+			name:             "empty state.RepoRoot (pre-#91) → block",
+			stateRepoRoot:    "",
+			claudeProjectDir: "/tmp/repo-b",
+			wantDecision:     "block",
+		},
+		{
+			name:             "empty CLAUDE_PROJECT_DIR (cannot resolve current) → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "",
+			wantDecision:     "block",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSession(t, dir, lib.SessionState{
+				Status:      "running",
+				Workflow:    "pr-ready",
+				StepEnforce: lib.EnforceHard,
+				TotalSteps:  5,
+				RepoRoot:    tc.stateRepoRoot,
+			})
+			env := newGuardTestEnv(t, "", "", true, dir)
+			// CLAUDE_PROJECT_DIR drives currentRepoRoot() for the
+			// stop-guard's repo-match check. Unset forces the
+			// pwd-walk fallback, which tempdirs won't satisfy → "".
+			if tc.claudeProjectDir != "" {
+				t.Setenv("CLAUDE_PROJECT_DIR", tc.claudeProjectDir)
+			} else {
+				t.Setenv("CLAUDE_PROJECT_DIR", "")
+				// Also move pwd into a non-git tempdir so the
+				// fallback walk returns "" deterministically.
+				prev, _ := os.Getwd()
+				nowhere := t.TempDir()
+				if err := os.Chdir(nowhere); err != nil {
+					t.Fatalf("chdir: %v", err)
+				}
+				t.Cleanup(func() { os.Chdir(prev) })
+			}
+			runGuard(guardCmd, nil)
+			var v stopVerdict
+			if err := json.Unmarshal(env.stdout.Bytes(), &v); err != nil {
+				t.Fatalf("invalid JSON: %v", err)
+			}
+			if v.Decision != tc.wantDecision {
+				t.Fatalf("decision=%q want=%q (stderr=%q)", v.Decision, tc.wantDecision, env.stderr.String())
+			}
+		})
+	}
+}
+
 func TestGuardStopHookStaleSession(t *testing.T) {
 	// Stale-during-Stop → approve so a crashed engine doesn't trap the
 	// user in an un-stoppable session.

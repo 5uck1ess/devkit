@@ -168,6 +168,7 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				Status:      "starting",
 				StartedAt:   time.Now(),
 				Outputs:     map[string]string{},
+				RepoRoot:    s.repoRoot,
 			}, nil
 		})
 		if err != nil {
