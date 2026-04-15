@@ -13,36 +13,38 @@ steps:
   - id: audit-injection
     model: smart
     prompt: |
-      Security audit — injection and input validation:
-
-      {{gather}}
-
-      Check for: SQL injection, command injection, XSS, path traversal,
-      template injection, SSRF, deserialization attacks.
-      Rate each finding: critical, high, medium, low.
+      DISPATCH, DO NOT ANSWER. Tri-security requires three DIFFERENT
+      models audit in parallel. Invoke the Agent tool with a non-Claude
+      smart-tier subagent (`codex:codex-rescue` or equivalent external).
+      Report verbatim. Stop if no external subagent is available — do
+      NOT audit as yourself. Subagent prompt: "Security audit — injection
+      and input validation. Diff: {{gather}}. Check for: SQL injection,
+      command injection, XSS, path traversal, template injection, SSRF,
+      deserialization attacks. Rate each finding: critical, high, medium,
+      low."
 
   - id: audit-auth
     model: general
     prompt: |
-      Security audit — authentication and authorization:
-
-      {{gather}}
-
-      Check for: broken auth, missing access controls, insecure session
-      handling, privilege escalation, IDOR, JWT issues, hardcoded secrets.
-      Rate each finding: critical, high, medium, low.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
+      general-tier subagent (prefer Gemini; at minimum distinct from
+      audit-injection's subagent). Report verbatim. Stop if none
+      available. Subagent prompt: "Security audit — authentication and
+      authorization. Diff: {{gather}}. Check for: broken auth, missing
+      access controls, insecure session handling, privilege escalation,
+      IDOR, JWT issues, hardcoded secrets. Rate each finding: critical,
+      high, medium, low."
 
   - id: audit-config
     model: fast
     prompt: |
-      Security audit — configuration and dependencies:
-
-      {{gather}}
-
-      Check for: exposed secrets, debug mode in prod, permissive CORS,
-      missing security headers, outdated dependencies with known CVEs,
-      insecure defaults.
-      Rate each finding: critical, high, medium, low.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a fast-tier
+      external subagent (distinct from the other two). Report verbatim.
+      Stop if none available. Subagent prompt: "Security audit —
+      configuration and dependencies. Diff: {{gather}}. Check for:
+      exposed secrets, debug mode in prod, permissive CORS, missing
+      security headers, outdated dependencies with known CVEs, insecure
+      defaults. Rate each finding: critical, high, medium, low."
 
   - id: dispatch-audits
     parallel: [audit-injection, audit-auth, audit-config]

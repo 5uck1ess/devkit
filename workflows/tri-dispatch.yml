@@ -5,23 +5,28 @@ steps:
   - id: smart-take
     model: smart
     prompt: |
-      {{input}}
-
-      Give your best, most thorough answer.
+      DISPATCH, DO NOT ANSWER. Tri-dispatch requires three DIFFERENT
+      models answer independently. Invoke the Agent tool with a
+      non-Claude smart-tier subagent (`codex:codex-rescue` or equivalent
+      external). Report verbatim. Stop if no external subagent is
+      available — do NOT answer as yourself. Subagent prompt: "{{input}}
+      Give your best, most thorough answer."
 
   - id: general-take
     model: general
     prompt: |
-      {{input}}
-
-      Give a clear, balanced answer.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
+      general-tier subagent (prefer Gemini; at minimum distinct from
+      smart-take's subagent). Report verbatim. Stop if none available.
+      Subagent prompt: "{{input}} Give a clear, balanced answer."
 
   - id: fast-take
     model: fast
     prompt: |
-      {{input}}
-
-      Give a quick, direct answer.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a fast-tier
+      external subagent (distinct from the other two). Report verbatim.
+      Stop if none available. Subagent prompt: "{{input}} Give a quick,
+      direct answer."
 
   - id: dispatch-all
     parallel: [smart-take, general-take, fast-take]

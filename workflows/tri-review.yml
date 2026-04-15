@@ -13,29 +13,40 @@ steps:
   - id: review-smart
     model: smart
     prompt: |
-      You are the senior reviewer. Review this code thoroughly:
-
-      {{gather}}
-
-      Focus on architecture, correctness, and security. Be detailed.
+      DISPATCH, DO NOT ANSWER. This is tri-review — the whole point is
+      model diversity. You (the calling model) must NOT write this review
+      yourself. Invoke the Agent tool with a non-Claude subagent
+      (`codex:codex-rescue` is the standard smart-tier external reviewer;
+      any available Gemini or external senior reviewer also qualifies).
+      Pass the diff from {{gather}} and report the subagent's verdict
+      verbatim. If no external-model subagent is available, stop and tell
+      the user — do NOT answer as yourself and advance. The subagent
+      prompt should be: "You are the senior reviewer. Review this code
+      thoroughly — architecture, correctness, security. Be detailed.
+      Diff: {{gather}}"
 
   - id: review-general
     model: general
     prompt: |
-      Review this code for quality and maintainability:
-
-      {{gather}}
-
-      Focus on readability, naming, duplication, and test coverage.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
+      general-tier subagent (e.g. a Gemini-backed reviewer plugin, or
+      `codex:codex-rescue` if no Gemini is available — but prefer a
+      different model than review-smart used, or the tri-* property is
+      lost). Report verbatim. Stop if no external subagent is available.
+      The subagent prompt should be: "Review this code for quality and
+      maintainability — readability, naming, duplication, test coverage.
+      Diff: {{gather}}"
 
   - id: review-fast
     model: fast
     prompt: |
-      Quick review of this code:
-
-      {{gather}}
-
-      Flag anything obviously wrong: typos, missing error handling, dead code.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a fast-tier
+      external subagent (Haiku-backed, Gemini-Flash-backed, or the fast
+      tier of whatever is available — distinct from review-smart and
+      review-general). Report verbatim. Stop if no external subagent is
+      available. The subagent prompt should be: "Quick review — flag
+      anything obviously wrong: typos, missing error handling, dead code.
+      Diff: {{gather}}"
 
   - id: dispatch-reviews
     parallel: [review-smart, review-general, review-fast]
