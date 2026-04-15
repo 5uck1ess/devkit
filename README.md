@@ -288,7 +288,8 @@ Enforcement:
   └── Stop hook — blocks session end during active workflows
 
 Terminal usage (devkit workflow <name> "<description>"):
-  └── Subprocess runners for Codex/Gemini CLI + optional local runner (Ollama/llama-server/vLLM, opt-in via DEVKIT_LOCAL_ENABLED=1)
+  ├── Subprocess runners for Codex/Gemini CLI
+  └── In-process HTTP runner for Ollama/llama-server/vLLM (opt-in via DEVKIT_LOCAL_ENABLED=1)
 ```
 
 ---
