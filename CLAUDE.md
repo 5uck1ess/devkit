@@ -21,7 +21,8 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 | `src/mcp/server.go` | MCP server implementation | Tool dispatching |
 | `src/mcp/principles.go` | Principle injection | How `_principles.yml` reaches workflows |
 | `src/runners/runner.go` | Model tier interface | The `smart`/`general`/`fast` contract |
-| `src/runners/{claude,codex,gemini}.go` | Tier implementations | How each external CLI is called |
+| `src/runners/{claude,codex,gemini}.go` | Cloud tier implementations | How each external CLI is called |
+| `src/runners/local.go` | Local runner (Ollama/llama-server/vLLM) | OpenAI-compatible HTTP client; opt-in via `DEVKIT_LOCAL_ENABLED=1` |
 | `src/lib/state.go` + `state_json.go` | Workflow state persistence | Running-state schema, step outputs |
 | `src/lib/state_lock_{unix,windows}.go` | Cross-platform file locking | OS-specific state lock |
 | `src/lib/git.go` | Git helpers | Diff collection, branch checks |

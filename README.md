@@ -288,7 +288,7 @@ Enforcement:
   └── Stop hook — blocks session end during active workflows
 
 Terminal usage (devkit workflow <name> "<description>"):
-  └── Subprocess runners for Codex/Gemini CLI usage
+  └── Subprocess runners for Codex/Gemini CLI + optional local runner (Ollama/llama-server/vLLM, opt-in via DEVKIT_LOCAL_ENABLED=1)
 ```
 
 ---
@@ -306,7 +306,7 @@ devkit/
 ├── src/               # Go engine + MCP server
 │   ├── mcp/           # MCP server (tools, principles loader, session management)
 │   ├── engine/        # YAML workflow engine (parser, executor, tests)
-│   ├── runners/       # Codex, Gemini interfaces (terminal fallback)
+│   ├── runners/       # Claude/Codex/Gemini CLI interfaces + local HTTP runner (Ollama-compat, opt-in)
 │   ├── lib/           # DB, git, metrics, session state, reporting
 │   └── cmd/           # CLI entry points (including `devkit mcp`)
 ├── bin/               # devkit wrapper (committed) + downloaded engine binaries (gitignored)
