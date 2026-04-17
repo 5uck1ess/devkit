@@ -64,27 +64,19 @@ func (r *LocalRunner) Available() bool {
 	if !LocalEnabled() {
 		return false
 	}
-	endpoint := LocalEndpoint()
-	req, err := http.NewRequest(http.MethodGet, endpoint+"/models", nil)
-	if err != nil {
-		localDebugf("local runner probe: building request for %s: %v", endpoint, err)
-		return false
+	result := Probe(context.Background(), ProbeConfig{
+		Enabled:  true,
+		Endpoint: LocalEndpoint(),
+		Model:    LocalModel(),
+		APIKey:   LocalAPIKey(),
+		Timeout:  3 * time.Second,
+	})
+	switch result.Status {
+	case ProbeHealthy, ProbeModelMissing:
+		return true
 	}
-	if key := LocalAPIKey(); key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		localDebugf("local runner probe: %s unreachable: %v", endpoint, err)
-		return false
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 400 {
-		localDebugf("local runner probe: %s returned HTTP %d (check DEVKIT_LOCAL_API_KEY / endpoint path)", endpoint, resp.StatusCode)
-		return false
-	}
-	return true
+	localDebugf("local runner probe: %s status=%s http=%d err=%s", result.Endpoint, result.Status, result.HTTPStatus, result.ErrorMsg)
+	return false
 }
 
 func (r *LocalRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {

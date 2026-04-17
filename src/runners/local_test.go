@@ -44,11 +44,14 @@ func TestLocalRunner_Available_Gating(t *testing.T) {
 			if !tt.noServer && tt.enabled == "1" {
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(tt.serverCode)
+					if tt.serverCode == 200 {
+						io.WriteString(w, `{"data":[]}`)
+					}
 				}))
 				defer srv.Close()
 				endpoint = srv.URL
 			}
-			t.Setenv("DEVKIT_LOCAL_ENDPOINT", endpoint)
+			t.Setenv("DEVKIT_LOCAL_ENDPOINT", endpoint+"/v1")
 
 			r := &LocalRunner{}
 			if got := r.Available(); got != tt.want {
