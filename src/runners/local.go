@@ -167,10 +167,10 @@ func envDefault(key, fallback string) string {
 	return fallback
 }
 
-func LocalEnabled() bool      { return os.Getenv("DEVKIT_LOCAL_ENABLED") == "1" }
-func LocalAPIKey() string     { return os.Getenv("DEVKIT_LOCAL_API_KEY") }
-func LocalEndpoint() string   { return envDefault("DEVKIT_LOCAL_ENDPOINT", "http://localhost:11434/v1") }
-func LocalModel() string      { return envDefault("DEVKIT_LOCAL_MODEL", "qwen3:32b") }
+func LocalEnabled() bool    { return os.Getenv("DEVKIT_LOCAL_ENABLED") == "1" }
+func LocalAPIKey() string   { return os.Getenv("DEVKIT_LOCAL_API_KEY") }
+func LocalEndpoint() string { return envDefault("DEVKIT_LOCAL_ENDPOINT", "http://localhost:11434/v1") }
+func LocalModel() string    { return envDefault("DEVKIT_LOCAL_MODEL", "qwen3:32b") }
 
 func LocalTimeout() time.Duration {
 	const fallback = 10 * time.Minute
