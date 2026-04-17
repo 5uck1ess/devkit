@@ -2,6 +2,11 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"time"
 )
 
@@ -34,6 +39,72 @@ func runProbe(ctx context.Context, cfg ProbeConfig) ProbeResult {
 	}
 	if !cfg.Enabled {
 		return r
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, cfg.Endpoint+"/models", nil)
+	if err != nil {
+		r.ErrorMsg = fmt.Sprintf("building request: %v", err)
+		r.Hint = "check DEVKIT_LOCAL_ENDPOINT format — must be a valid URL ending in /v1"
+		return r
+	}
+	if cfg.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	}
+
+	start := time.Now()
+	resp, err := http.DefaultClient.Do(req)
+	r.LatencyMS = time.Since(start).Milliseconds()
+	if err != nil {
+		r.ErrorMsg = err.Error()
+		r.Hint = "endpoint unreachable — check it is running and DEVKIT_LOCAL_ENDPOINT is correct"
+		return r
+	}
+	defer resp.Body.Close()
+	r.HTTPStatus = resp.StatusCode
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		r.ErrorMsg = strings.TrimSpace(string(body))
+		switch resp.StatusCode {
+		case 401, 403:
+			r.Hint = "check DEVKIT_LOCAL_API_KEY — endpoint requires auth"
+		case 404:
+			r.Hint = "check DEVKIT_LOCAL_ENDPOINT — must end in /v1 (some stacks need the suffix)"
+		default:
+			r.Hint = "endpoint returned an error — check server logs"
+		}
+		return r
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		r.ErrorMsg = fmt.Sprintf("reading response: %v", err)
+		return r
+	}
+
+	var parsed struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		r.ErrorMsg = fmt.Sprintf("parsing /models response: %v", err)
+		r.Hint = "endpoint did not return OpenAI /models JSON — confirm it speaks the OpenAI spec"
+		return r
+	}
+
+	r.Reachable = true
+	for _, m := range parsed.Data {
+		r.ModelsSeen = append(r.ModelsSeen, m.ID)
+		if m.ID == cfg.Model {
+			r.ModelMatch = true
+		}
+	}
+	if !r.ModelMatch {
+		r.Hint = fmt.Sprintf("configured model %q not in /models — check DEVKIT_LOCAL_MODEL matches a name the server exposes", cfg.Model)
 	}
 	return r
 }
