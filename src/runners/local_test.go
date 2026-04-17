@@ -25,17 +25,19 @@ func TestLocalRunner_Available_Gating(t *testing.T) {
 		name       string
 		enabled    string
 		serverCode int
+		body       string
 		noServer   bool
 		want       bool
 	}{
-		{"env unset", "", 200, false, false},
-		{"env=0", "0", 200, false, false},
-		{"env=1 no server", "1", 0, true, false},
-		{"env=1 server 200", "1", 200, false, true},
-		{"env=1 server 401", "1", 401, false, false},
-		{"env=1 server 404", "1", 404, false, false},
-		{"env=1 server 500", "1", 500, false, false},
-		{"env=1 server 503", "1", 503, false, false},
+		{"env unset", "", 200, "", false, false},
+		{"env=0", "0", 200, "", false, false},
+		{"env=1 no server", "1", 0, "", true, false},
+		{"env=1 200 model missing", "1", 200, `{"data":[]}`, false, true},
+		{"env=1 200 model present", "1", 200, `{"data":[{"id":"qwen3:32b"}]}`, false, true},
+		{"env=1 server 401", "1", 401, "", false, false},
+		{"env=1 server 404", "1", 404, "", false, false},
+		{"env=1 server 500", "1", 500, "", false, false},
+		{"env=1 server 503", "1", 503, "", false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -44,11 +46,14 @@ func TestLocalRunner_Available_Gating(t *testing.T) {
 			if !tt.noServer && tt.enabled == "1" {
 				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(tt.serverCode)
+					if tt.body != "" {
+						io.WriteString(w, tt.body)
+					}
 				}))
 				defer srv.Close()
 				endpoint = srv.URL
 			}
-			t.Setenv("DEVKIT_LOCAL_ENDPOINT", endpoint)
+			t.Setenv("DEVKIT_LOCAL_ENDPOINT", endpoint+"/v1")
 
 			r := &LocalRunner{}
 			if got := r.Available(); got != tt.want {

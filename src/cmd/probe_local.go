@@ -1,12 +1,9 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 
@@ -16,107 +13,7 @@ import (
 
 var errProbeFailed = errors.New("probe failed")
 
-type ProbeConfig struct {
-	Enabled  bool
-	Endpoint string
-	Model    string
-	APIKey   string
-	Timeout  time.Duration
-}
-
-type ProbeResult struct {
-	Endpoint   string   `json:"endpoint"`
-	Model      string   `json:"model"`
-	Enabled    bool     `json:"enabled"`
-	Reachable  bool     `json:"reachable"`
-	HTTPStatus int      `json:"http_status"`
-	LatencyMS  int64    `json:"latency_ms"`
-	ModelsSeen []string `json:"models_seen"`
-	ModelMatch bool     `json:"model_match"`
-	ErrorMsg   string   `json:"error,omitempty"`
-	Hint       string   `json:"hint,omitempty"`
-}
-
-func runProbe(ctx context.Context, cfg ProbeConfig) ProbeResult {
-	r := ProbeResult{
-		Endpoint: cfg.Endpoint,
-		Model:    cfg.Model,
-		Enabled:  cfg.Enabled,
-	}
-	if !cfg.Enabled {
-		return r
-	}
-
-	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, cfg.Endpoint+"/models", nil)
-	if err != nil {
-		r.ErrorMsg = fmt.Sprintf("building request: %v", err)
-		r.Hint = "check DEVKIT_LOCAL_ENDPOINT format — must be a valid URL ending in /v1"
-		return r
-	}
-	if cfg.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-	}
-
-	client := &http.Client{Timeout: cfg.Timeout}
-	start := time.Now()
-	resp, err := client.Do(req)
-	r.LatencyMS = time.Since(start).Milliseconds()
-	if err != nil {
-		r.ErrorMsg = err.Error()
-		r.Hint = "endpoint unreachable — check it is running and DEVKIT_LOCAL_ENDPOINT is correct"
-		return r
-	}
-	defer resp.Body.Close()
-	r.HTTPStatus = resp.StatusCode
-
-	if resp.StatusCode >= 400 {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		r.ErrorMsg = strings.TrimSpace(string(body))
-		switch resp.StatusCode {
-		case 401, 403:
-			r.Hint = "check DEVKIT_LOCAL_API_KEY — endpoint requires auth"
-		case 404:
-			r.Hint = "check DEVKIT_LOCAL_ENDPOINT — must end in /v1 (some stacks need the suffix)"
-		default:
-			r.Hint = "endpoint returned an error — check server logs"
-		}
-		return r
-	}
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		r.ErrorMsg = fmt.Sprintf("reading response: %v", err)
-		return r
-	}
-
-	var parsed struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		r.ErrorMsg = fmt.Sprintf("parsing /models response: %v", err)
-		r.Hint = "endpoint did not return OpenAI /models JSON — confirm it speaks the OpenAI spec"
-		return r
-	}
-
-	r.Reachable = true
-	for _, m := range parsed.Data {
-		r.ModelsSeen = append(r.ModelsSeen, m.ID)
-		if m.ID == cfg.Model {
-			r.ModelMatch = true
-		}
-	}
-	if !r.ModelMatch {
-		r.Hint = fmt.Sprintf("configured model %q not in /models — check DEVKIT_LOCAL_MODEL matches a name the server exposes", cfg.Model)
-	}
-	return r
-}
-
-func formatHuman(r ProbeResult) string {
+func formatHuman(r runners.ProbeResult) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "endpoint:    %s\n", r.Endpoint)
 	fmt.Fprintf(&b, "model:       %s\n", r.Model)
@@ -125,38 +22,40 @@ func formatHuman(r ProbeResult) string {
 		return b.String()
 	}
 	fmt.Fprintln(&b, "enabled:     yes")
-	if r.Reachable {
+
+	switch r.Status {
+	case runners.ProbeHealthy:
+		fmt.Fprintf(&b, "reachable:   yes (HTTP %d, %dms)\n", r.HTTPStatus, r.LatencyMS)
+		fmt.Fprintf(&b, "models seen: %s\n", strings.Join(r.ModelsSeen, ", "))
+		fmt.Fprintln(&b, "model match: OK (configured model present in /models)")
+	case runners.ProbeModelMissing:
 		fmt.Fprintf(&b, "reachable:   yes (HTTP %d, %dms)\n", r.HTTPStatus, r.LatencyMS)
 		if len(r.ModelsSeen) > 0 {
 			fmt.Fprintf(&b, "models seen: %s\n", strings.Join(r.ModelsSeen, ", "))
 		} else {
 			fmt.Fprintln(&b, "models seen: (none returned)")
 		}
-		if r.ModelMatch {
-			fmt.Fprintln(&b, "model match: OK (configured model present in /models)")
-		} else {
-			fmt.Fprintln(&b, "model match: MISSING")
-			if r.Hint != "" {
-				fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
-			}
+		fmt.Fprintln(&b, "model match: MISSING")
+		if r.Hint != "" {
+			fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
 		}
-		return b.String()
-	}
-	if r.HTTPStatus > 0 {
-		fmt.Fprintf(&b, "reachable:   NO (HTTP %d in %dms)\n", r.HTTPStatus, r.LatencyMS)
-	} else {
-		fmt.Fprintf(&b, "reachable:   NO (%dms)\n", r.LatencyMS)
-	}
-	if r.Hint != "" {
-		fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
-	}
-	if r.ErrorMsg != "" {
-		fmt.Fprintf(&b, "body:        %s\n", r.ErrorMsg)
+	default:
+		if r.HTTPStatus > 0 {
+			fmt.Fprintf(&b, "reachable:   NO (HTTP %d in %dms)\n", r.HTTPStatus, r.LatencyMS)
+		} else {
+			fmt.Fprintf(&b, "reachable:   NO (%dms)\n", r.LatencyMS)
+		}
+		if r.Hint != "" {
+			fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
+		}
+		if r.ErrorMsg != "" {
+			fmt.Fprintf(&b, "body:        %s\n", r.ErrorMsg)
+		}
 	}
 	return b.String()
 }
 
-func formatJSON(r ProbeResult) ([]byte, error) {
+func formatJSON(r runners.ProbeResult) ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
 }
 
@@ -168,20 +67,21 @@ var probeLocalCmd = &cobra.Command{
 	Long: `Probe the OpenAI-compatible endpoint configured via DEVKIT_LOCAL_* env vars.
 
 Reports endpoint, model, reachability, and whether the configured model is
-present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
+present in the server's /v1/models response. Exit 0 on healthy or when the
+local runner is disabled (DEVKIT_LOCAL_ENABLED != 1); exit 1 otherwise.`,
 	// Override root's PersistentPreRunE — this probe doesn't need a git repo or DB.
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 	SilenceUsage:      true,
 	SilenceErrors:     true,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := ProbeConfig{
+		cfg := runners.ProbeConfig{
 			Enabled:  runners.LocalEnabled(),
 			Endpoint: runners.LocalEndpoint(),
 			Model:    runners.LocalModel(),
 			APIKey:   runners.LocalAPIKey(),
 			Timeout:  3 * time.Second,
 		}
-		result := runProbe(cmd.Context(), cfg)
+		result := runners.Probe(cmd.Context(), cfg)
 
 		if probeLocalJSON {
 			out, err := formatJSON(result)
@@ -193,13 +93,10 @@ present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
 			fmt.Print(formatHuman(result))
 		}
 
-		if !cfg.Enabled {
+		if result.Status == runners.ProbeDisabled || result.Status == runners.ProbeHealthy {
 			return nil
 		}
-		if !result.Reachable || !result.ModelMatch {
-			return errProbeFailed
-		}
-		return nil
+		return errProbeFailed
 	},
 }
 
