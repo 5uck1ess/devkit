@@ -134,6 +134,31 @@ func TestRunProbe_NotFound(t *testing.T) {
 	}
 }
 
+func TestRunProbe_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `{"error":"boom"}`)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/v1", Model: "m", Timeout: 2 * time.Second,
+	})
+
+	if got.Reachable {
+		t.Errorf("Reachable: got true, want false on 500")
+	}
+	if got.HTTPStatus != 500 {
+		t.Errorf("HTTPStatus: got %d, want 500", got.HTTPStatus)
+	}
+	if !strings.Contains(got.Hint, "server logs") {
+		t.Errorf("Hint: got %q, want mention of server logs (default 5xx branch)", got.Hint)
+	}
+	if got.ErrorMsg == "" {
+		t.Errorf("ErrorMsg: got empty, want response body snippet")
+	}
+}
+
 func TestRunProbe_Timeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(300 * time.Millisecond)

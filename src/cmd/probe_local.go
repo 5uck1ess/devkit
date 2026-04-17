@@ -3,16 +3,18 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/5uck1ess/devkit/runners"
 	"github.com/spf13/cobra"
 )
+
+var errProbeFailed = errors.New("probe failed")
 
 type ProbeConfig struct {
 	Enabled  bool
@@ -58,8 +60,9 @@ func runProbe(ctx context.Context, cfg ProbeConfig) ProbeResult {
 		req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
 	}
 
+	client := &http.Client{Timeout: cfg.Timeout}
 	start := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	r.LatencyMS = time.Since(start).Milliseconds()
 	if err != nil {
 		r.ErrorMsg = err.Error()
@@ -168,6 +171,8 @@ Reports endpoint, model, reachability, and whether the configured model is
 present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
 	// Override root's PersistentPreRunE — this probe doesn't need a git repo or DB.
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
+	SilenceUsage:      true,
+	SilenceErrors:     true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := ProbeConfig{
 			Enabled:  runners.LocalEnabled(),
@@ -192,7 +197,7 @@ present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
 			return nil
 		}
 		if !result.Reachable || !result.ModelMatch {
-			os.Exit(1)
+			return errProbeFailed
 		}
 		return nil
 	},
