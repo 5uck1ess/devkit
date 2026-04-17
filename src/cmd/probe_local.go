@@ -67,7 +67,8 @@ var probeLocalCmd = &cobra.Command{
 	Long: `Probe the OpenAI-compatible endpoint configured via DEVKIT_LOCAL_* env vars.
 
 Reports endpoint, model, reachability, and whether the configured model is
-present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
+present in the server's /v1/models response. Exit 0 on healthy or when the
+local runner is disabled (DEVKIT_LOCAL_ENABLED != 1); exit 1 otherwise.`,
 	// Override root's PersistentPreRunE — this probe doesn't need a git repo or DB.
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
 	SilenceUsage:      true,

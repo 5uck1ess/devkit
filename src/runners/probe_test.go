@@ -169,14 +169,16 @@ func TestProbe_Timeout(t *testing.T) {
 }
 
 func TestProbe_CallerCanceled(t *testing.T) {
+	started := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
 		<-r.Context().Done()
 	}))
 	defer srv.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
-		time.Sleep(30 * time.Millisecond)
+		<-started
 		cancel()
 	}()
 

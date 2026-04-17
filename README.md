@@ -153,7 +153,7 @@ devkit-engine probe-local
 
 ### Verifying the setup
 
-`devkit-engine probe-local` calls `$DEVKIT_LOCAL_ENDPOINT/models`, reports reachability and latency, and checks whether your configured model is present in the server's model list. Exit 0 on healthy, 1 otherwise. Add `--json` for structured output.
+`devkit-engine probe-local` calls `$DEVKIT_LOCAL_ENDPOINT/models`, reports reachability and latency, and checks whether your configured model is present in the server's model list. Exit 0 on healthy (or when the local runner is disabled), 1 otherwise. Add `--json` for structured output.
 
 ### Limits
 

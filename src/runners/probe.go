@@ -63,7 +63,8 @@ func Probe(ctx context.Context, cfg ProbeConfig) ProbeResult {
 	reqCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, cfg.Endpoint+"/models", nil)
+	endpoint := strings.TrimRight(cfg.Endpoint, "/")
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, endpoint+"/models", nil)
 	if err != nil {
 		r.Status = ProbeUnreachable
 		r.ErrorMsg = fmt.Sprintf("building request: %v", err)
@@ -140,9 +141,13 @@ func Probe(ctx context.Context, cfg ProbeConfig) ProbeResult {
 // unreachableHint returns an actionable hint string for a network-layer
 // failure. The context is checked first so we can distinguish caller-cancel
 // from probe-timeout; otherwise we fall back to a generic reachability hint.
+// unreachableHint returns an actionable hint string for a network-layer
+// failure. The `err || ctx.Err()` OR pattern is intentional — either source
+// may carry the deadline/cancel signal depending on where the cancel races
+// the transport; keep both checks.
 func unreachableHint(ctx context.Context, timeout time.Duration, err error) string {
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return fmt.Sprintf("endpoint did not respond within %s — raise DEVKIT_LOCAL_TIMEOUT or check server health", timeout)
+		return fmt.Sprintf("endpoint did not respond within %s — check server health or confirm DEVKIT_LOCAL_ENDPOINT points to a running server", timeout)
 	}
 	if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 		return "probe canceled by caller before the endpoint responded"
