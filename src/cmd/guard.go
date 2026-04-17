@@ -395,6 +395,18 @@ func runPreToolGuard() {
 			case "Read", "Grep", "Glob", "TodoWrite", "NotebookRead", "Skill":
 				guardExit(0)
 				return
+			case "Agent", "Task":
+				// Subagent dispatch. The main agent hands off to a
+				// subagent whose tool list is gated independently —
+				// Write/Edit/Bash remain blocked at this layer, so the
+				// main model cannot cheat (e.g. fake a tri-review by
+				// writing the verdict itself instead of dispatching to
+				// an external reviewer). The subagent's own tool calls
+				// re-enter this guard with the same session state; if
+				// they need broader tools, they must be explicitly
+				// authorized via enforce: soft on the step.
+				guardExit(0)
+				return
 			}
 			fmt.Fprintf(guardStderr,
 				"BLOCKED: devkit workflow %s is at a prompt step — gather evidence with Read/Grep/Glob then call devkit_advance. (attempted tool: %s)\n",
