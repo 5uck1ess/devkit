@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,4 +69,105 @@ func TestRunProbe_HappyPath(t *testing.T) {
 		}
 	}
 	_ = json.RawMessage{}
+}
+
+func TestRunProbe_ModelMissing(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":[{"id":"something-else"}]}`)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/v1", Model: "not-there", Timeout: 2 * time.Second,
+	})
+
+	if !got.Reachable {
+		t.Fatalf("Reachable: got false, want true")
+	}
+	if got.ModelMatch {
+		t.Errorf("ModelMatch: got true, want false")
+	}
+	if got.Hint == "" {
+		t.Errorf("Hint: got empty, want actionable text about DEVKIT_LOCAL_MODEL")
+	}
+}
+
+func TestRunProbe_Unauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, `{"error":"unauthorized"}`)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/v1", Model: "m", Timeout: 2 * time.Second,
+	})
+
+	if got.Reachable {
+		t.Errorf("Reachable: got true, want false on 401")
+	}
+	if got.HTTPStatus != 401 {
+		t.Errorf("HTTPStatus: got %d, want 401", got.HTTPStatus)
+	}
+	if !strings.Contains(got.Hint, "DEVKIT_LOCAL_API_KEY") {
+		t.Errorf("Hint: got %q, want mention of DEVKIT_LOCAL_API_KEY", got.Hint)
+	}
+}
+
+func TestRunProbe_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/wrong", Model: "m", Timeout: 2 * time.Second,
+	})
+
+	if got.Reachable {
+		t.Errorf("Reachable: got true, want false on 404")
+	}
+	if got.HTTPStatus != 404 {
+		t.Errorf("HTTPStatus: got %d, want 404", got.HTTPStatus)
+	}
+	if !strings.Contains(got.Hint, "/v1") {
+		t.Errorf("Hint: got %q, want mention of /v1 suffix", got.Hint)
+	}
+}
+
+func TestRunProbe_Timeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		fmt.Fprint(w, `{"data":[]}`)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/v1", Model: "m", Timeout: 50 * time.Millisecond,
+	})
+
+	if got.Reachable {
+		t.Errorf("Reachable: got true, want false on timeout")
+	}
+	if got.ErrorMsg == "" {
+		t.Errorf("ErrorMsg: got empty, want timeout error text")
+	}
+}
+
+func TestRunProbe_BadJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `not json at all`)
+	}))
+	defer srv.Close()
+
+	got := runProbe(context.Background(), ProbeConfig{
+		Enabled: true, Endpoint: srv.URL + "/v1", Model: "m", Timeout: 2 * time.Second,
+	})
+
+	if got.Reachable {
+		t.Errorf("Reachable: got true, want false on invalid JSON")
+	}
+	if !strings.Contains(got.ErrorMsg, "parsing") {
+		t.Errorf("ErrorMsg: got %q, want mention of parse error", got.ErrorMsg)
+	}
 }
