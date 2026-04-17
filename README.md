@@ -102,6 +102,67 @@ This shows which CLIs are installed, which agents are available, and which comma
 
 ---
 
+## Local models (optional)
+
+devkit can dispatch fast-tier work (doc generation, changelogs, summarization, test stubs) to any OpenAI-compatible local inference server. Cloud tiers — Claude, Codex, Gemini — still handle tri-review, architecture planning, and security review.
+
+### Environment variables
+
+| Var | Default | Purpose |
+|---|---|---|
+| `DEVKIT_LOCAL_ENABLED` | unset | Set to `1` to enable |
+| `DEVKIT_LOCAL_ENDPOINT` | `http://localhost:11434/v1` | Base URL — must end in `/v1` |
+| `DEVKIT_LOCAL_MODEL` | `qwen3:32b` | Model name sent in the request payload |
+| `DEVKIT_LOCAL_API_KEY` | unset | Bearer token, if endpoint requires auth |
+| `DEVKIT_LOCAL_TIMEOUT` | `600` | Per-request timeout (seconds) |
+| `DEVKIT_LOCAL_DEBUG` | unset | Set to `1` to log probe failures to stderr |
+
+### Default ports by stack
+
+| Stack | Default port | Model-name source |
+|---|---|---|
+| llama-server (llama.cpp) | 8080 | loaded via `-m` at launch |
+| llama-swap | 8080 | names in llama-swap YAML |
+| Ollama | 11434 | `ollama list` |
+| LM Studio | 1234 | GUI-loaded model |
+| vLLM | 8000 | `--model` flag at launch |
+| SGLang | 30000 | `--model-path` at launch |
+| LocalAI | 8080 | models directory |
+
+Port 8080 is the llama.cpp convention; llama-swap reuses it since it fronts llama-server processes.
+
+### Examples
+
+Single model, no router (llama-server, LM Studio, LocalAI, vLLM, SGLang):
+
+```bash
+export DEVKIT_LOCAL_ENABLED=1
+export DEVKIT_LOCAL_ENDPOINT=http://<host>:<port>/v1
+export DEVKIT_LOCAL_MODEL=<model-loaded-at-launch>
+devkit-engine probe-local
+```
+
+Multi-model via router (Ollama, llama-swap, LocalAI):
+
+```bash
+export DEVKIT_LOCAL_ENABLED=1
+export DEVKIT_LOCAL_ENDPOINT=http://<host>:<port>/v1
+export DEVKIT_LOCAL_MODEL=<name-the-router-recognizes>
+devkit-engine probe-local
+```
+
+### Verifying the setup
+
+`devkit-engine probe-local` calls `$DEVKIT_LOCAL_ENDPOINT/models`, reports reachability and latency, and checks whether your configured model is present in the server's model list. Exit 0 on healthy, 1 otherwise. Add `--json` for structured output.
+
+### Limits
+
+- Fast tier only — local models have higher tool-call error rates than cloud tiers, so tri-review / architecture / security still go to the cloud.
+- No function-calling (plain `/v1/chat/completions` only).
+- No streaming.
+
+---
+
 ## How It Works
 
 Devkit runs as an **MCP server** inside Claude Code. When a workflow starts, the engine takes control:

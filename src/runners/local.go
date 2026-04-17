@@ -61,16 +61,16 @@ type localChatResponse struct {
 func (r *LocalRunner) Name() string { return "local" }
 
 func (r *LocalRunner) Available() bool {
-	if os.Getenv("DEVKIT_LOCAL_ENABLED") != "1" {
+	if !LocalEnabled() {
 		return false
 	}
-	endpoint := localEndpoint()
+	endpoint := LocalEndpoint()
 	req, err := http.NewRequest(http.MethodGet, endpoint+"/models", nil)
 	if err != nil {
 		localDebugf("local runner probe: building request for %s: %v", endpoint, err)
 		return false
 	}
-	if key := os.Getenv("DEVKIT_LOCAL_API_KEY"); key != "" {
+	if key := LocalAPIKey(); key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 	client := &http.Client{Timeout: 3 * time.Second}
@@ -106,23 +106,23 @@ func (r *LocalRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Run
 	}
 
 	body, err := json.Marshal(localChatRequest{
-		Model:    localModel(),
+		Model:    LocalModel(),
 		Messages: messages,
 	})
 	if err != nil {
 		return RunResult{ExitCode: 1}, fmt.Errorf("marshaling local request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, localEndpoint()+"/chat/completions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, LocalEndpoint()+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return RunResult{ExitCode: 1}, fmt.Errorf("building local request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if key := os.Getenv("DEVKIT_LOCAL_API_KEY"); key != "" {
+	if key := LocalAPIKey(); key != "" {
 		req.Header.Set("Authorization", "Bearer "+key)
 	}
 
-	client := &http.Client{Timeout: localTimeout()}
+	client := &http.Client{Timeout: LocalTimeout()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return RunResult{ExitCode: 1}, fmt.Errorf("local endpoint request failed: %w", err)
@@ -167,10 +167,12 @@ func envDefault(key, fallback string) string {
 	return fallback
 }
 
-func localEndpoint() string { return envDefault("DEVKIT_LOCAL_ENDPOINT", "http://localhost:11434/v1") }
-func localModel() string    { return envDefault("DEVKIT_LOCAL_MODEL", "qwen3:32b") }
+func LocalEnabled() bool    { return os.Getenv("DEVKIT_LOCAL_ENABLED") == "1" }
+func LocalAPIKey() string   { return os.Getenv("DEVKIT_LOCAL_API_KEY") }
+func LocalEndpoint() string { return envDefault("DEVKIT_LOCAL_ENDPOINT", "http://localhost:11434/v1") }
+func LocalModel() string    { return envDefault("DEVKIT_LOCAL_MODEL", "qwen3:32b") }
 
-func localTimeout() time.Duration {
+func LocalTimeout() time.Duration {
 	const fallback = 10 * time.Minute
 	raw := os.Getenv("DEVKIT_LOCAL_TIMEOUT")
 	if raw == "" {

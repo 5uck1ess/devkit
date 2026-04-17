@@ -17,6 +17,7 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 | `src/cmd/guard.go` | Hook gatekeeper | What Bash/Edit/etc. is allowed per step type + enforce level |
 | `src/cmd/workflow.go` | `devkit workflow` CLI command | Workflow invocation entry point |
 | `src/cmd/mcp.go` | `devkit mcp` CLI command | MCP server bootstrap |
+| `src/cmd/probe_local.go` | `devkit probe-local` CLI command | Local-inference endpoint health probe (human + `--json`) |
 | `src/mcp/tools.go` | MCP tool schemas | `devkit_start`, `devkit_advance`, `devkit_list`, `devkit_status` contracts |
 | `src/mcp/server.go` | MCP server implementation | Tool dispatching |
 | `src/mcp/principles.go` | Principle injection | How `_principles.yml` reaches workflows |

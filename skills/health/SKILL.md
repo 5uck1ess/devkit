@@ -43,6 +43,21 @@ else
 fi
 ```
 
+### Local Runner
+
+```bash
+echo "=== Local Runner ==="
+if [ "$DEVKIT_LOCAL_ENABLED" = "1" ]; then
+  if command -v devkit-engine >/dev/null 2>&1; then
+    devkit-engine probe-local 2>&1 || echo "probe failed — see output above"
+  else
+    echo "devkit-engine not in PATH — build with 'make build' from src/"
+  fi
+else
+  echo "disabled (DEVKIT_LOCAL_ENABLED unset) — set to 1 to enable local inference"
+fi
+```
+
 ### Agent Availability
 
 List all agents from `agents/` directory with their model and isolation settings.

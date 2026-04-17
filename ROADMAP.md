@@ -27,7 +27,7 @@
 - **Cross-domain dirty-bit enforcement** — Blocks completion without test evidence per domain
 - **Language-universal hooks** — Consolidated language-specific hooks into `lang-review.sh` with Go, TypeScript, Rust, Python, and Shell support
 - **Hook consolidation** — Merged 14 hooks into 10, reduced per-edit shell processes from 7 to 4
-- **Local runner** — OpenAI-compatible HTTP runner for Ollama/llama-server/vLLM alongside Claude/Codex/Gemini CLI runners. Opt-in via `DEVKIT_LOCAL_ENABLED=1`; defaults to `qwen3:32b` at `localhost:11434/v1`. Intended for `fast`-tier dispatch; cloud runners stay default for `smart`/`general` given local tool-call reliability gap.
+- **Local runner** — OpenAI-compatible HTTP runner for Ollama/llama-server/llama-swap/vLLM/SGLang/LM Studio/LocalAI alongside Claude/Codex/Gemini CLI runners. Opt-in via `DEVKIT_LOCAL_ENABLED=1`; defaults to `qwen3:32b` at `localhost:11434/v1`. Intended for `fast`-tier dispatch; cloud runners stay default for `smart`/`general` given local tool-call reliability gap. `devkit-engine probe-local` verifies endpoint reachability, latency, and configured-model presence with human or `--json` output (wired into `/devkit:health`).
 - **Stealth scraping backends** — `scrape` skill adds Camoufox (patched Firefox with leak-fixed JA3/TLS fingerprints) between Playwright and Firecrawl with auto-fallback on Cloudflare/DataDome/Incapsula challenge-page signatures, plus Scweet as host-routed backend for `x.com`/`twitter.com` URLs when `SCWEET_AUTH_TOKEN` is set.
 
 ## Retired
