@@ -302,11 +302,11 @@ func TestLocalRunner_EndpointAndModelDefaults(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("DEVKIT_LOCAL_ENDPOINT", tt.endpointEnv)
 			t.Setenv("DEVKIT_LOCAL_MODEL", tt.modelEnv)
-			if got := localEndpoint(); got != tt.wantEndpoint {
-				t.Errorf("localEndpoint() = %q, want %q", got, tt.wantEndpoint)
+			if got := LocalEndpoint(); got != tt.wantEndpoint {
+				t.Errorf("LocalEndpoint() = %q, want %q", got, tt.wantEndpoint)
 			}
-			if got := localModel(); got != tt.wantModel {
-				t.Errorf("localModel() = %q, want %q", got, tt.wantModel)
+			if got := LocalModel(); got != tt.wantModel {
+				t.Errorf("LocalModel() = %q, want %q", got, tt.wantModel)
 			}
 		})
 	}
@@ -327,8 +327,8 @@ func TestLocalRunner_Timeout(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Setenv("DEVKIT_LOCAL_TIMEOUT", tt.env)
-			if got := localTimeout(); got != tt.want {
-				t.Errorf("localTimeout() = %v, want %v", got, tt.want)
+			if got := LocalTimeout(); got != tt.want {
+				t.Errorf("LocalTimeout() = %v, want %v", got, tt.want)
 			}
 		})
 	}
