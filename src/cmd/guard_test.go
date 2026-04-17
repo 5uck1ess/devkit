@@ -180,6 +180,33 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantStderrSubstr: "attempted tool: Write",
 		},
 		{
+			// Subagent dispatch is a prompt-step privilege. Command steps
+			// are run by the engine directly, not by the model — dispatch
+			// there would mean the model bypassing the engine, defeating
+			// determinism. Pin this so a future refactor can't quietly
+			// extend the prompt carve-out to command steps.
+			name:       "command+hard+Agent → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
+			},
+			stdin:            `{"tool_name":"Agent"}`,
+			wantExit:         2,
+			wantStderrSubstr: "attempted tool: Agent",
+		},
+		{
+			name:       "command+hard+Task → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
+			},
+			stdin:            `{"tool_name":"Task"}`,
+			wantExit:         2,
+			wantStderrSubstr: "attempted tool: Task",
+		},
+		{
 			name:       "command+hard+devkit_advance → allow",
 			dataDir:    true,
 			hasSession: true,

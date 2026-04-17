@@ -401,10 +401,9 @@ func runPreToolGuard() {
 				// Write/Edit/Bash remain blocked at this layer, so the
 				// main model cannot cheat (e.g. fake a tri-review by
 				// writing the verdict itself instead of dispatching to
-				// an external reviewer). The subagent's own tool calls
-				// re-enter this guard with the same session state; if
-				// they need broader tools, they must be explicitly
-				// authorized via enforce: soft on the step.
+				// an external reviewer). Subagent tool calls re-enter
+				// this guard with the same session state, so the fence
+				// applies uniformly to both layers.
 				guardExit(0)
 				return
 			}
