@@ -478,8 +478,9 @@ run_guard '{"status":"done","step_type":"command","enforce":"hard","current_step
   '{"tool_name":"Bash","tool_input":{"command":"ls"}}' \
   0 "status=done → allow"
 
-# Prompt step + hard enforce: read-only evidence tools allowed,
-# Write/Bash/Task blocked. Closes the drift hole from issue #63.
+# Prompt step + hard enforce: read-only evidence tools + subagent
+# dispatch (Task/Agent) allowed, Write/Bash/Edit blocked so the main
+# model cannot fabricate output. Closes the drift hole from issue #63.
 run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
   '{"tool_name":"Read","tool_input":{"file_path":"main.go"}}' \
   0 "prompt+hard+Read → allow"
@@ -492,9 +493,18 @@ run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_st
 run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
   '{"tool_name":"Write","tool_input":{"file_path":"x.go","content":"x"}}' \
   2 "prompt+hard+Write → block"
-run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"review-smart"}' \
   '{"tool_name":"Task","tool_input":{}}' \
-  2 "prompt+hard+Task → block"
+  0 "prompt+hard+Task → allow (subagent dispatch)"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"review-smart"}' \
+  '{"tool_name":"Agent","tool_input":{}}' \
+  0 "prompt+hard+Agent → allow (subagent dispatch)"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"Edit","tool_input":{"file_path":"x.go","old_string":"a","new_string":"b"}}' \
+  2 "prompt+hard+Edit → block"
+run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
+  '{"tool_name":"WebFetch","tool_input":{"url":"https://example.com"}}' \
+  2 "prompt+hard+WebFetch → block"
 run_guard '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' \
   '{"tool_name":"devkit_advance"}' \
   0 "prompt+hard+devkit_advance → allow"
@@ -518,6 +528,16 @@ run_guard '{"status":"running","step_type":"command","enforce":"hard","current_s
 run_guard '{"status":"running","step_type":"command","enforce":"hard","current_step":"build"}' \
   '{"tool_name":"Write","tool_input":{"file_path":"x.go","content":"package x"}}' \
   2 "command+hard+Write → block"
+
+# Command step + hard enforce + Agent/Task → block. Subagent dispatch is
+# a prompt-step privilege; command steps are engine-driven, so allowing
+# Agent/Task there would let the model bypass the engine.
+run_guard '{"status":"running","step_type":"command","enforce":"hard","current_step":"build"}' \
+  '{"tool_name":"Agent","tool_input":{}}' \
+  2 "command+hard+Agent → block"
+run_guard '{"status":"running","step_type":"command","enforce":"hard","current_step":"build"}' \
+  '{"tool_name":"Task","tool_input":{}}' \
+  2 "command+hard+Task → block"
 
 # Command step + hard enforce + devkit_advance → allow
 run_guard '{"status":"running","step_type":"command","enforce":"hard","current_step":"build"}' \
