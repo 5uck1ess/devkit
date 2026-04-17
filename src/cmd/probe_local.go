@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
+
+	"github.com/5uck1ess/devkit/runners"
+	"github.com/spf13/cobra"
 )
 
 type ProbeConfig struct {
@@ -151,4 +155,50 @@ func formatHuman(r ProbeResult) string {
 
 func formatJSON(r ProbeResult) ([]byte, error) {
 	return json.MarshalIndent(r, "", "  ")
+}
+
+var probeLocalJSON bool
+
+var probeLocalCmd = &cobra.Command{
+	Use:   "probe-local",
+	Short: "Probe the configured local inference endpoint",
+	Long: `Probe the OpenAI-compatible endpoint configured via DEVKIT_LOCAL_* env vars.
+
+Reports endpoint, model, reachability, and whether the configured model is
+present in the server's /v1/models response. Exit 0 on healthy, 1 otherwise.`,
+	// Override root's PersistentPreRunE — this probe doesn't need a git repo or DB.
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error { return nil },
+	RunE: func(cmd *cobra.Command, args []string) error {
+		cfg := ProbeConfig{
+			Enabled:  runners.LocalEnabled(),
+			Endpoint: runners.LocalEndpoint(),
+			Model:    runners.LocalModel(),
+			APIKey:   runners.LocalAPIKey(),
+			Timeout:  3 * time.Second,
+		}
+		result := runProbe(cmd.Context(), cfg)
+
+		if probeLocalJSON {
+			out, err := formatJSON(result)
+			if err != nil {
+				return fmt.Errorf("formatting JSON: %w", err)
+			}
+			fmt.Println(string(out))
+		} else {
+			fmt.Print(formatHuman(result))
+		}
+
+		if !cfg.Enabled {
+			return nil
+		}
+		if !result.Reachable || !result.ModelMatch {
+			os.Exit(1)
+		}
+		return nil
+	},
+}
+
+func init() {
+	probeLocalCmd.Flags().BoolVar(&probeLocalJSON, "json", false, "emit structured JSON instead of human-readable text")
+	rootCmd.AddCommand(probeLocalCmd)
 }
