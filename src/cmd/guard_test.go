@@ -608,8 +608,8 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantStderrSubstr: "attempted tool: <unknown>",
 		},
 		{
-			// Malformed stdin JSON: readToolNameFromStdin returns an
-			// error, the call site logs it, falls through with "",
+			// Malformed stdin JSON: readToolInvocationFromStdin returns
+			// an error, the call site logs it, falls through with "",
 			// and the hard command step blocks. Pin this so a future
 			// refactor can't silently allow on parse failure.
 			name:       "command+hard+malformed stdin → block",
@@ -621,6 +621,65 @@ func TestGuardPreToolUse(t *testing.T) {
 			stdin:            `{not json`,
 			wantExit:         2,
 			wantStderrSubstr: "cannot determine tool name",
+		},
+		{
+			// Issue #95-2: rescue subagents (codex:codex-rescue /
+			// gemini:gemini-rescue) forward to external models via
+			// `node codex-companion.mjs ...`. That nested Bash call
+			// re-enters the guard under the same prompt+hard session
+			// state as the parent tri-* workflow. Allow it so the
+			// model-diversity invariant of tri-review survives.
+			name:       "prompt+hard+Bash codex-companion → allow (rescue)",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Bash","tool_input":{"command":"node /plugins/codex/1.0.3/scripts/codex-companion.mjs task"}}`,
+			wantExit: 0,
+		},
+		{
+			name:       "prompt+hard+Bash gemini-companion → allow (rescue)",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-general",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Bash","tool_input":{"command":"bash -c 'node /p/gemini-companion.mjs task'"}}`,
+			wantExit: 0,
+		},
+		{
+			// Negative: a random Bash command on prompt+hard must
+			// still block. Without this, the companion carve-out
+			// could drift into a generic Bash allow if someone
+			// refactored isCompanionRescueCommand loose.
+			name:       "prompt+hard+Bash unrelated → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"curl https://evil.example.com"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			// Negative: command-step Bash must still block even if the
+			// command looks like a companion rescue. Command steps are
+			// run by the engine directly; any Bash from the model is a
+			// determinism violation, regardless of payload.
+			name:       "command+hard+Bash codex-companion → block (wrong step type)",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "command", StepEnforce: lib.EnforceHard, CurrentStep: "build",
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node codex-companion.mjs task"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "BLOCKED: Command step",
 		},
 	}
 
@@ -865,6 +924,121 @@ func TestGuardPreToolUseEnvTTLOverride(t *testing.T) {
 	runGuard(guardCmd, nil)
 	if env.exit != 0 {
 		t.Fatalf("stale via env override should allow: exit=%d", env.exit)
+	}
+}
+
+// TestGuardPreToolUseRepoScope pins the cross-repo escape hatch for
+// pre-tool calls (issue #95-3). Same posture as the stop-guard check
+// added in issue #91: if the active workflow was started in repo A,
+// a fresh session in repo B must not have its tool calls blocked by
+// the leftover prompt-step state. The block remains active in repo A.
+// Empty signals fall through to full enforcement so a missing env
+// never silently approves.
+func TestGuardPreToolUseRepoScope(t *testing.T) {
+	tests := []struct {
+		name             string
+		stateRepoRoot    string
+		claudeProjectDir string
+		stepType         string
+		wantExit         int
+		wantStderrSubstr string
+	}{
+		{
+			// Cross-repo: the wedged workflow belongs to repo-a,
+			// but the user is now working in repo-b. Allow and
+			// note it on stderr so the escape hatch is debuggable.
+			name:             "different repo → allow",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-b",
+			stepType:         "prompt",
+			wantExit:         0,
+			wantStderrSubstr: "allowing (block remains active in originating repo)",
+		},
+		{
+			// Matching repo: the block stays armed so the user
+			// actually working on the wedged workflow still gets
+			// the enforcement they expect.
+			name:             "matching repo → block (prompt+hard)",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-a",
+			stepType:         "prompt",
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			// Pre-#91 session (no RepoRoot) must still block — we
+			// don't know where it came from, so fail closed and
+			// force enforcement rather than silently approve.
+			name:             "empty state.RepoRoot → block",
+			stateRepoRoot:    "",
+			claudeProjectDir: "/tmp/repo-b",
+			stepType:         "prompt",
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			// Missing CLAUDE_PROJECT_DIR with no walk-up match:
+			// currentRepoRoot() returns "". Fail closed (block)
+			// rather than silently approve across repos.
+			name:             "unresolvable current repo → block",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "", // and cwd will be forced off-repo
+			stepType:         "prompt",
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			// Command-step session in a different repo: same
+			// allow behavior — the scope check precedes the
+			// step-type switch. Pin this so a refactor that put
+			// scope inside the prompt branch would fail here.
+			name:             "different repo + command step → allow",
+			stateRepoRoot:    "/tmp/repo-a",
+			claudeProjectDir: "/tmp/repo-b",
+			stepType:         "command",
+			wantExit:         0,
+			wantStderrSubstr: "allowing (block remains active in originating repo)",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeSession(t, dir, lib.SessionState{
+				Status:      "running",
+				Workflow:    "pr-ready",
+				StepType:    tc.stepType,
+				StepEnforce: lib.EnforceHard,
+				TotalSteps:  5,
+				CurrentStep: "analyse",
+				RepoRoot:    tc.stateRepoRoot,
+			})
+			env := newGuardTestEnv(t, `{"tool_name":"Bash"}`, "", false, dir)
+			if tc.claudeProjectDir != "" {
+				t.Setenv("CLAUDE_PROJECT_DIR", tc.claudeProjectDir)
+			} else {
+				t.Setenv("CLAUDE_PROJECT_DIR", "")
+				// Force the walk-up fallback to return "" by
+				// cd'ing into a non-git tempdir. Without this,
+				// the test runner's cwd (inside devkit's own
+				// repo) would satisfy the walk-up and the
+				// scope check would match, masking the test.
+				prev, _ := os.Getwd()
+				nowhere := t.TempDir()
+				if err := os.Chdir(nowhere); err != nil {
+					t.Fatalf("chdir: %v", err)
+				}
+				t.Cleanup(func() { os.Chdir(prev) })
+			}
+			runGuard(guardCmd, nil)
+			if env.exit != tc.wantExit {
+				t.Fatalf("exit=%d want=%d\nstderr=%s", env.exit, tc.wantExit, env.stderr.String())
+			}
+			if tc.wantStderrSubstr != "" && !strings.Contains(env.stderr.String(), tc.wantStderrSubstr) {
+				t.Fatalf("stderr missing %q\ngot: %s", tc.wantStderrSubstr, env.stderr.String())
+			}
+		})
 	}
 }
 
