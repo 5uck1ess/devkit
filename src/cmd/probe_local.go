@@ -108,3 +108,43 @@ func runProbe(ctx context.Context, cfg ProbeConfig) ProbeResult {
 	}
 	return r
 }
+
+func formatHuman(r ProbeResult) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "endpoint:    %s\n", r.Endpoint)
+	fmt.Fprintf(&b, "model:       %s\n", r.Model)
+	if !r.Enabled {
+		fmt.Fprintln(&b, "enabled:     no — disabled (set DEVKIT_LOCAL_ENABLED=1 to enable)")
+		return b.String()
+	}
+	fmt.Fprintln(&b, "enabled:     yes")
+	if r.Reachable {
+		fmt.Fprintf(&b, "reachable:   yes (HTTP %d, %dms)\n", r.HTTPStatus, r.LatencyMS)
+		if len(r.ModelsSeen) > 0 {
+			fmt.Fprintf(&b, "models seen: %s\n", strings.Join(r.ModelsSeen, ", "))
+		} else {
+			fmt.Fprintln(&b, "models seen: (none returned)")
+		}
+		if r.ModelMatch {
+			fmt.Fprintln(&b, "model match: OK (configured model present in /models)")
+		} else {
+			fmt.Fprintln(&b, "model match: MISSING")
+			if r.Hint != "" {
+				fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
+			}
+		}
+		return b.String()
+	}
+	if r.HTTPStatus > 0 {
+		fmt.Fprintf(&b, "reachable:   NO (HTTP %d in %dms)\n", r.HTTPStatus, r.LatencyMS)
+	} else {
+		fmt.Fprintf(&b, "reachable:   NO (%dms)\n", r.LatencyMS)
+	}
+	if r.Hint != "" {
+		fmt.Fprintf(&b, "hint:        %s\n", r.Hint)
+	}
+	if r.ErrorMsg != "" {
+		fmt.Fprintf(&b, "body:        %s\n", r.ErrorMsg)
+	}
+	return b.String()
+}

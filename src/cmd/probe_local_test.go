@@ -171,3 +171,52 @@ func TestRunProbe_BadJSON(t *testing.T) {
 		t.Errorf("ErrorMsg: got %q, want mention of parse error", got.ErrorMsg)
 	}
 }
+
+func TestFormatHuman_HappyPath(t *testing.T) {
+	r := ProbeResult{
+		Endpoint:   "http://host:8080/v1",
+		Model:      "gemma",
+		Enabled:    true,
+		Reachable:  true,
+		HTTPStatus: 200,
+		LatencyMS:  123,
+		ModelsSeen: []string{"gemma", "mistral"},
+		ModelMatch: true,
+	}
+	out := formatHuman(r)
+
+	for _, want := range []string{
+		"endpoint:    http://host:8080/v1",
+		"model:       gemma",
+		"enabled:     yes",
+		"reachable:   yes (HTTP 200, 123ms)",
+		"models seen: gemma, mistral",
+		"model match: OK",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q. Got:\n%s", want, out)
+		}
+	}
+}
+
+func TestFormatHuman_Disabled(t *testing.T) {
+	out := formatHuman(ProbeResult{Endpoint: "http://x/v1", Model: "y", Enabled: false})
+	if !strings.Contains(out, "disabled") {
+		t.Errorf("disabled output missing 'disabled' marker. Got:\n%s", out)
+	}
+}
+
+func TestFormatHuman_Unreachable(t *testing.T) {
+	r := ProbeResult{
+		Endpoint: "http://x/v1", Model: "y", Enabled: true,
+		HTTPStatus: 401, ErrorMsg: `{"error":"nope"}`,
+		Hint: "check DEVKIT_LOCAL_API_KEY — endpoint requires auth",
+	}
+	out := formatHuman(r)
+
+	for _, want := range []string{"reachable:   NO", "HTTP 401", "hint:", "DEVKIT_LOCAL_API_KEY", "body:"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q. Got:\n%s", want, out)
+		}
+	}
+}
