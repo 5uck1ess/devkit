@@ -133,7 +133,7 @@ Port 8080 is the llama.cpp convention; llama-swap reuses it since it fronts llam
 
 ### Examples
 
-Single model, no router (llama-server, LM Studio, LocalAI, vLLM, SGLang):
+Single model, no router (llama-server, LM Studio, vLLM, SGLang):
 
 ```bash
 export DEVKIT_LOCAL_ENABLED=1
@@ -142,7 +142,7 @@ export DEVKIT_LOCAL_MODEL=<model-loaded-at-launch>
 devkit-engine probe-local
 ```
 
-Multi-model via router (Ollama, llama-swap, LocalAI):
+Multi-model via router (Ollama, llama-swap, LocalAI — LocalAI supports either mode depending on how it's configured):
 
 ```bash
 export DEVKIT_LOCAL_ENABLED=1
