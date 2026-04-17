@@ -68,7 +68,6 @@ func TestRunProbe_HappyPath(t *testing.T) {
 			t.Errorf("ModelsSeen[%d]: got %q, want %q", i, got.ModelsSeen[i], m)
 		}
 	}
-	_ = json.RawMessage{}
 }
 
 func TestRunProbe_ModelMissing(t *testing.T) {
@@ -218,5 +217,31 @@ func TestFormatHuman_Unreachable(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q. Got:\n%s", want, out)
 		}
+	}
+}
+
+func TestFormatJSON(t *testing.T) {
+	r := ProbeResult{
+		Endpoint: "http://x/v1", Model: "m", Enabled: true,
+		Reachable: true, HTTPStatus: 200, LatencyMS: 42,
+		ModelsSeen: []string{"m", "other"}, ModelMatch: true,
+	}
+	out, err := formatJSON(r)
+	if err != nil {
+		t.Fatalf("formatJSON err: %v", err)
+	}
+
+	var parsed map[string]any
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		t.Fatalf("output not valid JSON: %v\n%s", err, out)
+	}
+	if parsed["endpoint"] != "http://x/v1" {
+		t.Errorf("endpoint: got %v, want http://x/v1", parsed["endpoint"])
+	}
+	if parsed["model_match"] != true {
+		t.Errorf("model_match: got %v, want true", parsed["model_match"])
+	}
+	if parsed["http_status"].(float64) != 200 {
+		t.Errorf("http_status: got %v, want 200", parsed["http_status"])
 	}
 }

@@ -148,3 +148,7 @@ func formatHuman(r ProbeResult) string {
 	}
 	return b.String()
 }
+
+func formatJSON(r ProbeResult) ([]byte, error) {
+	return json.MarshalIndent(r, "", "  ")
+}
