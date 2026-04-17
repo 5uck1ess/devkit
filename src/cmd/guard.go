@@ -307,17 +307,25 @@ func isDevkitMCPTool(name string) bool {
 // Matched via substring so invocation style doesn't matter — the
 // adapters call their scripts as `node /abs/path/codex-companion.mjs`,
 // `bash -c '... gemini-companion.mjs ...'`, or through env-var
-// overrides, and we must tolerate all of them. The cost of a broader
-// match is negligible: the only "bypass" it enables is the main
-// agent invoking a real external model directly, which produces a
-// real external review (just not one dispatched through the subagent
-// indirection).
+// overrides, and we must tolerate all of them. The .mjs suffix is
+// load-bearing: without it, a Bash comment token like
+// `rm -rf $HOME # codex-companion` would satisfy the substring match
+// and bypass the prompt+hard Bash block. Both real companions ship
+// as .mjs files, so requiring the extension doesn't break any
+// intended invocation style. A future .js / .cjs adapter must be
+// added to this allowlist deliberately rather than relying on the
+// looser bare-name match.
+//
+// The cost of a broader match (even with .mjs pinned) is negligible:
+// the only "bypass" it enables is the main agent invoking a real
+// external model directly, which produces a real external review
+// (just not one dispatched through the subagent indirection).
 func isCompanionRescueCommand(cmd string) bool {
 	if cmd == "" {
 		return false
 	}
-	return strings.Contains(cmd, "codex-companion") ||
-		strings.Contains(cmd, "gemini-companion")
+	return strings.Contains(cmd, "codex-companion.mjs") ||
+		strings.Contains(cmd, "gemini-companion.mjs")
 }
 
 func runPreToolGuard() {
