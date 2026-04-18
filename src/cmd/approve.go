@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,7 +41,7 @@ no leading dot, 1-64 chars.`,
 	PersistentPreRunE:  func(cmd *cobra.Command, args []string) error { return nil },
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error { return nil },
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runApprove(args[0])
+		return runApprove(cmd.Context(), cmd.OutOrStdout(), args[0])
 	},
 }
 
@@ -47,9 +49,9 @@ func init() {
 	rootCmd.AddCommand(approveCmd)
 }
 
-func runApprove(name string) error {
+func runApprove(ctx context.Context, out io.Writer, name string) error {
 	if !approveNamePattern.MatchString(name) {
-		return fmt.Errorf("invalid gate name %q — must match [a-zA-Z0-9][a-zA-Z0-9_-]{0,63}", name)
+		return fmt.Errorf("invalid gate name %q — must match ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$", name)
 	}
 
 	root, err := findRepoRoot()
@@ -63,44 +65,55 @@ func runApprove(name string) error {
 	}
 
 	markerPath := filepath.Join(gatesDir, name+".approved")
-
 	if existing, err := os.ReadFile(markerPath); err == nil {
-		fmt.Printf("gate %q already approved:\n%s", name, existing)
+		fmt.Fprintf(out, "gate %q already approved:\n%s", name, existing)
 		return nil
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("read existing marker: %w", err)
 	}
 
-	approver := approverIdentity()
+	approver := approverIdentity(ctx)
 	content := fmt.Sprintf("approved_at: %s\napproved_by: %s\n",
 		time.Now().UTC().Format(time.RFC3339),
 		approver)
 
-	// O_EXCL so a concurrent `devkit approve` can't race us and end up
-	// with a half-written marker. The earlier ReadFile check handles the
-	// idempotent case; this handles the narrow race where two approvers
-	// hit it between the stat and the create.
-	f, err := os.OpenFile(markerPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	// Atomic publish: write to a temp file in the same directory, then
+	// rename. A polling gate does `[ -f ... ]`, which sees the marker
+	// only after rename makes the directory entry visible — so a crash
+	// or write error mid-approve can no longer unblock the workflow on
+	// a partially-written file. The O_EXCL-on-the-final-path approach
+	// was unsafe because the marker became visible before WriteString
+	// and Close had returned.
+	tmp, err := os.CreateTemp(gatesDir, name+".approved.tmp-*")
 	if err != nil {
-		if os.IsExist(err) {
-			existing, rerr := os.ReadFile(markerPath)
-			if rerr == nil {
-				fmt.Printf("gate %q already approved:\n%s", name, existing)
-				return nil
-			}
+		return fmt.Errorf("create temp marker: %w", err)
+	}
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		if !committed {
+			os.Remove(tmpPath)
 		}
-		return fmt.Errorf("write marker: %w", err)
+	}()
+
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temp marker: %w", err)
 	}
-	if _, werr := f.WriteString(content); werr != nil {
-		f.Close()
-		os.Remove(markerPath)
-		return fmt.Errorf("write marker: %w", werr)
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("sync temp marker: %w", err)
 	}
-	if cerr := f.Close(); cerr != nil {
-		return fmt.Errorf("close marker: %w", cerr)
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp marker: %w", err)
 	}
 
-	fmt.Printf("gate %q approved by %s\nmarker: %s\n", name, approver, markerPath)
+	if err := os.Rename(tmpPath, markerPath); err != nil {
+		return fmt.Errorf("publish marker: %w", err)
+	}
+	committed = true
+
+	fmt.Fprintf(out, "gate %q approved by %s\nmarker: %s\n", name, approver, markerPath)
 	return nil
 }
 
@@ -109,23 +122,52 @@ func runApprove(name string) error {
 // through $USER and finally "unknown" so the marker is always written —
 // refusing to approve because we can't identify the user would be worse
 // than a marker that says "unknown".
-func approverIdentity() string {
-	if name := gitConfig("user.name"); name != "" {
-		if email := gitConfig("user.email"); email != "" {
+//
+// Runs git under a 2s timeout because `git config --get` has been
+// observed to hang on locked-index or misconfigured repos, which would
+// deadlock the CLI indefinitely. A single --get-regexp call fetches
+// both user.name and user.email in one subprocess instead of two.
+func approverIdentity(ctx context.Context) string {
+	tctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	out, err := exec.CommandContext(tctx, "git", "config", "--get-regexp", `^user\.(name|email)$`).Output()
+	if err == nil {
+		name, email := parseGitUserRegexp(string(out))
+		switch {
+		case name != "" && email != "":
 			return fmt.Sprintf("%s <%s>", name, email)
+		case name != "":
+			return name
 		}
-		return name
 	}
+
 	if u := strings.TrimSpace(os.Getenv("USER")); u != "" {
 		return u
 	}
 	return "unknown"
 }
 
-func gitConfig(key string) string {
-	out, err := exec.Command("git", "config", "--get", key).Output()
-	if err != nil {
-		return ""
+// parseGitUserRegexp extracts user.name and user.email from the output
+// of `git config --get-regexp`. Each line is "<key> <value>" separated
+// by a single space; values may themselves contain spaces (e.g. a full
+// name) so we split on the first space only.
+func parseGitUserRegexp(out string) (name, email string) {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		key, val, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "user.name":
+			name = val
+		case "user.email":
+			email = val
+		}
 	}
-	return strings.TrimSpace(string(out))
+	return
 }
