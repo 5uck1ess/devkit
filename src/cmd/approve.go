@@ -142,10 +142,20 @@ func approverIdentity(ctx context.Context) string {
 		}
 	}
 
+	fallback := "unknown"
 	if u := strings.TrimSpace(os.Getenv("USER")); u != "" {
-		return u
+		fallback = u
 	}
-	return "unknown"
+	// Surface git failures so the user can tell "git timed out" from
+	// "git wasn't configured" from "git config is corrupt" — without
+	// this, every such case silently produces approver=<USER-or-unknown>
+	// with no diagnostic trail. We only log when git actually failed
+	// (err != nil); a git run that succeeded but returned no user.* keys
+	// is a legitimate unconfigured-repo case and doesn't need noise.
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "devkit approve: git identity unavailable (%v); approver=%s\n", err, fallback)
+	}
+	return fallback
 }
 
 // parseGitUserRegexp extracts user.name and user.email from the output

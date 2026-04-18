@@ -9,35 +9,36 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestApproveNameValidation(t *testing.T) {
 	tests := []struct {
-		name    string
-		gate    string
-		wantErr bool
+		name      string
+		gate      string
+		wantMatch bool
 	}{
-		{"simple", "plan", false},
-		{"with dash", "deploy-prod", false},
-		{"with underscore", "gate_1", false},
-		{"alphanumeric", "Gate42", false},
-		{"max length", strings.Repeat("a", 64), false},
-		{"empty", "", true},
-		{"too long", strings.Repeat("a", 65), true},
-		{"leading dot", ".hidden", true},
-		{"leading dash", "-flag", true},
-		{"path traversal dotdot", "../escape", true},
-		{"path separator unix", "a/b", true},
-		{"path separator windows", "a\\b", true},
-		{"space", "plan v2", true},
-		{"null byte", "plan\x00", true},
-		{"leading digit ok", "1plan", false},
+		{"simple", "plan", true},
+		{"with dash", "deploy-prod", true},
+		{"with underscore", "gate_1", true},
+		{"alphanumeric", "Gate42", true},
+		{"max length", strings.Repeat("a", 64), true},
+		{"leading digit ok", "1plan", true},
+		{"empty", "", false},
+		{"too long", strings.Repeat("a", 65), false},
+		{"leading dot", ".hidden", false},
+		{"leading dash", "-flag", false},
+		{"path traversal dotdot", "../escape", false},
+		{"path separator unix", "a/b", false},
+		{"path separator windows", "a\\b", false},
+		{"space", "plan v2", false},
+		{"null byte", "plan\x00", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			got := approveNamePattern.MatchString(tc.gate)
-			if got == tc.wantErr {
-				t.Fatalf("name %q: match=%v, wantErr=%v", tc.gate, got, tc.wantErr)
+			if got != tc.wantMatch {
+				t.Fatalf("name %q: match=%v, wantMatch=%v", tc.gate, got, tc.wantMatch)
 			}
 		})
 	}
@@ -80,9 +81,15 @@ func TestRunApproveIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read after first: %v", err)
 	}
-	firstStat, err := os.Stat(markerPath)
-	if err != nil {
-		t.Fatalf("stat after first: %v", err)
+
+	// Backdate the marker's mtime so the "mtime preserved" check below
+	// works on filesystems with second-level mtime resolution (ext3,
+	// older HFS+, some CI overlays). Without this, two back-to-back
+	// approves finish in microseconds and the mtime comparison becomes
+	// fs-dependent — green on APFS/ext4, flaky on CI.
+	backdated := time.Now().Add(-10 * time.Second).Truncate(time.Second)
+	if err := os.Chtimes(markerPath, backdated, backdated); err != nil {
+		t.Fatalf("chtimes: %v", err)
 	}
 
 	if err := runApprove(context.Background(), io.Discard, "plan"); err != nil {
@@ -100,11 +107,8 @@ func TestRunApproveIdempotent(t *testing.T) {
 	if string(first) != string(second) {
 		t.Errorf("marker content changed on idempotent re-approve\nfirst:  %q\nsecond: %q", first, second)
 	}
-	// mtime must be preserved on a no-op re-approve — if it changed we
-	// know the file was rewritten with identical content, which a naive
-	// content-equality check would miss.
-	if !firstStat.ModTime().Equal(secondStat.ModTime()) {
-		t.Errorf("marker mtime changed on idempotent re-approve: %v -> %v", firstStat.ModTime(), secondStat.ModTime())
+	if !secondStat.ModTime().Equal(backdated) {
+		t.Errorf("marker mtime changed on idempotent re-approve: want %v, got %v — file was rewritten", backdated, secondStat.ModTime())
 	}
 }
 
@@ -161,6 +165,26 @@ func TestRunApproveOutsideRepo(t *testing.T) {
 	}
 }
 
+func TestApproverIdentityFallbackToUser(t *testing.T) {
+	isolateGitConfig(t)
+	t.Setenv("USER", "alice")
+
+	got := approverIdentity(context.Background())
+	if got != "alice" {
+		t.Errorf("want 'alice' (USER fallback), got %q", got)
+	}
+}
+
+func TestApproverIdentityFallbackToUnknown(t *testing.T) {
+	isolateGitConfig(t)
+	t.Setenv("USER", "")
+
+	got := approverIdentity(context.Background())
+	if got != "unknown" {
+		t.Errorf("want 'unknown' (final fallback), got %q", got)
+	}
+}
+
 func TestParseGitUserRegexp(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -187,6 +211,21 @@ func TestParseGitUserRegexp(t *testing.T) {
 			}
 		})
 	}
+}
+
+// isolateGitConfig points git at empty config files for the duration of
+// the test so approverIdentity sees no user.name/user.email anywhere —
+// exercising the USER / "unknown" fallback paths that newTestRepo hides
+// by pre-seeding a valid identity. Also switches HOME so any ambient
+// ~/.gitconfig is ignored and we don't leak the real developer identity
+// into test output on a machine that has a global git config.
+func isolateGitConfig(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(dir, "empty-global"))
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+	t.Setenv("HOME", dir)
+	t.Chdir(dir)
 }
 
 // newTestRepo creates a temp directory with a .git sentinel dir so
