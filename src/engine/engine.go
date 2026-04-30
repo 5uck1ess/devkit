@@ -336,6 +336,12 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 		// Include exit code in output so downstream steps can check it
 		fullOutput := fmt.Sprintf("%s\nexit code: %d", strings.TrimRight(output, "\n"), exitCode)
+		if err := ValidateRequiredOutput(*step, fullOutput); err != nil {
+			dbStep.Status = "failed"
+			dbStep.ChangeSummary = err.Error()
+			e.db.UpdateStep(dbStep)
+			return 0, "", err
+		}
 
 		dbStep.Status = "kept"
 		dbStep.Kept = true
@@ -364,6 +370,12 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 		dbStep.ChangeSummary = err.Error()
 		e.db.UpdateStep(dbStep)
 		return 0, "", fmt.Errorf("step %s failed: %w", step.ID, err)
+	}
+	if err := ValidateRequiredOutput(*step, result.Output); err != nil {
+		dbStep.Status = "failed"
+		dbStep.ChangeSummary = err.Error()
+		e.db.UpdateStep(dbStep)
+		return 0, "", err
 	}
 
 	dbStep.Status = "kept"
@@ -418,6 +430,15 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			e.db.UpdateStep(dbStep)
 			consecutiveFailures++
 			fmt.Printf("  failed, retrying\n\n")
+			continue
+		}
+		if err := ValidateRequiredOutput(*step, result.Output); err != nil {
+			dbStep.Status = "failed"
+			dbStep.CostUSD = result.CostUSD
+			dbStep.ChangeSummary = err.Error()
+			e.db.UpdateStep(dbStep)
+			consecutiveFailures++
+			fmt.Printf("  failed required output check, retrying\n\n")
 			continue
 		}
 
@@ -569,6 +590,13 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			defer mu.Unlock()
 
 			if err != nil {
+				dbStep.Status = "failed"
+				dbStep.ChangeSummary = err.Error()
+				e.db.UpdateStep(dbStep)
+				results[j] = parallelResult{id: pid, err: err}
+				return
+			}
+			if err := ValidateRequiredOutput(*step, result.Output); err != nil {
 				dbStep.Status = "failed"
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)

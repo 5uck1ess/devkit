@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -54,6 +55,7 @@ type WfStep struct {
 	Loop       *Loop    `yaml:"loop"`
 	Branch     []Branch `yaml:"branch"`
 	Principles []string `yaml:"principles"` // per-step override
+	Require    *Require `yaml:"require,omitempty"`
 	// Enforce overrides the workflow-level enforce for this step only.
 	// Empty inherits from Workflow.Enforce. Lets a workflow keep most
 	// prompt steps under hard (mid-step tool block) while allowing
@@ -61,6 +63,17 @@ type WfStep struct {
 	// run under soft. The Stop-hook still blocks session end on soft
 	// steps, so end-of-turn drift is still caught.
 	Enforce EnforceMode `yaml:"enforce,omitempty"`
+}
+
+// Require declares host-neutral output contracts checked by the engine
+// before a step can advance. It is intentionally small: these are not a
+// replacement for tests or review, just deterministic shape checks for
+// sentinel values that later workflow steps depend on.
+type Require struct {
+	NonEmpty      bool     `yaml:"non_empty"`
+	Contains      []string `yaml:"contains"`
+	Until         string   `yaml:"until"`
+	LastLineRegex string   `yaml:"last_line_regex"`
 }
 
 // EffectiveEnforce returns the enforcement mode for a step, falling back
@@ -222,6 +235,21 @@ func validate(wf *Workflow) error {
 		if s.Loop != nil && s.Loop.Gate != "" && strings.Contains(s.Loop.Gate, "{{") {
 			return fmt.Errorf("step %q loop.gate must not use {{...}} — pass values via $DEVKIT_INPUT or $DEVKIT_OUT_<step_id> instead (shell injection mitigation)", s.ID)
 		}
+		if s.Require != nil {
+			if s.Require.LastLineRegex != "" {
+				if _, err := regexp.Compile(s.Require.LastLineRegex); err != nil {
+					return fmt.Errorf("step %q require.last_line_regex is invalid: %w", s.ID, err)
+				}
+			}
+			if s.Require.Until != "" && strings.TrimSpace(s.Require.Until) == "" {
+				return fmt.Errorf("step %q require.until must not be blank", s.ID)
+			}
+			for _, want := range s.Require.Contains {
+				if strings.TrimSpace(want) == "" {
+					return fmt.Errorf("step %q require.contains must not include blank strings", s.ID)
+				}
+			}
+		}
 	}
 
 	// Validate branch targets exist
@@ -291,6 +319,49 @@ func Interpolate(prompt string, input string, outputs map[string]string) string 
 		result = strings.ReplaceAll(result, "{{"+id+"}}", outputs[id])
 	}
 	return result
+}
+
+// ValidateRequiredOutput checks a step's optional require: contract against
+// its output. It is used by both the MCP engine and terminal workflow runner
+// so host-specific adapters cannot accidentally bypass deterministic
+// downstream shape checks.
+func ValidateRequiredOutput(step WfStep, output string) error {
+	if step.Require == nil {
+		return nil
+	}
+	req := step.Require
+	if req.NonEmpty && strings.TrimSpace(output) == "" {
+		return fmt.Errorf("step %q output failed require.non_empty", step.ID)
+	}
+	for _, want := range req.Contains {
+		if !strings.Contains(output, want) {
+			return fmt.Errorf("step %q output failed require.contains %q", step.ID, want)
+		}
+	}
+	if req.Until != "" && !MatchUntil(output, req.Until) {
+		return fmt.Errorf("step %q output failed require.until %q", step.ID, req.Until)
+	}
+	if req.LastLineRegex != "" {
+		last := lastNonEmptyLine(output)
+		re, err := regexp.Compile(req.LastLineRegex)
+		if err != nil {
+			return fmt.Errorf("step %q has invalid require.last_line_regex: %w", step.ID, err)
+		}
+		if !re.MatchString(last) {
+			return fmt.Errorf("step %q output last line %q failed require.last_line_regex %q", step.ID, last, req.LastLineRegex)
+		}
+	}
+	return nil
+}
+
+func lastNonEmptyLine(output string) string {
+	lines := strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if trimmed := strings.TrimSpace(lines[i]); trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 // EvalBranch checks step output against branch conditions.

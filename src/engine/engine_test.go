@@ -270,6 +270,18 @@ steps:
   - id: a
     command: "echo hi"
     enforce: soft`, "enforce on a command step"},
+		{"invalid require regex", `name: T
+steps:
+  - id: a
+    prompt: x
+    require:
+      last_line_regex: "["`, "require.last_line_regex is invalid"},
+		{"blank require contains", `name: T
+steps:
+  - id: a
+    prompt: x
+    require:
+      contains: [""]`, "require.contains must not include blank strings"},
 	}
 
 	for _, tt := range tests {

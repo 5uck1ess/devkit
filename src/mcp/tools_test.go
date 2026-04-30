@@ -564,6 +564,91 @@ steps:
 	}
 }
 
+func TestAdvanceRejectsRequiredOutput(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "pr.yml"), `name: pr
+description: PR workflow
+steps:
+  - id: create-pr
+    prompt: Create the PR and report the number.
+    require:
+      last_line_regex: "^PR: ([0-9]+|FAILED .+)$"
+  - id: monitor
+    prompt: Monitor the PR.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "pr",
+		"input":    "ship it",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if startResult.IsError {
+		tc, _ := startResult.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("start error: %s", tc.Text)
+	}
+
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after start: %v", err)
+	}
+
+	_, advHandler := srv.advanceTool()
+	badReq := mcpmcp.CallToolRequest{}
+	badReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "created the pull request successfully",
+	}
+	badResult, err := advHandler(context.Background(), badReq)
+	if err != nil {
+		t.Fatalf("advance bad: %v", err)
+	}
+	if !badResult.IsError {
+		t.Fatal("expected required-output error")
+	}
+	tc, _ := badResult.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "require.last_line_regex") {
+		t.Fatalf("expected require.last_line_regex error, got: %s", tc.Text)
+	}
+
+	state, err = lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after bad advance: %v", err)
+	}
+	if state.CurrentStep != "create-pr" {
+		t.Fatalf("bad output advanced session to %q", state.CurrentStep)
+	}
+	if state.Busy {
+		t.Fatal("bad output left session Busy=true")
+	}
+
+	goodReq := mcpmcp.CallToolRequest{}
+	goodReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "created\nPR: 123",
+	}
+	goodResult, err := advHandler(context.Background(), goodReq)
+	if err != nil {
+		t.Fatalf("advance good: %v", err)
+	}
+	if goodResult.IsError {
+		tc, _ := goodResult.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("good output rejected: %s", tc.Text)
+	}
+	tc, _ = goodResult.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "monitor") {
+		t.Fatalf("expected monitor step after good output, got:\n%s", tc.Text)
+	}
+}
+
 // TestAdvancePropagatesStepEnforce verifies that SessionState.StepEnforce is
 // re-derived from the *current* step on every transition so that a
 // workflow with mixed per-step enforce correctly flips the hook's

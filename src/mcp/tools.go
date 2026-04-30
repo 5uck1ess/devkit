@@ -326,6 +326,21 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 			fmt.Fprintf(&b, "[stuck] %s\n", strings.Join(rules, "; "))
 		}
 	}
+	if step.Require != nil {
+		fmt.Fprintf(&b, "\nREQUIRE:\n")
+		if step.Require.NonEmpty {
+			fmt.Fprintf(&b, "- non_empty\n")
+		}
+		for _, want := range step.Require.Contains {
+			fmt.Fprintf(&b, "- contains: %s\n", want)
+		}
+		if step.Require.Until != "" {
+			fmt.Fprintf(&b, "- until: %s\n", step.Require.Until)
+		}
+		if step.Require.LastLineRegex != "" {
+			fmt.Fprintf(&b, "- last_line_regex: %s\n", step.Require.LastLineRegex)
+		}
+	}
 
 	fmt.Fprintf(&b, "\nCall devkit_advance when this step is complete.\n")
 	return b.String()
@@ -424,14 +439,26 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				return mcpmcp.NewToolResultError(fmt.Sprintf("step %s: expected success but got exit %d\n%s", currentStep.ID, exitCode, output)), nil
 			}
 
+			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
+				return mcpmcp.NewToolResultError(err.Error()), nil
+			}
 			state.Outputs[currentStep.ID] = output
 		} else {
 			// Prompt/parallel step — record output from Claude
 			args := req.GetArguments()
+			var output string
+			outputProvided := false
 			if outputArg, ok := args["output"]; ok && outputArg != nil {
 				if outputStr, ok := outputArg.(string); ok {
-					state.Outputs[currentStep.ID] = outputStr
+					output = outputStr
+					outputProvided = true
 				}
+			}
+			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
+				return mcpmcp.NewToolResultError(err.Error()), nil
+			}
+			if outputProvided || currentStep.Require != nil {
+				state.Outputs[currentStep.ID] = output
 			}
 		}
 

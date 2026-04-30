@@ -37,9 +37,22 @@ Start with an additive adapter:
 Then harden where it matters:
 
 1. Prefer workflow command/gate steps for actions that must be mechanically controlled.
-2. Add `devkit_advance` validation for required output shapes and sentinels.
+2. Add `devkit_advance` validation for required output shapes and sentinels using `require:`.
 3. Use CI or git hooks for post-facto quality checks.
 4. Build a Codex shim only if pre-tool blocking is required.
+
+## Output Contracts
+
+Workflow steps can declare a small host-neutral `require:` block. The MCP server and terminal runner both validate it before the workflow can advance.
+
+Supported checks:
+
+- `non_empty: true`
+- `contains: ["literal text"]`
+- `until: "SENTINEL"` using the same word-boundary matching as loop `until`
+- `last_line_regex: "^PR: ([0-9]+|FAILED .+)$"`
+
+Use this for values that later steps parse, not as a substitute for tests or review. For example, `pr-ready.create-pr` requires the last output line to be either `PR: <number>` or `PR: FAILED <reason>` so the monitor step never starts from malformed PR state.
 
 ## Compatibility Matrix
 

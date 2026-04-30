@@ -167,6 +167,8 @@ steps:
   - id: create-pr
     model: smart
     enforce: soft  # git push + gh pr create
+    require:
+      last_line_regex: "^PR: ([0-9]+|FAILED .+)$"
     prompt: |
       Create the PR:
       1. Push the branch to remote

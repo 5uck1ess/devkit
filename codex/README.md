@@ -7,6 +7,7 @@ This directory contains the Codex-facing adapter for devkit. It is additive: Cla
 - MCP workflow tools: `devkit_start`, `devkit_advance`, `devkit_status`, `devkit_list`.
 - YAML workflow parsing, step ordering, branches, loops, gates, session state, and reports.
 - Engine-owned command steps.
+- Workflow `require:` output contracts checked at `devkit_advance`.
 - Codex CLI runner for terminal workflow execution.
 
 ## Enforcement Difference
