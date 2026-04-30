@@ -23,12 +23,14 @@ steps:
 
   - id: generate
     model: smart
-    enforce: soft  # spawns documenter agent via Task tool
+    enforce: soft  # spawns documenter agent via host subagent facility
     prompt: |
       Target: {{input}}
       Analysis: {{analyze}}
 
-      Spawn the `documenter` agent via the Task tool with the analysis as context.
+      Spawn the `documenter` agent via the host subagent facility with the analysis as context.
+      In Claude Code this is the Task tool; in Codex this is a delegated
+      subagent when available.
       The agent must produce:
       1. Overview — what the module/package does
       2. API Reference — every public export with signature, params, return type, description

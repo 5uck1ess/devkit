@@ -15,9 +15,12 @@ steps:
     prompt: |
       DISPATCH, DO NOT ANSWER. This is tri-review — the whole point is
       model diversity. You (the calling model) must NOT write this review
-      yourself. Invoke the Agent tool with a non-Claude subagent
-      (`codex:codex-rescue` is the standard smart-tier external reviewer;
-      any available Gemini or external senior reviewer also qualifies).
+      yourself. Invoke the host's subagent facility with a non-self
+      external reviewer. In Claude Code, use the Agent tool with a
+      non-Claude subagent (`codex:codex-rescue` is the standard smart-tier
+      external reviewer; any available Gemini or external senior reviewer
+      also qualifies). In Codex, use a delegated subagent or external CLI
+      reviewer if available.
       Pass the diff from {{gather}} and report the subagent's verdict
       verbatim. If no external-model subagent is available, stop and tell
       the user — do NOT answer as yourself and advance. The subagent
@@ -28,11 +31,14 @@ steps:
   - id: review-general
     model: general
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
-      general-tier subagent (e.g. a Gemini-backed reviewer plugin, or
+      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
+      non-self general-tier reviewer. In Claude Code, use the Agent tool
+      with a non-Claude subagent (e.g. a Gemini-backed reviewer plugin, or
       `codex:codex-rescue` if no Gemini is available — but prefer a
       different model than review-smart used, or the tri-* property is
-      lost). Report verbatim. Stop if no external subagent is available.
+      lost). In Codex, use a distinct delegated subagent or external CLI
+      reviewer when available. Report verbatim. Stop if no external
+      subagent is available.
       The subagent prompt should be: "Review this code for quality and
       maintainability — readability, naming, duplication, test coverage.
       Diff: {{gather}}"
@@ -40,11 +46,12 @@ steps:
   - id: review-fast
     model: fast
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a fast-tier
-      external subagent (Haiku-backed, Gemini-Flash-backed, or the fast
-      tier of whatever is available — distinct from review-smart and
-      review-general). Report verbatim. Stop if no external subagent is
-      available. The subagent prompt should be: "Quick review — flag
+      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
+      fast-tier external subagent (Haiku-backed, Gemini-Flash-backed, or
+      the fast tier of whatever is available — distinct from review-smart
+      and review-general). In Codex, use a distinct delegated subagent or
+      external CLI reviewer when available. Report verbatim. Stop if no
+      external subagent is available. The subagent prompt should be: "Quick review — flag
       anything obviously wrong: typos, missing error handling, dead code.
       Diff: {{gather}}"
 

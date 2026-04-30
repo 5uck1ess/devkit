@@ -24,12 +24,14 @@ steps:
 
   - id: architect
     model: smart
-    enforce: soft  # spawns researcher agent via Task tool
+    enforce: soft  # spawns researcher agent via host subagent facility
     prompt: |
       Target codebase: {{input}}
       Initial analysis: {{analyze}}
 
-      Spawn the `researcher` agent via the Task tool with the analysis as context.
+      Spawn the `researcher` agent via the host subagent facility with the analysis as context.
+      In Claude Code this is the Task tool; in Codex this is a delegated
+      subagent when available.
       The agent must identify:
       1. Architecture pattern (monolith, microservices, MVC, layered, etc.)
       2. Key directories and what lives in each

@@ -19,6 +19,38 @@ func TestCodexRunnerName(t *testing.T) {
 	}
 }
 
+func TestCodexExecArgs(t *testing.T) {
+	tests := []struct {
+		name    string
+		workDir string
+		want    []string
+	}{
+		{
+			name: "no workdir",
+			want: []string{"exec", "--full-auto", "-"},
+		},
+		{
+			name:    "with workdir",
+			workDir: "/tmp/repo",
+			want:    []string{"exec", "--full-auto", "-C", "/tmp/repo", "-"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := codexExecArgs(tt.workDir)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len = %d, want %d (%v)", len(got), len(tt.want), got)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Fatalf("arg[%d] = %q, want %q (all args: %v)", i, got[i], tt.want[i], got)
+				}
+			}
+		})
+	}
+}
+
 func TestGeminiRunnerName(t *testing.T) {
 	r := &GeminiRunner{}
 	if r.Name() != "gemini" {
