@@ -2,7 +2,7 @@
 
 A deterministic development harness for AI agents. The MCP engine controls workflow execution (step ordering, gates, loops, branches). The agent handles creativity. Every step is tracked, measured, and auditable.
 
-Works with Claude Code as the full-enforcement host. Codex can use the same MCP engine and workflows through the Codex adapter, with hook-equivalent guardrails marked advisory unless you add a separate shim. Optionally adds Codex and Gemini for multi-agent consensus.
+Works with Claude Code as the original full-enforcement host. Codex can use the same MCP engine and workflows through the Codex adapter, including official Codex hooks for Bash, `apply_patch`, MCP calls, approval requests, and Stop continuation. Some Codex interception gaps remain for richer shell paths and non-MCP tools. Optionally adds Codex and Gemini for multi-agent consensus.
 
 ---
 
@@ -71,12 +71,15 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 Codex uses the same MCP engine without the Claude Code plugin bundle. Register the devkit MCP server in `~/.codex/config.toml`:
 
 ```toml
+[features]
+codex_hooks = true
+
 [mcp_servers.devkit]
 command = "/absolute/path/to/devkit/bin/devkit"
 args = ["mcp"]
 ```
 
-See `codex/config.example.toml`, `codex/README.md`, and `docs/codex-port.md` for the adapter contract and enforcement differences.
+The repo-local `.codex/config.toml` and `.codex/hooks.json` enable and port devkit's guardrail stack where Codex hooks can observe the event. See `codex/config.example.toml`, `codex/README.md`, and `docs/codex-port.md` for the adapter contract and remaining enforcement gaps.
 
 ### Optional tools
 
@@ -192,9 +195,13 @@ devkit_start("research", "best Go testing frameworks")
 Claude Code enforcement (runs automatically):
   PreToolUse hook → blocks out-of-step actions during command steps
   Stop hook → prevents session end during active workflows
+
+Codex enforcement (when codex_hooks is enabled and .codex/ is trusted):
+  PreToolUse/PermissionRequest/PostToolUse hooks → partial host-level guardrails
+  Stop hook → continues the turn when a workflow is still active
 ```
 
-**Why MCP?** The host agent can't skip steps because the engine controls what comes next. The engine holds state — the agent doesn't self-report workflow position. Claude Code additionally blocks invalid tools through hooks; Codex currently relies on adapter instructions, sandbox/approval settings, and engine-owned command steps unless a separate shim is used.
+**Why MCP?** The host agent can't skip steps because the engine controls what comes next. The engine holds state — the agent doesn't self-report workflow position. Claude Code additionally blocks invalid tools through hooks; Codex uses official hooks for the tool paths it can currently observe, plus adapter instructions, sandbox/approval settings, and engine-owned command steps for the remaining gaps.
 
 ---
 

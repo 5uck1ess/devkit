@@ -2,6 +2,9 @@
 # Copy the relevant table into ~/.codex/config.toml and replace the path
 # with the absolute path to this checkout or installed devkit wrapper.
 
+[features]
+codex_hooks = true
+
 [mcp_servers.devkit]
 command = "/absolute/path/to/devkit/bin/devkit"
 args = ["mcp"]

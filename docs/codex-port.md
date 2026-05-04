@@ -14,32 +14,41 @@ These parts are host-neutral and should be shared by Claude Code, Codex, and oth
 - Branch, loop, gate, and output interpolation behavior.
 - CLI runners for Claude, Codex, Gemini, and local OpenAI-compatible endpoints.
 
-## Claude-Only Hard Enforcement
+## Host Hook Enforcement
 
-The current hard guardrail stack depends on Claude Code lifecycle hooks:
+The hard guardrail stack started on Claude Code lifecycle hooks:
 
 - `PreToolUse`: safety checks, audit trail, PR gate, security pattern checks, and workflow tool gating.
 - `PostToolUse`: output/write validation, slop detection, and language review.
 - `SubagentStop`: subagent completion checks.
 - `Stop`: quality gate and incomplete-workflow stop guard.
 
-Codex does not expose the same hook lifecycle to this repo. Under Codex, those checks become advisory unless they are moved into the engine, CI, git hooks, or an external Codex shim.
+Codex now exposes an official hook lifecycle with `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, and `Stop`. The repo-local `.codex/config.toml` enables hooks and `.codex/hooks.json` ports the Claude stack where Codex can observe the event:
+
+- `PreToolUse`: Bash safety/audit/PR checks, file safety/security checks for `apply_patch`, and workflow gating.
+- `PermissionRequest`: approval-time hard-deny safety checks.
+- `PostToolUse`: Bash output validation and file validation/review for `apply_patch`.
+- `Stop`: quality gate and incomplete-workflow continuation guard.
+
+Known gaps remain. Codex `PreToolUse` and `PostToolUse` currently cover Bash, `apply_patch`, and MCP calls, but interception is incomplete for richer shell paths such as `unified_exec` and does not cover non-shell/non-MCP tools such as web search. Codex also has no direct `SubagentStop` equivalent.
 
 ## Recommended Codex Scope
 
 Start with an additive adapter:
 
 1. Register `bin/devkit mcp` in Codex config.
-2. Load `AGENTS.md` as project guidance.
-3. Use shared workflows and skills with Codex-aware dispatch wording.
-4. Keep Claude packaging untouched.
+2. Enable `[features].codex_hooks = true`.
+3. Trust the project `.codex/` layer so `.codex/config.toml` and `.codex/hooks.json` load.
+4. Load `AGENTS.md` as project guidance.
+5. Use shared workflows and skills with Codex-aware dispatch wording.
+6. Keep Claude packaging untouched.
 
 Then harden where it matters:
 
 1. Prefer workflow command/gate steps for actions that must be mechanically controlled.
 2. Add `devkit_advance` validation for required output shapes and sentinels using `require:`.
 3. Use CI or git hooks for post-facto quality checks.
-4. Build a Codex shim only if pre-tool blocking is required.
+4. Build a Codex shim only if the remaining hook interception gaps matter for the workflow.
 
 ## Output Contracts
 
@@ -61,8 +70,9 @@ Use this for values that later steps parse, not as a substitute for tests or rev
 | MCP workflow state | Full | Full | Full |
 | YAML step order | Full | Full | Full |
 | Engine command steps | Full | Full | Full |
-| Pre-tool blocking | Full | Advisory | Possible |
-| Post-tool validation | Full | Manual/CI | Possible |
-| Stop blocking | Full | Advisory | Possible |
+| Pre-tool blocking | Full | Partial for Bash/apply_patch/MCP | Full remaining-gap coverage |
+| Permission request control | N/A | Partial deny/allow support | Full remaining-gap coverage |
+| Post-tool validation | Full | Partial for Bash/apply_patch/MCP | Full remaining-gap coverage |
+| Stop blocking | Full | Continuation via `Stop` hook | Full remaining-gap coverage |
 | Subagent stop validation | Full | Advisory | Possible |
-| Plugin/bundle packaging | `.mcpb` | config.toml | config.toml + shim |
+| Plugin/bundle packaging | `.mcpb` | config.toml + `.codex/config.toml` + `.codex/hooks.json` | config.toml + hooks + shim |
