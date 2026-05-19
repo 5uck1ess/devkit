@@ -244,6 +244,56 @@ steps:
 	}
 }
 
+func TestStartParallelStepIncludesHostSubagentGuidance(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "parallel.yml"), `name: parallel
+description: Parallel dispatch workflow
+steps:
+  - id: dispatch
+    parallel: [review-smart, review-fast]
+  - id: review-smart
+    prompt: Smart review {{input}}
+  - id: review-fast
+    prompt: Fast review {{input}}
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "parallel",
+		"input":    "current diff",
+	}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("handler returned tool error: %s", tc.Text)
+	}
+	tc, ok := result.Content[0].(mcpmcp.TextContent)
+	if !ok {
+		t.Fatalf("unexpected content type: %T", result.Content[0])
+	}
+
+	out := tc.Text
+	for _, want := range []string{
+		"TYPE: parallel dispatch",
+		"host subagent facility",
+		"host-native subagents or external runners",
+		"files changed, verification run, and remaining risks",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in parallel response, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestStartAlreadyRunning(t *testing.T) {
 	wfDir := t.TempDir()
 	dataDir := t.TempDir()
@@ -561,6 +611,91 @@ steps:
 	cleared, _ := lib.ReadSessionJSON(dataDir)
 	if cleared != nil {
 		t.Errorf("expected session.json cleared after completion, but state still exists")
+	}
+}
+
+func TestAdvanceRejectsRequiredOutput(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "pr.yml"), `name: pr
+description: PR workflow
+steps:
+  - id: create-pr
+    prompt: Create the PR and report the number.
+    require:
+      last_line_regex: "^PR: ([0-9]+|FAILED .+)$"
+  - id: monitor
+    prompt: Monitor the PR.
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+
+	_, startHandler := srv.startTool()
+	startReq := mcpmcp.CallToolRequest{}
+	startReq.Params.Arguments = map[string]interface{}{
+		"workflow": "pr",
+		"input":    "ship it",
+	}
+	startResult, err := startHandler(context.Background(), startReq)
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if startResult.IsError {
+		tc, _ := startResult.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("start error: %s", tc.Text)
+	}
+
+	state, err := lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after start: %v", err)
+	}
+
+	_, advHandler := srv.advanceTool()
+	badReq := mcpmcp.CallToolRequest{}
+	badReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "created the pull request successfully",
+	}
+	badResult, err := advHandler(context.Background(), badReq)
+	if err != nil {
+		t.Fatalf("advance bad: %v", err)
+	}
+	if !badResult.IsError {
+		t.Fatal("expected required-output error")
+	}
+	tc, _ := badResult.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "require.last_line_regex") {
+		t.Fatalf("expected require.last_line_regex error, got: %s", tc.Text)
+	}
+
+	state, err = lib.ReadSessionJSON(dataDir)
+	if err != nil || state == nil {
+		t.Fatalf("read session after bad advance: %v", err)
+	}
+	if state.CurrentStep != "create-pr" {
+		t.Fatalf("bad output advanced session to %q", state.CurrentStep)
+	}
+	if state.Busy {
+		t.Fatal("bad output left session Busy=true")
+	}
+
+	goodReq := mcpmcp.CallToolRequest{}
+	goodReq.Params.Arguments = map[string]interface{}{
+		"session": state.ID,
+		"output":  "created\nPR: 123",
+	}
+	goodResult, err := advHandler(context.Background(), goodReq)
+	if err != nil {
+		t.Fatalf("advance good: %v", err)
+	}
+	if goodResult.IsError {
+		tc, _ := goodResult.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("good output rejected: %s", tc.Text)
+	}
+	tc, _ = goodResult.Content[0].(mcpmcp.TextContent)
+	if !strings.Contains(tc.Text, "monitor") {
+		t.Fatalf("expected monitor step after good output, got:\n%s", tc.Text)
 	}
 }
 

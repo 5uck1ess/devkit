@@ -8,7 +8,8 @@ steps:
       DISPATCH, DO NOT ANSWER. Tri-dispatch requires three DIFFERENT
       models answer independently. Invoke the Agent tool with a
       non-Claude smart-tier subagent (`codex:codex-rescue` or equivalent
-      external). Report verbatim. Stop if no external subagent is
+      external). In non-Claude hosts, use a delegated subagent or external CLI
+      respondent if available. Report verbatim. Stop if no external subagent is
       available — do NOT answer as yourself. Subagent prompt: "{{input}}
       Give your best, most thorough answer."
 
@@ -17,14 +18,17 @@ steps:
     prompt: |
       DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
       general-tier subagent (prefer Gemini; at minimum distinct from
-      smart-take's subagent). Report verbatim. Stop if none available.
+      smart-take's subagent). In non-Claude hosts, use a distinct delegated
+      subagent or external CLI respondent when available. Report verbatim. Stop if none available.
       Subagent prompt: "{{input}} Give a clear, balanced answer."
 
   - id: fast-take
     model: fast
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a fast-tier
-      external subagent (distinct from the other two). Report verbatim.
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a
+      fast-tier external subagent (distinct from the other two). In non-Claude
+      hosts, use a distinct delegated subagent or external CLI respondent when
+      available. Report verbatim.
       Stop if none available. Subagent prompt: "{{input}} Give a quick,
       direct answer."
 

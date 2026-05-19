@@ -20,14 +20,14 @@ description: >-
 
 # Mega PR Review
 
-Run `/devkit:tri-review` and `/pr-review-toolkit:review-pr` simultaneously for maximum review coverage.
+Run `/devkit:tri-review` and `/pr-review-toolkit:review-pr` simultaneously for maximum review coverage when those skills/plugins are available. Under non-Claude hosts, run devkit's tri-review MCP workflow and any available external review command; if `pr-review-toolkit` is not installed in the host, report that part as unavailable instead of fabricating results.
 
 ## Step 1: Launch Both Reviews
 
 **[PARALLEL]** — invoke both in a single message using the Skill tool:
 
-1. `Skill: devkit:tri-review` — dispatches Claude + Codex + Gemini reviewers
-2. `Skill: pr-review-toolkit:review-pr` — dispatches specialized aspect reviewers (silent-failure-hunter, type-design-analyzer, test-analyzer, code-reviewer, etc.)
+1. `Skill: devkit:tri-review` — dispatches available model-diverse reviewers
+2. `Skill: pr-review-toolkit:review-pr` — dispatches specialized aspect reviewers when the Claude plugin is installed (silent-failure-hunter, type-design-analyzer, test-analyzer, code-reviewer, etc.)
 
 Pass any user-provided arguments (custom prompt, specific files) to both skills unchanged.
 

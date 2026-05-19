@@ -11,11 +11,15 @@ Report on devkit installation health and available capabilities.
 
 ### Plugins
 
+Claude Code plugin checks:
+
 ```bash
 echo "=== Plugin Status ==="
 echo -n "codex plugin: " && (/codex:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
 echo -n "gemini plugin: " && (/gemini:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
 ```
+
+Under non-Claude hosts, report Claude plugin status as "not applicable" and check MCP config plus external CLIs instead.
 
 ### Devkit Engine
 
@@ -109,6 +113,7 @@ List all skills from `skills/` directory, marking which ones need external CLIs:
 ## Rules
 
 - Check actual CLI availability with `command -v`, not just PATH
+- If running under Codex, do not call Claude slash commands such as `/codex:status`; mark Claude plugin checks as not applicable
 - Report versions where possible
 - Clearly indicate which features work without external CLIs
 - Show tri:* as "partial" if some but not all CLIs are present

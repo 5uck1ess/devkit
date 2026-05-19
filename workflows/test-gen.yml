@@ -23,12 +23,12 @@ steps:
 
   - id: generate
     model: smart
-    enforce: soft  # spawns test-writer agent via Task tool
+    enforce: soft  # spawns test-writer agent via host subagent facility
     prompt: |
       Target: {{input}}
       Analysis: {{analyze}}
 
-      Spawn the `test-writer` agent via the Task tool with the analysis as context.
+      Spawn the `test-writer` agent via the host subagent facility with the analysis as context.
       The agent must:
       1. Create test files matching project conventions (naming, location, style)
       2. Cover happy paths, edge cases, error conditions
@@ -48,7 +48,7 @@ steps:
       Run the project's test command and check the result.
 
       If any tests fail:
-      - Send the failures back to the test-writer agent via Task with the failing output
+      - Send the failures back to the test-writer agent via the host subagent facility with the failing output
       - Re-run after the agent's fix
       - Loop until all pass or you hit the iteration cap
 

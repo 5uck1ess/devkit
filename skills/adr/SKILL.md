@@ -20,15 +20,15 @@ If the user hasn't specified, ask one question: "What decision are you documenti
 ## Step 2: Check Existing ADRs
 
 ```bash
-mkdir -p docs/adr
-ls docs/adr/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1
+mkdir -p .devkit/docs/adr
+ls .devkit/docs/adr/ 2>/dev/null | grep -oE '^[0-9]+' | sort -n | tail -1
 ```
 
 Add 1 to the highest number found, zero-padded to 4 digits. If no output, the directory is empty — start at `0001`.
 
 ## Step 3: Write the ADR
 
-Create `docs/adr/NNNN-short-title.md`:
+Create `.devkit/docs/adr/NNNN-short-title.md`:
 
 ```markdown
 # NNNN. Short Decision Title

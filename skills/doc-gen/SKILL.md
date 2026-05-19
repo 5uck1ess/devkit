@@ -5,7 +5,7 @@ description: Generate documentation for code — use when asked to document a mo
 
 # Documentation Generation
 
-Deterministic doc generation. Analyze target → generate via the documenter subagent → write to docs/ or specified path.
+Deterministic doc generation. Analyze target → generate via the documenter subagent → write to a requested non-repo path or `.devkit/docs/`.
 
 ## Invoke
 

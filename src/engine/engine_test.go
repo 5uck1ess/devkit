@@ -270,6 +270,23 @@ steps:
   - id: a
     command: "echo hi"
     enforce: soft`, "enforce on a command step"},
+		{"invalid require regex", `name: T
+steps:
+  - id: a
+    prompt: x
+    require:
+      last_line_regex: "["`, "require.last_line_regex is invalid"},
+		{"blank require contains", `name: T
+steps:
+  - id: a
+    prompt: x
+    require:
+      contains: [""]`, "require.contains must not include blank strings"},
+		{"empty require", `name: T
+steps:
+  - id: a
+    prompt: x
+    require: {}`, "require must declare at least one check"},
 	}
 
 	for _, tt := range tests {
@@ -280,6 +297,89 @@ steps:
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error %q doesn't contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateRequiredOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		require *Require
+		output  string
+		wantErr string
+	}{
+		{
+			name:    "nil require passes",
+			require: nil,
+			output:  "",
+		},
+		{
+			name:    "non empty passes",
+			require: &Require{NonEmpty: true},
+			output:  "done",
+		},
+		{
+			name:    "non empty rejects whitespace",
+			require: &Require{NonEmpty: true},
+			output:  " \n\t",
+			wantErr: "require.non_empty",
+		},
+		{
+			name:    "contains matches multiline output",
+			require: &Require{Contains: []string{"needle"}},
+			output:  "first line\nneedle here\nlast line",
+		},
+		{
+			name:    "contains rejects missing text",
+			require: &Require{Contains: []string{"needle"}},
+			output:  "first line\nlast line",
+			wantErr: "require.contains",
+		},
+		{
+			name:    "until uses line anchored sentinel matching",
+			require: &Require{Until: "DONE"},
+			output:  "working\nDONE\n",
+		},
+		{
+			name:    "until rejects substring",
+			require: &Require{Until: "DONE"},
+			output:  "UNDONE",
+			wantErr: "require.until",
+		},
+		{
+			name:    "last line regex passes",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "created\nPR: 123\n",
+		},
+		{
+			name:    "last line regex rejects earlier match",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "PR: 123\nextra",
+			wantErr: "require.last_line_regex",
+		},
+		{
+			name:    "error includes attempted output",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "created PR at https://example.test/pull/123",
+			wantErr: "attempted output",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateRequiredOutput(WfStep{ID: "step", Require: tt.require}, tt.output)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateRequiredOutput returned error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
 	}
@@ -872,6 +972,38 @@ func TestRunWorkflowCommandStep(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowCommandRequireLastLineUsesRawOutput(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{
+				ID:      "check",
+				Command: "printf 'ready\\nRESULT: ok\\n'",
+				Require: &Require{
+					LastLineRegex: `^RESULT: ok$`,
+				},
+			},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if !strings.Contains(res.Outputs["check"], "exit code: 0") {
+		t.Errorf("stored command output should still include exit code, got %q", res.Outputs["check"])
+	}
+	if runner.callIdx != 0 {
+		t.Errorf("runner called %d times, want 0 for command step", runner.callIdx)
+	}
+}
+
 func TestRunWorkflowCommandEnvInput(t *testing.T) {
 	// Regression: command steps must NOT interpolate {{input}} — values
 	// come via $DEVKIT_INPUT to prevent shell injection.
@@ -1327,6 +1459,87 @@ func TestRunWorkflowLoopGateRecovery(t *testing.T) {
 	}
 	if kept != 1 {
 		t.Errorf("kept steps = %d, want 1", kept)
+	}
+}
+
+func TestRunWorkflowLoopRequireBeforeGateRecovery(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner([]runners.RunResult{
+		result("missing required marker\nALL_DONE"),
+		result("READY but gate fails"),
+		result("READY\nALL_DONE"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	counterDir := t.TempDir()
+	counterFile := filepath.Join(counterDir, "gate-counter")
+	if err := os.WriteFile(counterFile, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateScript := fmt.Sprintf(
+		`count=$(cat %q); count=$((count + 1)); printf '%%s' "$count" > %q; test "$count" -ge 2`,
+		counterFile, counterFile,
+	)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{
+				ID:      "fix",
+				Model:   "smart",
+				Prompt:  "Fix",
+				Require: &Require{Contains: []string{"READY"}},
+				Loop: &Loop{
+					Max:   5,
+					Until: "ALL_DONE",
+					Gate:  gateScript,
+				},
+			},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if runner.callIdx != 3 {
+		t.Errorf("runner called %d times, want 3", runner.callIdx)
+	}
+	counterBytes, err := os.ReadFile(counterFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(counterBytes); got != "2" {
+		t.Errorf("gate ran %s times, want 2; require failure should not run gate", got)
+	}
+
+	var failed, reverted, kept int
+	for _, s := range res.Steps {
+		switch s.Status {
+		case "failed":
+			failed++
+			if !strings.Contains(s.ChangeSummary, "attempted output") {
+				t.Errorf("failed require step summary = %q, want attempted output", s.ChangeSummary)
+			}
+		case "reverted":
+			reverted++
+		case "kept":
+			kept++
+		}
+	}
+	if failed != 1 {
+		t.Errorf("failed steps = %d, want 1", failed)
+	}
+	if reverted != 1 {
+		t.Errorf("reverted steps = %d, want 1", reverted)
+	}
+	if kept != 1 {
+		t.Errorf("kept steps = %d, want 1", kept)
+	}
+	if got := res.Outputs["fix"]; !strings.Contains(got, "READY") || !strings.Contains(got, "ALL_DONE") {
+		t.Errorf("final output = %q, want kept passing output", got)
 	}
 }
 

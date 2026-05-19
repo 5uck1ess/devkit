@@ -290,7 +290,8 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 	} else if len(step.Parallel) > 0 {
 		fmt.Fprintf(&b, "TYPE: parallel dispatch\n")
 		fmt.Fprintf(&b, "DISPATCH: %s\n", strings.Join(step.Parallel, ", "))
-		fmt.Fprintf(&b, "Use the Agent tool and plugins to run these in parallel, then call devkit_advance.\n")
+		fmt.Fprintf(&b, "Run each listed step concurrently through the host subagent facility, then call devkit_advance with a consolidated result.\n")
+		fmt.Fprintf(&b, "Use host-native subagents or external runners when available; give each subagent a bounded scope, separate write ownership, and require files changed, verification run, and remaining risks before completion.\n")
 	} else {
 		prompt := engine.Interpolate(step.Prompt, input, state.Outputs)
 		fmt.Fprintf(&b, "PROMPT: %s\n", prompt)
@@ -324,6 +325,21 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 		}
 		if rules, ok := s.principles["stuck"]; ok {
 			fmt.Fprintf(&b, "[stuck] %s\n", strings.Join(rules, "; "))
+		}
+	}
+	if step.Require != nil {
+		fmt.Fprintf(&b, "\nREQUIRE:\n")
+		if step.Require.NonEmpty {
+			fmt.Fprintf(&b, "- non_empty\n")
+		}
+		for _, want := range step.Require.Contains {
+			fmt.Fprintf(&b, "- contains: %s\n", want)
+		}
+		if step.Require.Until != "" {
+			fmt.Fprintf(&b, "- until: %s\n", step.Require.Until)
+		}
+		if step.Require.LastLineRegex != "" {
+			fmt.Fprintf(&b, "- last_line_regex: %s\n", step.Require.LastLineRegex)
 		}
 	}
 
@@ -424,14 +440,26 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				return mcpmcp.NewToolResultError(fmt.Sprintf("step %s: expected success but got exit %d\n%s", currentStep.ID, exitCode, output)), nil
 			}
 
+			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
+				return mcpmcp.NewToolResultError(err.Error()), nil
+			}
 			state.Outputs[currentStep.ID] = output
 		} else {
 			// Prompt/parallel step — record output from Claude
 			args := req.GetArguments()
+			var output string
+			outputProvided := false
 			if outputArg, ok := args["output"]; ok && outputArg != nil {
 				if outputStr, ok := outputArg.(string); ok {
-					state.Outputs[currentStep.ID] = outputStr
+					output = outputStr
+					outputProvided = true
 				}
+			}
+			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
+				return mcpmcp.NewToolResultError(err.Error()), nil
+			}
+			if outputProvided || (currentStep.Require != nil && currentStep.Require.HasChecks()) {
+				state.Outputs[currentStep.ID] = output
 			}
 		}
 

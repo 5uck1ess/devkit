@@ -1,14 +1,16 @@
 # Devkit
 
-A deterministic development harness for AI agents. The MCP engine controls workflow execution (step ordering, gates, loops, branches). The agent handles creativity. Every step is enforced, measured, and auditable.
+A deterministic development harness for AI agents. The MCP engine controls workflow execution (step ordering, gates, loops, branches). The agent handles creativity. Every step is tracked, measured, and auditable.
 
-Works with just Claude. Optionally adds Codex and Gemini for multi-agent consensus.
+Works with Claude Code as the original full-enforcement host. Other host adapters can use the same MCP engine and workflows by registering `bin/devkit mcp`; the Codex adapter is distributed separately by `devkit-codex`. Optionally adds Codex and Gemini for multi-agent consensus.
 
 ---
 
 ## Install
 
-### 1. Devkit (required)
+### Claude Code
+
+#### 1. Devkit (required)
 
 ```bash
 /plugin marketplace add 5uck1ess/marketplace
@@ -17,7 +19,7 @@ Works with just Claude. Optionally adds Codex and Gemini for multi-agent consens
 
 Auto-updates are enabled by default. Devkit updates itself when you restart Claude Code.
 
-### 2. Multi-agent plugins (optional)
+#### 2. Multi-agent plugins (optional)
 
 These enable `tri:*` commands (tri-review, tri-debug, tri-security, etc.) to run Claude + Codex + Gemini in parallel.
 
@@ -36,7 +38,7 @@ If plugins aren't installed, the CLI fallbacks work too:
 brew install codex gemini-cli
 ```
 
-### 3. Companion plugins (optional)
+#### 3. Companion plugins (optional)
 
 These handle concerns devkit doesn't — methodology, specialized reviews, and context management. No overlap.
 
@@ -64,7 +66,19 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 /plugin install context-mode@context-mode
 ```
 
-### 4. Optional tools
+### Codex
+
+Codex support lives in the separate `devkit-codex` adapter. That adapter installs Codex-specific hooks/config and points Codex at this repo's MCP server (`bin/devkit mcp`). This repo remains the core workflow engine and shared workflow/skill source of truth.
+
+Manual MCP registration shape for host adapters:
+
+```toml
+[mcp_servers.devkit]
+command = "/absolute/path/to/devkit/bin/devkit"
+args = ["mcp"]
+```
+
+### Optional tools
 
 ```bash
 brew install rtk       # Token optimization (60-90% savings on Bash output)
@@ -165,22 +179,25 @@ devkit-engine probe-local
 
 ## How It Works
 
-Devkit runs as an **MCP server** inside Claude Code. When a workflow starts, the engine takes control:
+Devkit runs as an **MCP server** inside the host agent. Under Claude Code it is packaged as a plugin; other adapters register `bin/devkit mcp` through their host-specific MCP config. When a workflow starts, the engine takes control:
 
 ```
 devkit_start("research", "best Go testing frameworks")
   → Engine creates session, returns Step 1 + condensed principles
-  → Claude executes the step using standard tools
-  → Claude calls devkit_advance(session_id)
+  → Host agent executes the step using standard tools
+  → Host agent calls devkit_advance(session_id)
   → Engine validates, records output, returns Step 2
   → ...repeat until WORKFLOW COMPLETE
 
-Enforcement (runs automatically):
+Claude Code enforcement (runs automatically):
   PreToolUse hook → blocks out-of-step actions during command steps
   Stop hook → prevents session end during active workflows
+
+External adapters:
+  Register the same MCP server and provide host-specific hooks/guardrails.
 ```
 
-**Why MCP?** Claude can't skip steps because the engine controls what comes next. Claude can't call tools that aren't valid for the current step. The engine holds state — Claude doesn't self-report.
+**Why MCP?** The host agent can't skip steps because the engine controls what comes next. The engine holds state — the agent doesn't self-report workflow position. Claude Code additionally blocks invalid tools through hooks; other hosts can add equivalent adapter-side guardrails while still relying on engine-owned command steps.
 
 ---
 
@@ -300,7 +317,7 @@ All agents run in worktree isolation.
 
 ## Coding Rules
 
-Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` — rules guide how to write, hooks catch what you missed.
+Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` — rules guide how to write, hooks catch what you missed. Other host adapters should load the matching files from `resources/rules/`.
 
 ```bash
 /setup-rules
@@ -337,16 +354,17 @@ MCP Server (bin/devkit mcp — auto-started by plugin)
   │   ├── Command steps → engine executes shell directly ($0 cost)
   │   │   Values passed via $DEVKIT_INPUT / $DEVKIT_OUT_<step_id>
   │   │   env vars — never interpolated into the command string.
-  │   ├── Prompt steps → Claude works, calls devkit_advance when done
+  │   ├── Prompt steps → host agent works, calls devkit_advance when done
   │   ├── Loop with gate → run, verify, keep or revert
   │   ├── Branch → case-insensitive word-boundary match → goto
-  │   └── Parallel → Agent tool dispatch (Claude/Codex/Gemini)
+  │   └── Parallel → host subagent/external runner dispatch
   └── Principles injected per step (~120 tokens, not full skill files)
 
 Enforcement:
-  ├── MCP tool scoping — Claude can only call devkit_advance to progress
-  ├── PreToolUse hook — exit 2 blocks tools during command steps
-  └── Stop hook — blocks session end during active workflows
+  ├── MCP state — host agent can only progress by calling devkit_advance
+  ├── Claude Code: PreToolUse hook exits 2 to block invalid tools
+  ├── Claude Code: Stop hook blocks session end during active workflows
+  └── External adapters: host-specific hooks/proxies enforce what their host exposes
 
 Terminal usage (devkit workflow <name> "<description>"):
   ├── Subprocess runners for Codex/Gemini CLI

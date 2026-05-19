@@ -7,6 +7,8 @@ description: Three independent code reviews (smart + general + fast model tiers 
 
 Deterministic three-tier model review. Gather → review-smart → review-general → review-fast (in parallel) → consolidate. Runs under enforce: soft so the gather step can call git diff.
 
+Host note: Claude Code gets hard workflow/tool enforcement from lifecycle hooks. Codex can run the same MCP workflow, but hook-equivalent tool blocking is advisory unless a Codex shim is installed.
+
 ## Invoke
 
 Use the `devkit_start` tool with workflow: "tri-review" and input: "{input}".

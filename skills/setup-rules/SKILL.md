@@ -1,12 +1,12 @@
 ---
 name: setup-rules
-description: Install devkit coding rules to ~/.claude/rules/ for language-specific auto-activation. Use when the user explicitly asks to set up devkit rules, install language rules, or run /devkit:setup-rules. One-shot installer with side effects (writes to ~/.claude/rules/) — user-only invocation, never auto-triggered.
+description: Install devkit coding rules to ~/.claude/rules/ for Claude Code language-specific auto-activation. Use when the user explicitly asks to set up devkit rules, install language rules, or run /devkit:setup-rules. One-shot installer with side effects (writes to ~/.claude/rules/) — user-only invocation, never auto-triggered. Under non-Claude hosts, use AGENTS.md and resources/rules/ as reference instead of installing Claude rules.
 disable-model-invocation: true
 ---
 
 # Setup Coding Rules
 
-Install language-specific coding rules to `~/.claude/rules/`. These auto-activate when Claude reads matching files and complement devkit's hooks — rules guide *how to write*, hooks catch *what you missed*.
+Install language-specific coding rules to `~/.claude/rules/`. These auto-activate when Claude reads matching files and complement devkit's hooks — rules guide *how to write*, hooks catch *what you missed*. Non-Claude hosts do not read `~/.claude/rules/`; use `AGENTS.md` and the files in `resources/rules/` as project guidance.
 
 ## What it does
 
