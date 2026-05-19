@@ -358,6 +358,12 @@ func TestValidateRequiredOutput(t *testing.T) {
 			output:  "PR: 123\nextra",
 			wantErr: "require.last_line_regex",
 		},
+		{
+			name:    "error includes attempted output",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "created PR at https://example.test/pull/123",
+			wantErr: "attempted output",
+		},
 	}
 
 	for _, tt := range tests {
@@ -966,6 +972,38 @@ func TestRunWorkflowCommandStep(t *testing.T) {
 	}
 }
 
+func TestRunWorkflowCommandRequireLastLineUsesRawOutput(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner(nil, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{
+				ID:      "check",
+				Command: "printf 'ready\\nRESULT: ok\\n'",
+				Require: &Require{
+					LastLineRegex: `^RESULT: ok$`,
+				},
+			},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if !strings.Contains(res.Outputs["check"], "exit code: 0") {
+		t.Errorf("stored command output should still include exit code, got %q", res.Outputs["check"])
+	}
+	if runner.callIdx != 0 {
+		t.Errorf("runner called %d times, want 0 for command step", runner.callIdx)
+	}
+}
+
 func TestRunWorkflowCommandEnvInput(t *testing.T) {
 	// Regression: command steps must NOT interpolate {{input}} — values
 	// come via $DEVKIT_INPUT to prevent shell injection.
@@ -1421,6 +1459,87 @@ func TestRunWorkflowLoopGateRecovery(t *testing.T) {
 	}
 	if kept != 1 {
 		t.Errorf("kept steps = %d, want 1", kept)
+	}
+}
+
+func TestRunWorkflowLoopRequireBeforeGateRecovery(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+
+	runner := newMockRunner([]runners.RunResult{
+		result("missing required marker\nALL_DONE"),
+		result("READY but gate fails"),
+		result("READY\nALL_DONE"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+
+	counterDir := t.TempDir()
+	counterFile := filepath.Join(counterDir, "gate-counter")
+	if err := os.WriteFile(counterFile, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateScript := fmt.Sprintf(
+		`count=$(cat %q); count=$((count + 1)); printf '%%s' "$count" > %q; test "$count" -ge 2`,
+		counterFile, counterFile,
+	)
+
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{
+				ID:      "fix",
+				Model:   "smart",
+				Prompt:  "Fix",
+				Require: &Require{Contains: []string{"READY"}},
+				Loop: &Loop{
+					Max:   5,
+					Until: "ALL_DONE",
+					Gate:  gateScript,
+				},
+			},
+		},
+	}
+
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "test"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if runner.callIdx != 3 {
+		t.Errorf("runner called %d times, want 3", runner.callIdx)
+	}
+	counterBytes, err := os.ReadFile(counterFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(counterBytes); got != "2" {
+		t.Errorf("gate ran %s times, want 2; require failure should not run gate", got)
+	}
+
+	var failed, reverted, kept int
+	for _, s := range res.Steps {
+		switch s.Status {
+		case "failed":
+			failed++
+			if !strings.Contains(s.ChangeSummary, "attempted output") {
+				t.Errorf("failed require step summary = %q, want attempted output", s.ChangeSummary)
+			}
+		case "reverted":
+			reverted++
+		case "kept":
+			kept++
+		}
+	}
+	if failed != 1 {
+		t.Errorf("failed steps = %d, want 1", failed)
+	}
+	if reverted != 1 {
+		t.Errorf("reverted steps = %d, want 1", reverted)
+	}
+	if kept != 1 {
+		t.Errorf("kept steps = %d, want 1", kept)
+	}
+	if got := res.Outputs["fix"]; !strings.Contains(got, "READY") || !strings.Contains(got, "ALL_DONE") {
+		t.Errorf("final output = %q, want kept passing output", got)
 	}
 }
 

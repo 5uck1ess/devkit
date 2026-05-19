@@ -338,15 +338,15 @@ func ValidateRequiredOutput(step WfStep, output string) error {
 	}
 	req := step.Require
 	if req.NonEmpty && strings.TrimSpace(output) == "" {
-		return fmt.Errorf("step %q output failed require.non_empty", step.ID)
+		return requiredOutputError(step.ID, output, "output failed require.non_empty")
 	}
 	for _, want := range req.Contains {
 		if !strings.Contains(output, want) {
-			return fmt.Errorf("step %q output failed require.contains %q", step.ID, want)
+			return requiredOutputError(step.ID, output, "output failed require.contains %q", want)
 		}
 	}
 	if req.Until != "" && !MatchUntil(output, req.Until) {
-		return fmt.Errorf("step %q output failed require.until %q", step.ID, req.Until)
+		return requiredOutputError(step.ID, output, "output failed require.until %q", req.Until)
 	}
 	if req.LastLineRegex != "" {
 		last := lastNonEmptyLine(output)
@@ -355,10 +355,26 @@ func ValidateRequiredOutput(step WfStep, output string) error {
 			return fmt.Errorf("step %q has invalid require.last_line_regex: %w", step.ID, err)
 		}
 		if !re.MatchString(last) {
-			return fmt.Errorf("step %q output last line %q failed require.last_line_regex %q", step.ID, last, req.LastLineRegex)
+			return requiredOutputError(step.ID, output, "output last line %q failed require.last_line_regex %q", last, req.LastLineRegex)
 		}
 	}
 	return nil
+}
+
+func requiredOutputError(stepID, output, format string, args ...any) error {
+	detail := fmt.Sprintf(format, args...)
+	return fmt.Errorf("step %q %s; attempted output: %q", stepID, detail, truncateRequiredOutput(output, 300))
+}
+
+func truncateRequiredOutput(output string, limit int) string {
+	output = strings.TrimSpace(output)
+	if len(output) <= limit {
+		return output
+	}
+	if limit <= 3 {
+		return output[:limit]
+	}
+	return output[:limit-3] + "..."
 }
 
 func lastNonEmptyLine(output string) string {

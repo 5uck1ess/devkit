@@ -336,7 +336,7 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 		// Include exit code in output so downstream steps can check it
 		fullOutput := fmt.Sprintf("%s\nexit code: %d", strings.TrimRight(output, "\n"), exitCode)
-		if err := ValidateRequiredOutput(*step, fullOutput); err != nil {
+		if err := ValidateRequiredOutput(*step, output); err != nil {
 			dbStep.Status = "failed"
 			dbStep.ChangeSummary = err.Error()
 			e.db.UpdateStep(dbStep)
