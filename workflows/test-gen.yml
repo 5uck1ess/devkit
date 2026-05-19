@@ -29,8 +29,6 @@ steps:
       Analysis: {{analyze}}
 
       Spawn the `test-writer` agent via the host subagent facility with the analysis as context.
-      In Claude Code this is the Task tool; in Codex this is a delegated
-      subagent when available.
       The agent must:
       1. Create test files matching project conventions (naming, location, style)
       2. Cover happy paths, edge cases, error conditions

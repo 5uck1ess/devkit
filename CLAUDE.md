@@ -2,16 +2,16 @@
 
 Navigation map for Claude Code working in this repo. Anchor-style, not narrative — keep it short. `pr-ready`'s doc-check targets this file, so stale entries get caught at PR time.
 
-devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatcher skills, enforcement hooks, multi-agent consensus.
+devkit is a Claude Code plugin: deterministic YAML workflow engine, dispatcher and capability skills, enforcement hooks, multi-agent consensus.
 
 ## Layout
 
 | Path | What | Grep here for |
 |---|---|---|
-| `skills/` | 38 SKILL.md dispatchers | Skill descriptions; what triggers each workflow |
+| `skills/` | 38 SKILL.md skills (engine dispatchers + capability tools) | Skill descriptions; what each skill triggers (workflow or direct exec) |
 | `skills/_principles.yml` | Shared cross-cutting principle config | Rules applied to every skill |
 | `skills/creating-workflows/` | Workflow YAML schema reference | Step types, `parallel:`/`branch:`/`loop:`/`expect:` semantics |
-| `workflows/` | 21 YAML workflow definitions | What each skill actually runs |
+| `workflows/` | 22 YAML workflow definitions | What each skill actually runs |
 | `src/engine/engine.go` | Go workflow executor | How `parallel: [ids]` skips-then-fans-out (`parallelChildren`), branch eval, loop gates |
 | `src/engine/workflow.go` | Workflow struct + YAML parsing | Step field definitions |
 | `src/cmd/guard.go` | Hook gatekeeper | What Bash/Edit/etc. is allowed per step type + enforce level |
@@ -40,7 +40,8 @@ devkit is a Claude Code plugin: deterministic YAML workflow engine, thin-dispatc
 
 ## Architectural invariants
 
-- **Workflows are deterministic.** The engine controls step sequencing, loops, branches, and gates — not the model. Skills are thin dispatchers that call `devkit_start` then loop on `devkit_advance` until done.
+- **Workflows are deterministic.** The engine controls step sequencing, loops, branches, and gates — not the model. YAML is parsed once, the graph is fixed, steps run with state persistence and hook enforcement.
+- **Skills come in two flavors.** *Engine-shim skills* (most) are thin dispatchers that call `devkit_start` then loop on `devkit_advance`, delegating to the workflow engine. *Capability skills* (e.g., `skills/scrape/`) are runtime-interpreted prompt templates where the model is the executor — it picks a backend from what's installed, generates shell/script via heredoc, judges output, falls through on failure. Use the capability form when work needs on-the-spot adaptation that pre-compiled YAML can't express (anti-bot arms races, heterogeneous backend outputs, content-judgment branching).
 - **Parallel step pattern.** Steps listed in another step's `parallel: [ids]` are skipped during the sequential walk (see `parallelChildren` in `src/engine/engine.go`) and dispatched concurrently via `runParallel`. Never expect a step that appears in a parallel list to also execute in its sequential position.
 - **Enforce levels gate hook permissions.** `enforce: soft` lets gather/setup steps run `git diff` and other shell work during dispatch; `enforce: hard` blocks them. The gatekeeper logic lives in `src/cmd/guard.go`; see `guard_test.go` for the allow/deny matrix.
 - **Engine binary is separate from the CLI wrapper.** `bin/devkit` is the committed shell wrapper; it execs `devkit-engine` (compiled Go, gitignored). The wrapper handles install/version checks; the engine handles workflow execution.

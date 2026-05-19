@@ -27,12 +27,12 @@ func TestCodexExecArgs(t *testing.T) {
 	}{
 		{
 			name: "no workdir",
-			want: []string{"exec", "--full-auto", "-"},
+			want: []string{"exec", "--sandbox", "workspace-write", "-"},
 		},
 		{
 			name:    "with workdir",
 			workDir: "/tmp/repo",
-			want:    []string{"exec", "--full-auto", "-C", "/tmp/repo", "-"},
+			want:    []string{"exec", "--sandbox", "workspace-write", "-C", "/tmp/repo", "-"},
 		},
 	}
 

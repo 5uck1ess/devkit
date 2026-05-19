@@ -5,7 +5,7 @@ description: Generate a codebase onboarding guide — use when asked to explain 
 
 # Codebase Onboarding
 
-Deterministic onboarding guide generation. Analyze structure → architect via the researcher subagent → write guide to `docs/ONBOARDING.md`.
+Deterministic onboarding guide generation. Analyze structure → architect via the researcher subagent → write guide to `.devkit/docs/ONBOARDING.md`.
 
 ## Invoke
 

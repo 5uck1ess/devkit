@@ -244,6 +244,56 @@ steps:
 	}
 }
 
+func TestStartParallelStepIncludesHostSubagentGuidance(t *testing.T) {
+	wfDir := t.TempDir()
+	dataDir := t.TempDir()
+
+	writeFile(t, filepath.Join(wfDir, "parallel.yml"), `name: parallel
+description: Parallel dispatch workflow
+steps:
+  - id: dispatch
+    parallel: [review-smart, review-fast]
+  - id: review-smart
+    prompt: Smart review {{input}}
+  - id: review-fast
+    prompt: Fast review {{input}}
+`)
+
+	srv := newTestServer(t, dataDir, wfDir)
+	_, handler := srv.startTool()
+
+	req := mcpmcp.CallToolRequest{}
+	req.Params.Arguments = map[string]interface{}{
+		"workflow": "parallel",
+		"input":    "current diff",
+	}
+
+	result, err := handler(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+	if result.IsError {
+		tc, _ := result.Content[0].(mcpmcp.TextContent)
+		t.Fatalf("handler returned tool error: %s", tc.Text)
+	}
+	tc, ok := result.Content[0].(mcpmcp.TextContent)
+	if !ok {
+		t.Fatalf("unexpected content type: %T", result.Content[0])
+	}
+
+	out := tc.Text
+	for _, want := range []string{
+		"TYPE: parallel dispatch",
+		"host subagent facility",
+		"host-native subagents or external runners",
+		"files changed, verification run, and remaining risks",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in parallel response, got:\n%s", want, out)
+		}
+	}
+}
+
 func TestStartAlreadyRunning(t *testing.T) {
 	wfDir := t.TempDir()
 	dataDir := t.TempDir()

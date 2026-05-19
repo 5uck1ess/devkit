@@ -6,11 +6,10 @@ steps:
     model: smart
     prompt: |
       DISPATCH, DO NOT ANSWER. Tri-debug requires three DIFFERENT models
-      diagnose independently. Invoke the host's subagent facility with a
-      non-self smart-tier subagent. In Claude Code, use the Agent tool with
-      a non-Claude subagent (`codex:codex-rescue` is the standard external
-      diagnostician). In Codex, use a delegated subagent or external CLI
-      diagnostician if available. Pass the issue and report verbatim. If no external
+      diagnose independently. Invoke the Agent tool with
+      a non-Claude smart-tier subagent (`codex:codex-rescue` is the standard external
+      diagnostician). In non-Claude hosts, use a delegated subagent or external
+      CLI diagnostician if available. Pass the issue and report verbatim. If no external
       subagent is available, stop and tell the user — do NOT answer as
       yourself. Subagent prompt: "Debug this issue: {{input}}. Trace the
       root cause. Read the relevant code, check assumptions, and propose
@@ -19,10 +18,9 @@ steps:
   - id: general-diagnosis
     model: general
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
-      non-self general-tier subagent. In Claude Code, use the Agent tool
-      with a non-Claude subagent (prefer a Gemini-backed agent, or a
-      different external than smart-diagnosis used). In Codex, use a
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool
+      with a non-Claude general-tier subagent (prefer a Gemini-backed agent, or a
+      different external than smart-diagnosis used). In non-Claude hosts, use a
       distinct delegated subagent or external CLI diagnostician when
       available. Report verbatim. Stop if none
       available. Subagent prompt: "Debug this issue: {{input}}. What's
@@ -31,9 +29,9 @@ steps:
   - id: fast-diagnosis
     model: fast
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a
       fast-tier external subagent (distinct from the other two tiers). In
-      Codex, use a distinct delegated subagent or external CLI diagnostician
+      non-Claude hosts, use a distinct delegated subagent or external CLI diagnostician
       when available. Report
       verbatim. Stop if none available. Subagent prompt: "Debug this
       issue: {{input}}. Quick diagnosis — what's probably wrong and how

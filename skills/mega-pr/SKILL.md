@@ -20,7 +20,7 @@ description: >-
 
 # Mega PR Review
 
-Run `/devkit:tri-review` and `/pr-review-toolkit:review-pr` simultaneously for maximum review coverage when those skills/plugins are available. Under Codex, run devkit's tri-review MCP workflow and any available external review command; if `pr-review-toolkit` is not installed in the host, report that part as unavailable instead of fabricating results.
+Run `/devkit:tri-review` and `/pr-review-toolkit:review-pr` simultaneously for maximum review coverage when those skills/plugins are available. Under non-Claude hosts, run devkit's tri-review MCP workflow and any available external review command; if `pr-review-toolkit` is not installed in the host, report that part as unavailable instead of fabricating results.
 
 ## Step 1: Launch Both Reviews
 

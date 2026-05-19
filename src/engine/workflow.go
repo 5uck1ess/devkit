@@ -76,6 +76,10 @@ type Require struct {
 	LastLineRegex string   `yaml:"last_line_regex"`
 }
 
+func (r Require) HasChecks() bool {
+	return r.NonEmpty || len(r.Contains) > 0 || r.Until != "" || r.LastLineRegex != ""
+}
+
 // EffectiveEnforce returns the enforcement mode for a step, falling back
 // to the workflow-level setting when the step does not override it, and
 // to EnforceHard when neither is set. Callers must use this instead of
@@ -236,6 +240,9 @@ func validate(wf *Workflow) error {
 			return fmt.Errorf("step %q loop.gate must not use {{...}} — pass values via $DEVKIT_INPUT or $DEVKIT_OUT_<step_id> instead (shell injection mitigation)", s.ID)
 		}
 		if s.Require != nil {
+			if !s.Require.HasChecks() {
+				return fmt.Errorf("step %q require must declare at least one check", s.ID)
+			}
 			if s.Require.LastLineRegex != "" {
 				if _, err := regexp.Compile(s.Require.LastLineRegex); err != nil {
 					return fmt.Errorf("step %q require.last_line_regex is invalid: %w", s.ID, err)

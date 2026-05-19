@@ -19,7 +19,7 @@ echo -n "codex plugin: " && (/codex:status >/dev/null 2>&1 && echo "installed" |
 echo -n "gemini plugin: " && (/gemini:status >/dev/null 2>&1 && echo "installed" || echo "not installed")
 ```
 
-Under Codex, report plugin status as "not applicable" and check MCP config plus external CLIs instead.
+Under non-Claude hosts, report Claude plugin status as "not applicable" and check MCP config plus external CLIs instead.
 
 ### Devkit Engine
 

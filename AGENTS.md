@@ -21,7 +21,7 @@ devkit is a deterministic workflow engine. In this repo, treat the YAML workflow
 
 ## Enforcement Notes
 
-Claude Code installs lifecycle hooks from `hooks/hooks.json` and can hard-block out-of-step tools. Codex does not expose equivalent `PreToolUse`, `PostToolUse`, `Stop`, or `SubagentStop` hooks in this repo. Follow the same policy voluntarily, and rely on Codex sandbox/approval boundaries plus the MCP engine for stateful workflow control.
+Claude Code installs lifecycle hooks from `hooks/hooks.json` and can hard-block out-of-step tools. Codex-specific lifecycle hooks, prompt bridges, and config are planned for the separate `devkit-codex` adapter, which points Codex at this repo's MCP engine once released. Follow the same workflow policy voluntarily here, and rely on Codex sandbox/approval boundaries plus the MCP engine for stateful workflow control.
 
 Hard guarantees that still hold under Codex:
 
@@ -29,7 +29,7 @@ Hard guarantees that still hold under Codex:
 - Command steps execute inside the engine.
 - Session state, branches, loops, gates, and reports remain engine-owned.
 
-Guarantees that are advisory under Codex unless a separate shim is used:
+Guarantees that are adapter-owned under Codex:
 
 - Blocking arbitrary shell/edit tool use during hard prompt steps.
 - Running post-tool validation automatically after every edit or command.
@@ -39,5 +39,5 @@ Guarantees that are advisory under Codex unless a separate shim is used:
 ## Repo Boundaries
 
 - Keep Claude packaging in `.claude-plugin/`, `mcpb/`, and `hooks/` working.
-- Put Codex-specific integration under `codex/` unless the change is shared engine behavior.
+- Keep Codex-specific integration in the separate `devkit-codex` repository once it is released, unless the change is shared engine behavior.
 - Do not hand-edit generated binaries or bundled release artifacts.

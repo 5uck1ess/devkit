@@ -30,8 +30,6 @@ steps:
       Initial analysis: {{analyze}}
 
       Spawn the `researcher` agent via the host subagent facility with the analysis as context.
-      In Claude Code this is the Task tool; in Codex this is a delegated
-      subagent when available.
       The agent must identify:
       1. Architecture pattern (monolith, microservices, MVC, layered, etc.)
       2. Key directories and what lives in each
@@ -47,7 +45,7 @@ steps:
 
   - id: guide
     model: smart
-    enforce: soft  # writes docs/ONBOARDING.md
+    enforce: soft  # writes local-only onboarding notes
     prompt: |
       Initial analysis: {{analyze}}
       Architecture: {{architect}}
@@ -92,5 +90,5 @@ steps:
       | Add a DB migration | ... |
       | Run specific tests | ... |
 
-      Write the guide to `docs/ONBOARDING.md` (create the directory if needed).
+      Write the guide to `.devkit/docs/ONBOARDING.md` (create the directory if needed).
       Report the final file path.

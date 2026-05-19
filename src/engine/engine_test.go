@@ -282,6 +282,11 @@ steps:
     prompt: x
     require:
       contains: [""]`, "require.contains must not include blank strings"},
+		{"empty require", `name: T
+steps:
+  - id: a
+    prompt: x
+    require: {}`, "require must declare at least one check"},
 	}
 
 	for _, tt := range tests {
@@ -292,6 +297,83 @@ steps:
 			}
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("error %q doesn't contain %q", err.Error(), tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateRequiredOutput(t *testing.T) {
+	tests := []struct {
+		name    string
+		require *Require
+		output  string
+		wantErr string
+	}{
+		{
+			name:    "nil require passes",
+			require: nil,
+			output:  "",
+		},
+		{
+			name:    "non empty passes",
+			require: &Require{NonEmpty: true},
+			output:  "done",
+		},
+		{
+			name:    "non empty rejects whitespace",
+			require: &Require{NonEmpty: true},
+			output:  " \n\t",
+			wantErr: "require.non_empty",
+		},
+		{
+			name:    "contains matches multiline output",
+			require: &Require{Contains: []string{"needle"}},
+			output:  "first line\nneedle here\nlast line",
+		},
+		{
+			name:    "contains rejects missing text",
+			require: &Require{Contains: []string{"needle"}},
+			output:  "first line\nlast line",
+			wantErr: "require.contains",
+		},
+		{
+			name:    "until uses line anchored sentinel matching",
+			require: &Require{Until: "DONE"},
+			output:  "working\nDONE\n",
+		},
+		{
+			name:    "until rejects substring",
+			require: &Require{Until: "DONE"},
+			output:  "UNDONE",
+			wantErr: "require.until",
+		},
+		{
+			name:    "last line regex passes",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "created\nPR: 123\n",
+		},
+		{
+			name:    "last line regex rejects earlier match",
+			require: &Require{LastLineRegex: `^PR: [0-9]+$`},
+			output:  "PR: 123\nextra",
+			wantErr: "require.last_line_regex",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateRequiredOutput(WfStep{ID: "step", Require: tt.require}, tt.output)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("ValidateRequiredOutput returned error: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatalf("expected error containing %q", tt.wantErr)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error %q does not contain %q", err.Error(), tt.wantErr)
 			}
 		})
 	}

@@ -108,11 +108,6 @@ steps:
             selection rules, or workflow patterns changed.
           * bugfix/internal: not affected.
 
-        - docs/ or *.md under docs/
-          * feature: update if an existing doc describes the subsystem
-            you touched.
-          * breaking: always update.
-
         - skills/*/SKILL.md
           * feature: update the affected skill's SKILL.md if a new
             step, capability, or contract is added.

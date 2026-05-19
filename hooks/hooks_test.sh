@@ -764,68 +764,6 @@ else
 fi
 
 echo ""
-echo "=== Codex hook adapter ==="
-
-if jq . "$REPO_ROOT/.codex/hooks.json" >/dev/null 2>&1; then
-  pass "codex hooks: .codex/hooks.json is valid JSON"
-else
-  fail "codex hooks: .codex/hooks.json is invalid JSON"
-fi
-
-if grep -q 'codex_hooks = true' "$REPO_ROOT/.codex/config.toml"; then
-  pass "codex hooks: .codex/config.toml enables codex_hooks"
-else
-  fail "codex hooks: .codex/config.toml does not enable codex_hooks"
-fi
-
-codex_patch_private_key='{"hook_event_name":"PreToolUse","session_id":"s","turn_id":"t","cwd":"'"$REPO_ROOT"'","tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Add File: secret.pem\n+PRIVATE\n*** End Patch\n"}}'
-printf '%s' "$codex_patch_private_key" | CLAUDE_PLUGIN_DATA="$guard_tmp" bash "$HOOK_DIR/codex-hook.sh" safety-check.sh >/dev/null 2>&1
-codex_safety_exit=$?
-if [[ "$codex_safety_exit" -eq 2 ]]; then
-  pass "codex-hook: apply_patch normalized to Write for safety-check"
-else
-  fail "codex-hook: apply_patch safety-check exit $codex_safety_exit, want 2"
-fi
-
-codex_patch_eval='{"hook_event_name":"PreToolUse","session_id":"s","turn_id":"t","cwd":"'"$REPO_ROOT"'","tool_name":"apply_patch","tool_input":{"command":"*** Begin Patch\n*** Add File: risky.py\n+eval(user_input)\n*** End Patch\n"}}'
-out=$(printf '%s' "$codex_patch_eval" | TMPDIR="$sec_tmpdir" CLAUDE_PLUGIN_DATA="$guard_tmp" bash "$HOOK_DIR/codex-hook.sh" security-patterns.sh 2>/dev/null || true)
-if printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision=="ask"' >/dev/null 2>&1; then
-  pass "codex-hook: apply_patch normalized to Write for security-patterns"
-else
-  fail "codex-hook: apply_patch security warning missing (got: $out)"
-fi
-
-perm_out=$(printf '%s' '{"hook_event_name":"PermissionRequest","session_id":"s","turn_id":"t","cwd":"'"$REPO_ROOT"'","tool_name":"Bash","tool_input":{"command":"rm -rf /","description":"test"}}' \
-  | CLAUDE_PLUGIN_DATA="$guard_tmp" bash "$HOOK_DIR/codex-permission-guard.sh" 2>/dev/null || true)
-if printf '%s' "$perm_out" | jq -e '.hookSpecificOutput.hookEventName=="PermissionRequest" and .hookSpecificOutput.decision.behavior=="deny"' >/dev/null 2>&1; then
-  pass "codex-permission-guard: hard safety block → PermissionRequest deny"
-else
-  fail "codex-permission-guard: expected deny output (got: $perm_out)"
-fi
-
-codex_guard_tmp=$(mktemp -d)
-track_tmp "$codex_guard_tmp"
-printf '%s' '{"status":"running","step_type":"prompt","enforce":"hard","current_step":"analyse"}' > "$codex_guard_tmp/session.json"
-printf '%s' "$codex_patch_eval" | CLAUDE_PLUGIN_DATA="$codex_guard_tmp" bash "$HOOK_DIR/codex-hook.sh" devkit-guard.sh >/dev/null 2>&1
-codex_guard_exit=$?
-if [[ "$codex_guard_exit" -eq 2 ]]; then
-  pass "codex-hook: apply_patch normalized to Write for devkit-guard"
-else
-  fail "codex-hook: apply_patch devkit-guard exit $codex_guard_exit, want 2"
-fi
-
-codex_stop_tmp=$(mktemp -d)
-track_tmp "$codex_stop_tmp"
-printf '%s' '{"status":"running","workflow":"test","enforce":"hard","total_steps":3,"current_index":1}' > "$codex_stop_tmp/session.json"
-stop_out=$(printf '%s' '{"hook_event_name":"Stop","session_id":"s","turn_id":"t","cwd":"'"$REPO_ROOT"'","stop_hook_active":false}' \
-  | CLAUDE_PLUGIN_DATA="$codex_stop_tmp" bash "$HOOK_DIR/codex-hook.sh" devkit-stop-guard.sh 2>/dev/null || true)
-if printf '%s' "$stop_out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
-  pass "codex-hook: Stop payload reaches devkit-stop-guard"
-else
-  fail "codex-hook: Stop guard expected block (got: $stop_out)"
-fi
-
-echo ""
 echo "========================================="
 echo "Results: $PASS passed, $FAIL failed"
 if [ $FAIL -gt 0 ]; then

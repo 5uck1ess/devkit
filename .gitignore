@@ -30,3 +30,6 @@ dist/
 *.log
 *.tmp
 .worktrees
+docs*
+codex/docs/
+codex/*.md

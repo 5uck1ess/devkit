@@ -290,7 +290,8 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 	} else if len(step.Parallel) > 0 {
 		fmt.Fprintf(&b, "TYPE: parallel dispatch\n")
 		fmt.Fprintf(&b, "DISPATCH: %s\n", strings.Join(step.Parallel, ", "))
-		fmt.Fprintf(&b, "Use the Agent tool and plugins to run these in parallel, then call devkit_advance.\n")
+		fmt.Fprintf(&b, "Run each listed step concurrently through the host subagent facility, then call devkit_advance with a consolidated result.\n")
+		fmt.Fprintf(&b, "Use host-native subagents or external runners when available; give each subagent a bounded scope, separate write ownership, and require files changed, verification run, and remaining risks before completion.\n")
 	} else {
 		prompt := engine.Interpolate(step.Prompt, input, state.Outputs)
 		fmt.Fprintf(&b, "PROMPT: %s\n", prompt)
@@ -457,7 +458,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
 				return mcpmcp.NewToolResultError(err.Error()), nil
 			}
-			if outputProvided || currentStep.Require != nil {
+			if outputProvided || (currentStep.Require != nil && currentStep.Require.HasChecks()) {
 				state.Outputs[currentStep.ID] = output
 			}
 		}

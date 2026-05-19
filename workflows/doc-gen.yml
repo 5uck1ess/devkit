@@ -29,8 +29,6 @@ steps:
       Analysis: {{analyze}}
 
       Spawn the `documenter` agent via the host subagent facility with the analysis as context.
-      In Claude Code this is the Task tool; in Codex this is a delegated
-      subagent when available.
       The agent must produce:
       1. Overview — what the module/package does
       2. API Reference — every public export with signature, params, return type, description
@@ -47,13 +45,13 @@ steps:
 
   - id: write
     model: fast
-    enforce: soft  # writes doc files to disk
+    enforce: soft  # writes local-only doc files to disk
     prompt: |
       Generated docs: {{generate}}
 
       Write to the appropriate location:
-      - If a `docs/` directory exists, write there
-      - If a specific output path was requested in {{input}}, use that
+      - If a specific output path was requested in {{input}}, use that only if it is not under a git-tracked docs directory
+      - If a file is needed and no safe output path was requested, write under `.devkit/docs/`
       - Otherwise, output inline and tell the user where they want it saved
 
       Report the final file path(s).

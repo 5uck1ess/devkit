@@ -2,7 +2,7 @@
 
 A deterministic development harness for AI agents. The MCP engine controls workflow execution (step ordering, gates, loops, branches). The agent handles creativity. Every step is tracked, measured, and auditable.
 
-Works with Claude Code as the original full-enforcement host. Codex can use the same MCP engine and workflows through the Codex adapter, including official Codex hooks for Bash, `apply_patch`, MCP calls, approval requests, and Stop continuation. Some Codex interception gaps remain for richer shell paths and non-MCP tools. Optionally adds Codex and Gemini for multi-agent consensus.
+Works with Claude Code as the original full-enforcement host. Other host adapters can use the same MCP engine and workflows by registering `bin/devkit mcp`; the Codex adapter is distributed separately by `devkit-codex`. Optionally adds Codex and Gemini for multi-agent consensus.
 
 ---
 
@@ -68,18 +68,15 @@ These handle concerns devkit doesn't — methodology, specialized reviews, and c
 
 ### Codex
 
-Codex uses the same MCP engine without the Claude Code plugin bundle. Register the devkit MCP server in `~/.codex/config.toml`:
+Codex support lives in the separate `devkit-codex` adapter. That adapter installs Codex-specific hooks/config and points Codex at this repo's MCP server (`bin/devkit mcp`). This repo remains the core workflow engine and shared workflow/skill source of truth.
+
+Manual MCP registration shape for host adapters:
 
 ```toml
-[features]
-codex_hooks = true
-
 [mcp_servers.devkit]
 command = "/absolute/path/to/devkit/bin/devkit"
 args = ["mcp"]
 ```
-
-The repo-local `.codex/config.toml` and `.codex/hooks.json` enable and port devkit's guardrail stack where Codex hooks can observe the event. See `codex/config.example.toml`, `codex/README.md`, and `docs/codex-port.md` for the adapter contract and remaining enforcement gaps.
 
 ### Optional tools
 
@@ -182,7 +179,7 @@ devkit-engine probe-local
 
 ## How It Works
 
-Devkit runs as an **MCP server** inside the host agent. Under Claude Code it is packaged as a plugin; under Codex it is registered through Codex MCP config. When a workflow starts, the engine takes control:
+Devkit runs as an **MCP server** inside the host agent. Under Claude Code it is packaged as a plugin; other adapters register `bin/devkit mcp` through their host-specific MCP config. When a workflow starts, the engine takes control:
 
 ```
 devkit_start("research", "best Go testing frameworks")
@@ -196,12 +193,11 @@ Claude Code enforcement (runs automatically):
   PreToolUse hook → blocks out-of-step actions during command steps
   Stop hook → prevents session end during active workflows
 
-Codex enforcement (when codex_hooks is enabled and .codex/ is trusted):
-  PreToolUse/PermissionRequest/PostToolUse hooks → partial host-level guardrails
-  Stop hook → continues the turn when a workflow is still active
+External adapters:
+  Register the same MCP server and provide host-specific hooks/guardrails.
 ```
 
-**Why MCP?** The host agent can't skip steps because the engine controls what comes next. The engine holds state — the agent doesn't self-report workflow position. Claude Code additionally blocks invalid tools through hooks; Codex uses official hooks for the tool paths it can currently observe, plus adapter instructions, sandbox/approval settings, and engine-owned command steps for the remaining gaps.
+**Why MCP?** The host agent can't skip steps because the engine controls what comes next. The engine holds state — the agent doesn't self-report workflow position. Claude Code additionally blocks invalid tools through hooks; other hosts can add equivalent adapter-side guardrails while still relying on engine-owned command steps.
 
 ---
 
@@ -321,7 +317,7 @@ All agents run in worktree isolation.
 
 ## Coding Rules
 
-Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` — rules guide how to write, hooks catch what you missed. Codex uses `AGENTS.md` plus the repo files directly; see `codex/README.md`.
+Language-specific rules that auto-activate when Claude reads matching files. Installed to `~/.claude/rules/` — rules guide how to write, hooks catch what you missed. Other host adapters should load the matching files from `resources/rules/`.
 
 ```bash
 /setup-rules
@@ -361,14 +357,14 @@ MCP Server (bin/devkit mcp — auto-started by plugin)
   │   ├── Prompt steps → host agent works, calls devkit_advance when done
   │   ├── Loop with gate → run, verify, keep or revert
   │   ├── Branch → case-insensitive word-boundary match → goto
-  │   └── Parallel → host subagent/external runner dispatch (Claude/Codex/Gemini)
+  │   └── Parallel → host subagent/external runner dispatch
   └── Principles injected per step (~120 tokens, not full skill files)
 
 Enforcement:
   ├── MCP state — host agent can only progress by calling devkit_advance
   ├── Claude Code: PreToolUse hook exits 2 to block invalid tools
   ├── Claude Code: Stop hook blocks session end during active workflows
-  └── Codex: hook-equivalent checks are advisory unless a separate shim is used
+  └── External adapters: host-specific hooks/proxies enforce what their host exposes
 
 Terminal usage (devkit workflow <name> "<description>"):
   ├── Subprocess runners for Codex/Gemini CLI
@@ -387,8 +383,6 @@ devkit/
 ├── hooks/             # 12 hooks (safety, security, quality gates, workflow enforcement)
 ├── workflows/         # 22 YAML workflow definitions
 ├── resources/rules/   # Language-specific coding rules
-├── codex/              # Codex adapter docs and config template
-├── docs/               # Host portability notes
 ├── src/               # Go engine + MCP server
 │   ├── mcp/           # MCP server (tools, principles loader, session management)
 │   ├── engine/        # YAML workflow engine (parser, executor, tests)

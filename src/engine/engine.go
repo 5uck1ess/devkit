@@ -373,6 +373,7 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 	}
 	if err := ValidateRequiredOutput(*step, result.Output); err != nil {
 		dbStep.Status = "failed"
+		dbStep.CostUSD = result.CostUSD
 		dbStep.ChangeSummary = err.Error()
 		e.db.UpdateStep(dbStep)
 		return 0, "", err
@@ -598,6 +599,7 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			}
 			if err := ValidateRequiredOutput(*step, result.Output); err != nil {
 				dbStep.Status = "failed"
+				dbStep.CostUSD = result.CostUSD
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)
 				results[j] = parallelResult{id: pid, err: err}

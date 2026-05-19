@@ -14,10 +14,9 @@ steps:
     model: smart
     prompt: |
       DISPATCH, DO NOT ANSWER. Tri-security requires three DIFFERENT
-      models audit in parallel. Invoke the host's subagent facility with a
-      non-self smart-tier subagent. In Claude Code, use the Agent tool with
-      a non-Claude subagent (`codex:codex-rescue` or equivalent external).
-      In Codex, use a delegated subagent or external CLI reviewer if
+      models audit in parallel. Invoke the Agent tool with
+      a non-Claude smart-tier subagent (`codex:codex-rescue` or equivalent external).
+      In non-Claude hosts, use a delegated subagent or external CLI reviewer if
       available.
       Report verbatim. Stop if no external subagent is available — do
       NOT audit as yourself. Subagent prompt: "Security audit — injection
@@ -29,10 +28,9 @@ steps:
   - id: audit-auth
     model: general
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
-      non-self general-tier subagent. In Claude Code, use the Agent tool
-      with a non-Claude subagent (prefer Gemini; at minimum distinct from
-      audit-injection's subagent). In Codex, use a distinct delegated
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool
+      with a non-Claude general-tier subagent (prefer Gemini; at minimum distinct from
+      audit-injection's subagent). In non-Claude hosts, use a distinct delegated
       subagent or external CLI reviewer when available. Report verbatim. Stop if none
       available. Subagent prompt: "Security audit — authentication and
       authorization. Diff: {{gather}}. Check for: broken auth, missing
@@ -43,9 +41,9 @@ steps:
   - id: audit-config
     model: fast
     prompt: |
-      DISPATCH, DO NOT ANSWER. Invoke the host's subagent facility with a
-      fast-tier external subagent (distinct from the other two). In Codex,
-      use a distinct delegated subagent or external CLI reviewer when
+      DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a
+      fast-tier external subagent (distinct from the other two). In non-Claude
+      hosts, use a distinct delegated subagent or external CLI reviewer when
       available. Report verbatim.
       Stop if none available. Subagent prompt: "Security audit —
       configuration and dependencies. Diff: {{gather}}. Check for:

@@ -18,7 +18,7 @@ func (r *CodexRunner) Available() bool {
 }
 
 func codexExecArgs(workDir string) []string {
-	args := []string{"exec", "--full-auto"}
+	args := []string{"exec", "--sandbox", "workspace-write"}
 	if workDir != "" {
 		args = append(args, "-C", workDir)
 	}
@@ -26,7 +26,7 @@ func codexExecArgs(workDir string) []string {
 }
 
 func (r *CodexRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
-	// Codex reads stdin and appends to the prompt argument.
+	// `codex exec -` reads initial instructions from stdin.
 	// Pipe the full prompt via stdin to handle large diffs safely.
 	cmd := exec.CommandContext(ctx, "codex", codexExecArgs(opts.WorkDir)...)
 	if opts.WorkDir != "" {
