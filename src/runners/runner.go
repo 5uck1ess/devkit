@@ -29,6 +29,7 @@ func DetectRunners() []Runner {
 	all := []Runner{
 		&ClaudeRunner{},
 		&CodexRunner{},
+		&AgyRunner{},
 		&GeminiRunner{},
 		&LocalRunner{},
 	}
