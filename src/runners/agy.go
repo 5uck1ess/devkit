@@ -18,8 +18,9 @@ func (r *AgyRunner) Available() bool {
 }
 
 func (r *AgyRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunResult, error) {
-	// agy reads the prompt from stdin in --print mode; passing the prompt as
-	// argv after --print is not used and causes a print-timeout error.
+	// agy --print reads the prompt from stdin; supplying it as a trailing
+	// argv leaves stdin empty and the process hangs until --print-timeout
+	// (5m default) fires.
 	args := []string{"--print", "--dangerously-skip-permissions"}
 
 	cmd := exec.CommandContext(ctx, "agy", args...)
@@ -44,10 +45,11 @@ func (r *AgyRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunRe
 
 	output := stdout.String()
 	result := RunResult{Output: output, ExitCode: exitCode}
-	// agy exits 0 on internal errors (e.g. print timeout) and prints
-	// "Error: ..." on stdout — surface those as failures rather than
-	// returning the error string as a successful response.
-	if exitCode == 0 && strings.HasPrefix(strings.TrimSpace(output), "Error:") {
+	// Observed against agy v1.0.0: print-timeout and similar failures exit
+	// 0 with a short single-line "Error: ..." on stdout. Treat that as
+	// failure; see agyOutputIsError for the heuristic and its bounds (model
+	// responses that discuss errors are longer/multi-paragraph and pass).
+	if exitCode == 0 && agyOutputIsError(output) {
 		return result, fmt.Errorf("agy reported error: %s", TruncStr(strings.TrimSpace(output), 200))
 	}
 	if exitCode != 0 {
@@ -58,4 +60,25 @@ func (r *AgyRunner) Run(ctx context.Context, prompt string, opts RunOpts) (RunRe
 		return result, fmt.Errorf("agy exited %d: %s", exitCode, TruncStr(errMsg, 200))
 	}
 	return result, nil
+}
+
+// agyOutputIsError decides whether an exit-0 stdout payload from `agy --print`
+// is actually an agy-emitted error rather than a model response.
+//
+// Genuine agy errors are short, single-line, case-sensitive "Error: ..."
+// strings. Model outputs that legitimately discuss errors are typically
+// multi-paragraph (contain a blank line) or substantially longer, so those
+// pass through.
+func agyOutputIsError(output string) bool {
+	trimmed := strings.TrimSpace(output)
+	if !strings.HasPrefix(trimmed, "Error:") {
+		return false
+	}
+	if len(trimmed) > 300 {
+		return false
+	}
+	if strings.Contains(trimmed, "\n\n") {
+		return false
+	}
+	return true
 }
