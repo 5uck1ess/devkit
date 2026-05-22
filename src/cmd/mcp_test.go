@@ -155,3 +155,89 @@ func leadingBytes(b []byte, n int) []byte {
 	}
 	return b[:n]
 }
+
+// TestMCPInitializeOutsideGitRepo is a regression test for issue #105.
+// Before the fix, devkit mcp aborted at startup whenever the cwd was not
+// inside a git repo — the JSON-RPC initialize handshake never completed
+// and Claude Code only surfaced the opaque `-32000` server error. The MCP
+// server must boot regardless of cwd; tools that genuinely need git state
+// return structured errors on call, not by exiting at boot.
+func TestMCPInitializeOutsideGitRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping subprocess build in short mode")
+	}
+
+	bin := buildDevkitBinary(t)
+
+	initReq := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":` +
+		`{"protocolVersion":"2024-11-05","capabilities":{},` +
+		`"clientInfo":{"name":"regression-test","version":"0.0.0"}}}` + "\n"
+
+	// Resolve CLAUDE_PLUGIN_ROOT to this repo so workflows still load —
+	// in production the launcher always sets this env var. The point of
+	// this test is that the cwd is OUTSIDE any git repo.
+	repoRoot, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatalf("resolve repo root: %v", err)
+	}
+
+	nonGitDir := t.TempDir()
+	if _, err := os.Stat(filepath.Join(nonGitDir, ".git")); err == nil {
+		t.Fatalf("tempdir unexpectedly contained .git — test premise broken")
+	}
+
+	cmd := exec.Command(bin, "mcp")
+	cmd.Dir = nonGitDir
+	cmd.Env = append(os.Environ(),
+		"CLAUDE_PLUGIN_ROOT="+repoRoot,
+		"CLAUDE_PLUGIN_DATA="+t.TempDir(),
+	)
+	cmd.Stdin = strings.NewReader(initReq)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start devkit mcp: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		<-done
+		t.Fatalf("devkit mcp did not exit within 10s\nstdout: %q\nstderr: %q", stdout.String(), stderr.String())
+	}
+
+	if strings.Contains(stderr.String(), "not inside a git repo") {
+		t.Fatalf("devkit mcp aborted with git-repo check — boot must tolerate non-git cwds\nstderr: %q", stderr.String())
+	}
+
+	out := stdout.Bytes()
+	if len(out) == 0 {
+		t.Fatalf("devkit mcp wrote nothing to stdout — initialize handshake never completed\nstderr: %q", stderr.String())
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(out))
+	sawInitResp := false
+	for {
+		var msg map[string]any
+		err := dec.Decode(&msg)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("stdout contains non-JSON content: %v\nstdout: %q\nstderr: %q", err, out, stderr.String())
+		}
+		if id, ok := msg["id"]; ok {
+			if n, ok := id.(float64); ok && n == 1 {
+				sawInitResp = true
+			}
+		}
+	}
+	if !sawInitResp {
+		t.Fatalf("did not see initialize response on stdout — handshake failed outside a git repo\nstdout: %q\nstderr: %q", out, stderr.String())
+	}
+}

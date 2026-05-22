@@ -21,9 +21,16 @@ type Server struct {
 }
 
 // NewServer creates a devkit MCP server.
+//
+// Only dataDir is strictly required (the server needs somewhere to persist
+// workflow state). repoRoot and workflowDir may be empty — the server still
+// boots and answers the MCP initialize handshake, so the client doesn't see
+// an opaque -32000. Individual tool calls that need git state or workflow
+// definitions are responsible for returning a structured error when the
+// required input is missing. See issue #105.
 func NewServer(repoRoot, dataDir, workflowDir string) (*Server, error) {
-	if repoRoot == "" || dataDir == "" || workflowDir == "" {
-		return nil, fmt.Errorf("repoRoot, dataDir, and workflowDir must be non-empty")
+	if dataDir == "" {
+		return nil, fmt.Errorf("dataDir must be non-empty")
 	}
 
 	dbPath := filepath.Join(dataDir, "devkit.db")
@@ -32,10 +39,14 @@ func NewServer(repoRoot, dataDir, workflowDir string) (*Server, error) {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
 
-	principles, err := LoadPrinciples(workflowDir)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not load principles: %v\n", err)
-		principles = map[string][]string{}
+	principles := map[string][]string{}
+	if workflowDir != "" {
+		loaded, err := LoadPrinciples(workflowDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not load principles: %v\n", err)
+		} else {
+			principles = loaded
+		}
 	}
 
 	return &Server{

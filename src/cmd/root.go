@@ -25,9 +25,18 @@ var rootCmd = &cobra.Command{
 	Short: "Deterministic orchestration for AI agent workflows",
 	Long:  "Go CLI harness for devkit — deterministic loop control, process management, and unattended runs.",
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		allowNoGit := cmd.Annotations["allow_no_git"] == "true"
+
 		root, err := findRepoRoot()
 		if err != nil {
-			return fmt.Errorf("not inside a git repo — run devkit from a project directory")
+			if !allowNoGit {
+				return fmt.Errorf("not inside a git repo — run devkit from a project directory")
+			}
+			// Subcommand opts out of the git requirement (e.g. `devkit mcp`,
+			// which serves workflows that don't need git state). Leave
+			// repoRoot empty and let the subcommand pick its own data dir.
+			repoRoot = ""
+			return nil
 		}
 		repoRoot = root
 
