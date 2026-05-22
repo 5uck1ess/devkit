@@ -30,8 +30,9 @@ steps:
     prompt: |
       DISPATCH, DO NOT ANSWER. Invoke the Agent tool
       with a non-Claude general-tier subagent (prefer `agy:agy-review` (Google
-      AGY); fall back to a Gemini-backed subagent; at minimum distinct from
-      audit-injection's subagent). In non-Claude hosts, use a distinct delegated
+      AGY); fall back to a Gemini-backed subagent, or `codex:codex-rescue` if
+      neither is available — at minimum distinct from audit-injection's
+      subagent). In non-Claude hosts, use a distinct delegated
       subagent or external CLI reviewer when available. Report verbatim. Stop if none
       available. Subagent prompt: "Security audit — authentication and
       authorization. Diff: {{gather}}. Check for: broken auth, missing

@@ -16,10 +16,12 @@ steps:
       DISPATCH, DO NOT ANSWER. This is tri-review — the whole point is
       model diversity. You (the calling model) must NOT write this review
       yourself. Invoke the Agent tool with a non-Claude subagent
-      (`codex:codex-rescue` is the standard smart-tier
-      external reviewer; an available AGY (`agy:agy-review`) / Gemini-backed
-      reviewer or other senior external reviewer also qualifies). In
-      non-Claude hosts, use the equivalent delegated
+      (`codex:codex-rescue` is the standard smart-tier external reviewer;
+      any other senior external reviewer also qualifies. Note:
+      `agy:agy-review` (Google AGY) is reserved for the general-tier slot
+      below — claiming it here would leave general-tier without a
+      distinct model and break the tri-* property). In non-Claude hosts,
+      use the equivalent delegated
       subagent or external CLI reviewer if available.
       Pass the diff from {{gather}} and report the subagent's verdict
       verbatim. If no external-model subagent is available, stop and tell

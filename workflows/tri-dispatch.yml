@@ -17,9 +17,10 @@ steps:
     model: general
     prompt: |
       DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
-      general-tier subagent (prefer `agy:agy-review` (Google AGY), fall
-      back to a Gemini-backed subagent; at minimum distinct from
-      smart-take's subagent). In non-Claude hosts, use a distinct delegated
+      general-tier subagent (prefer `agy:agy-review` (Google AGY); fall
+      back to a Gemini-backed subagent, or `codex:codex-rescue` if neither
+      is available — at minimum distinct from smart-take's subagent).
+      In non-Claude hosts, use a distinct delegated
       subagent or external CLI respondent when available. Report verbatim. Stop if none available.
       Subagent prompt: "{{input}} Give a clear, balanced answer."
 
