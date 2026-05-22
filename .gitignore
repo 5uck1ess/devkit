@@ -17,6 +17,9 @@ src/bin/
 # Devkit runtime state
 .devkit/
 
+# External CLI state (created when contributors use AGY/Antigravity CLI in the repo)
+.antigravitycli/
+
 # OS
 .DS_Store
 Thumbs.db
