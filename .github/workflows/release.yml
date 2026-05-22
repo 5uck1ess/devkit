@@ -220,6 +220,13 @@ jobs:
   # Runs last so plugin.json on main only advertises the new version after
   # the release is fully published. Skipped for manual bumps where the
   # merge commit already carries the bumped plugin.json.
+  #
+  # Bumps mcpb/manifest.json in lockstep with .claude-plugin/plugin.json and
+  # rebuilds devkit.mcpb + devkit.mcpb.sources.json so the MCPB bundle's
+  # advertised version matches what the launcher actually fetches, and the
+  # sidecar's sha256s stay consistent with the bundled files. Without this,
+  # manifest.json drifts behind every auto-bump and the next contributor who
+  # runs `make sync-version` locally trips the mcpb-bundle-integrity CI check.
   bump:
     needs: [version, create-release, binaries, publish]
     if: >-
@@ -233,17 +240,37 @@ jobs:
           fetch-depth: 0
           ref: main
 
-      - name: Sync plugin.json
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
+      - name: Sync plugin.json + mcpb/manifest.json
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
           jq --arg v "$VERSION" '.version = $v' .claude-plugin/plugin.json > tmp.json && mv tmp.json .claude-plugin/plugin.json
+          jq --arg v "$VERSION" '.version = $v' mcpb/manifest.json > tmp.json && mv tmp.json mcpb/manifest.json
+
+      - name: Rebuild MCPB bundle
+        # manifest.json is hashed in devkit.mcpb.sources.json and zipped into
+        # devkit.mcpb, so a manifest bump invalidates both. The launcher
+        # cross-compile is deterministic (-trimpath, -s -w, no embedded
+        # version) so mcpb/server/devkit.exe is usually byte-identical and
+        # `git add` skips it; only the bundle + sidecar actually change.
+        run: bin/mcpb-build
 
       - name: Commit and push version bump
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
-          VERSION="${{ needs.version.outputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .claude-plugin/plugin.json
+          git add .claude-plugin/plugin.json \
+                  mcpb/manifest.json \
+                  mcpb/server/devkit.exe \
+                  devkit.mcpb \
+                  devkit.mcpb.sources.json
           if git diff --cached --quiet; then
             echo "Version files already at $VERSION — no commit needed"
           else
