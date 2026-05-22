@@ -17,8 +17,9 @@ steps:
       model diversity. You (the calling model) must NOT write this review
       yourself. Invoke the Agent tool with a non-Claude subagent
       (`codex:codex-rescue` is the standard smart-tier
-      external reviewer; any available Gemini or external senior reviewer
-      also qualifies). In non-Claude hosts, use the equivalent delegated
+      external reviewer; an available AGY (`agy:agy-review`) / Gemini-backed
+      reviewer or other senior external reviewer also qualifies). In
+      non-Claude hosts, use the equivalent delegated
       subagent or external CLI reviewer if available.
       Pass the diff from {{gather}} and report the subagent's verdict
       verbatim. If no external-model subagent is available, stop and tell
@@ -31,10 +32,12 @@ steps:
     model: general
     prompt: |
       DISPATCH, DO NOT ANSWER. Invoke the Agent tool with a non-Claude
-      general-tier reviewer (e.g. a Gemini-backed reviewer plugin, or
-      `codex:codex-rescue` if no Gemini is available — but prefer a
+      general-tier reviewer. Prefer `agy:agy-review` (Google AGY /
+      Antigravity CLI — the current Google reviewer; Gemini CLI is being
+      retired). Fall back to a Gemini-backed reviewer plugin, or
+      `codex:codex-rescue` if neither is available — but prefer a
       different model than review-smart used, or the tri-* property is
-      lost). In non-Claude hosts, use a distinct delegated subagent or
+      lost. In non-Claude hosts, use a distinct delegated subagent or
       external CLI reviewer when available. Report verbatim. Stop if no external
       subagent is available.
       The subagent prompt should be: "Review this code for quality and
