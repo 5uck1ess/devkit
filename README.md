@@ -392,3 +392,11 @@ devkit/
 ├── bin/               # devkit wrapper (committed) + downloaded engine binaries (gitignored)
 └── .github/workflows/ # CI (build+test+vet) + auto-release (6 platforms)
 ```
+
+---
+
+## Support
+
+If devkit saved you time:
+
+<a href="https://www.buymeacoffee.com/5uck1ess" target="_blank"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=5uck1ess&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy Me A Coffee" /></a>
