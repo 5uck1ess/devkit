@@ -57,7 +57,6 @@ HAS_GO=false
 HAS_TS=false
 HAS_RUST=false
 HAS_PYTHON=false
-HAS_CONFIG=false
 HAS_SQL=false
 
 while IFS= read -r file; do
@@ -66,7 +65,7 @@ while IFS= read -r file; do
     *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs)   HAS_TS=true ;;
     *.rs)                                HAS_RUST=true ;;
     *.py)                                HAS_PYTHON=true ;;
-    *.yml|*.yaml|*.json|*.toml|*.ini|*.env*) HAS_CONFIG=true ;;
+    *.yml|*.yaml|*.json|*.toml|*.ini|*.env*) ;; # config — excluded from domain count, needs no test evidence
     *.sql|*/migrations/*|*/migrate/*)    HAS_SQL=true ;;
   esac
 done <<< "$CHANGED_FILES"

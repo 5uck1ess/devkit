@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1940,6 +1941,9 @@ func TestUpdateSessionJSONNoChange(t *testing.T) {
 // TestSessionFileMode verifies session.json is chmod 0600 (may contain
 // pasted secrets via workflow input/outputs).
 func TestSessionFileMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are not enforced on Windows — Stat reports 0666")
+	}
 	dir := t.TempDir()
 	state := &lib.SessionState{
 		ID:      "mode-test",

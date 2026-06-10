@@ -231,7 +231,13 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		e.db.UpdateSessionStatus(session.ID, "cancelled")
 	}
 
-	allSteps, _ := e.db.GetSteps(session.ID)
+	// A failed read here still writes the report (with whatever steps we
+	// got) but must not be silent — surface it unless a step error is
+	// already being returned, which takes precedence.
+	allSteps, stepsErr := e.db.GetSteps(session.ID)
+	if stepsErr != nil && stepErr == nil {
+		stepErr = fmt.Errorf("loading steps for final report: %w", stepsErr)
+	}
 	stopReason := "completed"
 	if failed {
 		stopReason = "failed"

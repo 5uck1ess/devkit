@@ -39,6 +39,57 @@ jobs:
             exit 1
           fi
 
+  # Windows gets binaries at release time (engine cross-compile + the
+  # mcpb launcher), but nothing validated Windows builds on PR — breakage
+  # only surfaced during the release pipeline. This job fails fast.
+  build-and-test-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache-dependency-path: src/go.sum
+
+      - name: Build engine
+        working-directory: src
+        run: go build ./...
+
+      - name: Test engine
+        working-directory: src
+        run: go test ./... -count=1
+
+      - name: Build MCPB launcher (native Windows)
+        working-directory: mcpb/launcher
+        run: go build ./...
+
+      - name: Test MCPB launcher
+        working-directory: mcpb/launcher
+        run: go test ./... -count=1
+
+  # The fresh-install job shellchecks the shipped wrappers; this covers
+  # the hook layer, which runs on every tool call in every session.
+  lint-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck hooks and wrappers
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck -S warning hooks/*.sh bin/devkit bin/mcpb-build mcpb/server/devkit
+
+  lint-actions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Run the tool author's image directly rather than a third-party
+      # wrapper action — one less link in the supply chain.
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:latest -color
+
   hook-smoke-tests:
     runs-on: ubuntu-latest
     steps:

@@ -10,9 +10,12 @@
 # PostToolUse hook schema:
 #   { "hookSpecificOutput": { "hookEventName": "PostToolUse", "additionalContext": "string" } }
 
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+set -euo pipefail
+
+# Fail open on malformed stdin — advisory hook, never a blocker.
+INPUT=$(cat || true)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 
 [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ] || exit 0
 [ -z "$FILE_PATH" ] && exit 0
@@ -24,10 +27,13 @@ WARNINGS=""
 # For JS/TS/Python files, check if documentation blocks outweigh code
 if echo "$FILE_PATH" | grep -qE '\.(js|jsx|ts|tsx|mjs|cjs)$'; then
   # Count JSDoc/block comment lines vs code lines
-  DOC_LINES=$(grep -cE '^\s*(\*|/\*\*|///|\s*\*)' "$FILE_PATH" 2>/dev/null || echo 0)
+  # NB: grep -c prints "0" itself on no match (exiting 1), so the guard
+  # must be `|| true` — `|| echo 0` would yield "0\n0" and break the
+  # integer comparisons below.
+  DOC_LINES=$(grep -cE '^\s*(\*|/\*\*|///|\s*\*)' "$FILE_PATH" 2>/dev/null || true)
   TOTAL_LINES=$(wc -l < "$FILE_PATH" 2>/dev/null | tr -d ' ' || echo 1)
-  BLANK_LINES=$(grep -cE '^\s*$' "$FILE_PATH" 2>/dev/null || echo 0)
-  CODE_LINES=$(( TOTAL_LINES - DOC_LINES - BLANK_LINES ))
+  BLANK_LINES=$(grep -cE '^\s*$' "$FILE_PATH" 2>/dev/null || true)
+  CODE_LINES=$(( ${TOTAL_LINES:-1} - ${DOC_LINES:-0} - ${BLANK_LINES:-0} ))
   [ "$CODE_LINES" -lt 1 ] && CODE_LINES=1
 
   if [ "$DOC_LINES" -gt 10 ] && [ "$DOC_LINES" -gt "$CODE_LINES" ]; then
@@ -36,10 +42,10 @@ if echo "$FILE_PATH" | grep -qE '\.(js|jsx|ts|tsx|mjs|cjs)$'; then
 fi
 
 if echo "$FILE_PATH" | grep -qE '\.py$'; then
-  DOC_LINES=$(grep -cE '^\s*("""|'\'''\'''\''|#)' "$FILE_PATH" 2>/dev/null || echo 0)
+  DOC_LINES=$(grep -cE '^\s*("""|'\'''\'''\''|#)' "$FILE_PATH" 2>/dev/null || true)
   TOTAL_LINES=$(wc -l < "$FILE_PATH" 2>/dev/null | tr -d ' ' || echo 1)
-  BLANK_LINES=$(grep -cE '^\s*$' "$FILE_PATH" 2>/dev/null || echo 0)
-  CODE_LINES=$(( TOTAL_LINES - DOC_LINES - BLANK_LINES ))
+  BLANK_LINES=$(grep -cE '^\s*$' "$FILE_PATH" 2>/dev/null || true)
+  CODE_LINES=$(( ${TOTAL_LINES:-1} - ${DOC_LINES:-0} - ${BLANK_LINES:-0} ))
   [ "$CODE_LINES" -lt 1 ] && CODE_LINES=1
 
   if [ "$DOC_LINES" -gt 10 ] && [ "$DOC_LINES" -gt "$CODE_LINES" ]; then
@@ -68,10 +74,10 @@ fi
 
 # --- Excessive type annotations in JS (not TS) ---
 if echo "$FILE_PATH" | grep -qE '\.(js|jsx|mjs|cjs)$'; then
-  JSDOC_TYPES=$(grep -cE '@(param|returns|type|typedef)\s' "$FILE_PATH" 2>/dev/null || echo 0)
-  FUNCTIONS=$(grep -cE '(function\s|=>|async\s)' "$FILE_PATH" 2>/dev/null || echo 1)
-  [ "$FUNCTIONS" -lt 1 ] && FUNCTIONS=1
-  RATIO=$(( JSDOC_TYPES / FUNCTIONS ))
+  JSDOC_TYPES=$(grep -cE '@(param|returns|type|typedef)\s' "$FILE_PATH" 2>/dev/null || true)
+  FUNCTIONS=$(grep -cE '(function\s|=>|async\s)' "$FILE_PATH" 2>/dev/null || true)
+  [ "${FUNCTIONS:-0}" -lt 1 ] 2>/dev/null && FUNCTIONS=1
+  RATIO=$(( ${JSDOC_TYPES:-0} / ${FUNCTIONS:-1} ))
   if [ "$RATIO" -gt 4 ]; then
     WARNINGS="${WARNINGS}Excessive JSDoc type annotations in .js file (${JSDOC_TYPES} annotations for ${FUNCTIONS} functions) — consider using TypeScript instead. "
   fi

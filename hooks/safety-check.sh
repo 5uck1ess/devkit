@@ -2,10 +2,15 @@
 # devkit safety hook — blocks or prompts on dangerous operations
 # Runs on PreToolUse for Bash, Edit, and Write tools
 
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+set -euo pipefail
+
+# jq failures on malformed stdin must not abort the hook — the contract
+# is "fail open" (never wedge Claude Code on parse errors), matching the
+# guard pattern in rtk-rewrite.sh / security-patterns.sh.
+INPUT=$(cat || true)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 
 # --- Bash: dangerous commands ---
 if [ "$TOOL_NAME" = "Bash" ]; then

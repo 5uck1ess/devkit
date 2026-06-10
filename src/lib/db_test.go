@@ -3,6 +3,7 @@ package lib
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -314,6 +315,9 @@ func TestEnsureGitignore_EntryMidFile(t *testing.T) {
 }
 
 func TestDBDirectoryPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix permission bits are not enforced on Windows — Stat reports 0777")
+	}
 	dir := t.TempDir()
 	dbDir := filepath.Join(dir, ".devkit")
 	db, err := OpenDB(filepath.Join(dbDir, "devkit.db"))
