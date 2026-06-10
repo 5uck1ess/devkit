@@ -18,4 +18,7 @@ func TestNewServer(t *testing.T) {
 	if srv == nil {
 		t.Fatal("server is nil")
 	}
+	// Close the DB before TempDir cleanup — Windows cannot delete a
+	// directory containing an open file.
+	t.Cleanup(func() { srv.Close() })
 }

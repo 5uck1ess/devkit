@@ -60,8 +60,8 @@ jobs:
             TAG_PATCH=$(echo "$LATEST_TAG" | cut -d. -f3)
 
             if [ "$P_MAJOR" -gt "$TAG_MAJOR" ] 2>/dev/null || \
-               ([ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -gt "$TAG_MINOR" ]) 2>/dev/null || \
-               ([ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -eq "$TAG_MINOR" ] && [ "$P_PATCH" -gt "$TAG_PATCH" ]) 2>/dev/null; then
+               { [ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -gt "$TAG_MINOR" ]; } 2>/dev/null || \
+               { [ "$P_MAJOR" -eq "$TAG_MAJOR" ] && [ "$P_MINOR" -eq "$TAG_MINOR" ] && [ "$P_PATCH" -gt "$TAG_PATCH" ]; } 2>/dev/null; then
               echo "Manual version bump detected: $LATEST_TAG → $PLUGIN_VERSION"
               echo "version=$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
               echo "bumped=manual" >> "$GITHUB_OUTPUT"

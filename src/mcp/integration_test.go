@@ -37,6 +37,9 @@ func setupTestServer(t *testing.T, workflowYAML string, principlesYAML string) (
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
+	// Close the DB before TempDir cleanup (LIFO: this runs first) —
+	// Windows cannot delete a directory containing an open file.
+	t.Cleanup(func() { srv.Close() })
 	return srv, dir
 }
 
