@@ -9,8 +9,11 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
-AGENT_OUTPUT=$(echo "$INPUT" | jq -r '.agent_output // empty')
+# SubagentStop must always emit a JSON verdict — a jq parse failure under
+# set -e would kill the hook with no output. Degrade to empty (which the
+# short-output check below converts into a block with a clear reason).
+INPUT=$(cat || true)
+AGENT_OUTPUT=$(echo "$INPUT" | jq -r '.agent_output // empty' 2>/dev/null || true)
 
 # If agent output is empty or very short, block — something went wrong
 if [ ${#AGENT_OUTPUT} -lt 20 ]; then

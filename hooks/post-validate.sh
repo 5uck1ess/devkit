@@ -11,11 +11,13 @@
 
 set -euo pipefail
 
-INPUT=$(cat)
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
-TOOL_OUTPUT=$(echo "$INPUT" | jq -r '.tool_output // empty')
-FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
-CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty')
+# jq failures on malformed stdin must not abort the hook under set -e —
+# fail open (skip validation) rather than surface a hook error.
+INPUT=$(cat || true)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
+TOOL_OUTPUT=$(echo "$INPUT" | jq -r '.tool_output // empty' 2>/dev/null || true)
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
+CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null || true)
 
 # --- Bash: check for suppressed errors ---
 if [ "$TOOL_NAME" = "Bash" ]; then
@@ -35,7 +37,7 @@ fi
 if [ "$TOOL_NAME" = "Edit" ] || [ "$TOOL_NAME" = "Write" ]; then
   CHECK_CONTENT="$CONTENT"
   if [ -z "$CHECK_CONTENT" ]; then
-    CHECK_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.new_string // empty')
+    CHECK_CONTENT=$(echo "$INPUT" | jq -r '.tool_input.new_string // empty' 2>/dev/null || true)
   fi
 
   if [ -n "$CHECK_CONTENT" ]; then

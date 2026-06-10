@@ -61,7 +61,13 @@ func showSessionDetail(id string) error {
 		return fmt.Errorf("get steps: %w", err)
 	}
 
-	totalCost, _ := db.SessionTotalCost(id)
+	// Degrade to "unknown" on error, matching showAllSessions — a cost
+	// query failure should not make session detail unviewable.
+	totalCost, costErr := db.SessionTotalCost(id)
+	costStr := fmt.Sprintf("$%.4f", totalCost)
+	if costErr != nil {
+		costStr = "unknown"
+	}
 
 	fmt.Printf("Session:    %s\n", session.ID)
 	fmt.Printf("Workflow:   %s\n", session.Workflow)
@@ -81,9 +87,9 @@ func showSessionDetail(id string) error {
 		fmt.Printf("Iterations: %d/%d\n", len(steps), session.MaxIterations)
 	}
 	if session.BudgetUSD > 0 {
-		fmt.Printf("Budget:     $%.2f ($%.4f spent)\n", session.BudgetUSD, totalCost)
+		fmt.Printf("Budget:     $%.2f (%s spent)\n", session.BudgetUSD, costStr)
 	}
-	fmt.Printf("Total cost: $%.4f\n", totalCost)
+	fmt.Printf("Total cost: %s\n", costStr)
 
 	if len(steps) > 0 {
 		fmt.Printf("\n%-5s %-10s %-10s %-8s %-8s %s\n", "ITER", "AGENT", "STATUS", "EXIT", "COST", "SUMMARY")

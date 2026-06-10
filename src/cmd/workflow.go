@@ -58,13 +58,19 @@ var workflowCmd = &cobra.Command{
 			return fmt.Errorf("parse workflow: %w", err)
 		}
 
-		agentName, _ := cmd.Flags().GetString("agent")
+		agentName, err := cmd.Flags().GetString("agent")
+		if err != nil {
+			return fmt.Errorf("agent flag: %w", err)
+		}
 		runner, err := resolveRunner(agentName)
 		if err != nil {
 			return err
 		}
 
-		budget, _ := cmd.Flags().GetFloat64("budget")
+		budget, err := cmd.Flags().GetFloat64("budget")
+		if err != nil {
+			return fmt.Errorf("budget flag: %w", err)
+		}
 		// CLI flag overrides YAML budget; fall back to YAML if flag not set
 		if budget == 0 && wf.Budget.Limit > 0 {
 			// Convert token budget to rough USD estimate ($0.01 per 1K tokens)
