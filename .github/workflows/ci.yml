@@ -14,9 +14,9 @@ jobs:
         working-directory: src
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
@@ -45,9 +45,9 @@ jobs:
   build-and-test-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
@@ -73,7 +73,7 @@ jobs:
   lint-shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: shellcheck hooks and wrappers
         run: |
@@ -83,7 +83,7 @@ jobs:
   lint-actions:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Run the tool author's image directly rather than a third-party
       # wrapper action — one less link in the supply chain.
@@ -93,14 +93,14 @@ jobs:
   hook-smoke-tests:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # The devkit-guard shell wrappers exec the Go engine binary.
       # Provide Go so hooks_test.sh can build it on first run (the
       # script auto-builds if $CLAUDE_PLUGIN_ROOT/bin/devkit-engine is
       # missing) — without this, every "expected exit 2" fixture would
       # silently fall through the no-binary path and fail.
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: src/go.mod
           cache-dependency-path: src/go.sum
@@ -116,7 +116,7 @@ jobs:
   fresh-install-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Bootstrap wrapper must exist and be executable
         run: |
@@ -204,9 +204,9 @@ jobs:
       run:
         working-directory: mcpb/launcher
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: mcpb/launcher/go.mod
 
@@ -239,7 +239,7 @@ jobs:
   mcpb-bundle-integrity:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Sources sidecar must exist
         run: |
@@ -300,7 +300,7 @@ jobs:
   validate-counts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Validate README and ROADMAP counts
         run: |
