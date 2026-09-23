@@ -13,6 +13,7 @@ import (
 
 	"github.com/5uck1ess/devkit/engine"
 	"github.com/5uck1ess/devkit/lib"
+	"github.com/5uck1ess/devkit/runners"
 	mcpmcp "github.com/mark3labs/mcp-go/mcp"
 	mcpgo "github.com/mark3labs/mcp-go/server"
 )
@@ -710,4 +711,62 @@ func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (
 
 	response := s.formatStepResponse(wf, state, &nextStep, state.Input)
 	return mcpmcp.NewToolResultText(response), nil
+}
+
+func (s *Server) askTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
+	tool := mcpmcp.NewTool("devkit_ask",
+		mcpmcp.WithDescription("Send a prompt to a peer AI CLI (claude, codex, or agy) and return its answer synchronously. The direct, commutative bridge primitive: any MCP host can ask any peer and block for the reply."),
+		mcpmcp.WithString("to", mcpmcp.Required(), mcpmcp.Description("Target peer: claude, codex, or agy")),
+		mcpmcp.WithString("prompt", mcpmcp.Required(), mcpmcp.Description("The prompt to send to the peer")),
+		mcpmcp.WithString("workdir", mcpmcp.Description("Working directory for the peer (optional)")),
+	)
+	return tool, func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
+		to, err := req.RequireString("to")
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("missing argument: %v", err)), nil
+		}
+		prompt, err := req.RequireString("prompt")
+		if err != nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("missing argument: %v", err)), nil
+		}
+		workdir := ""
+		if args := req.GetArguments(); args != nil {
+			if w, ok := args["workdir"].(string); ok {
+				workdir = w
+			}
+		}
+
+		to = strings.ToLower(strings.TrimSpace(to))
+		// Restrict to the three bridge peers so devkit_ask stays an explicit
+		// surface and cannot reach gemini/local via this primitive.
+		switch to {
+		case "claude", "codex", "agy":
+		default:
+			return mcpmcp.NewToolResultError(fmt.Sprintf("unknown peer %q: want claude, codex, or agy", to)), nil
+		}
+
+		peer := runners.FindRunner(to, runners.DetectRunners())
+		if peer == nil {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("peer %q is not available — check it is installed and on PATH", to)), nil
+		}
+
+		// Bound the synchronous call so a wedged peer cannot hang the MCP
+		// request forever; parent cancellation still propagates.
+		ctx, cancel := context.WithTimeout(ctx, commandTimeout)
+		defer cancel()
+
+		res, runErr := peer.Run(ctx, prompt, runners.RunOpts{WorkDir: workdir})
+		if runErr != nil {
+			// Surface exit code + whatever the peer produced so the caller
+			// sees the real failure, not just the Go wrapper message.
+			detail := res.Output
+			if detail == "" {
+				detail = runErr.Error()
+			} else {
+				detail = detail + "\n\n[error] " + runErr.Error()
+			}
+			return mcpmcp.NewToolResultError(fmt.Sprintf("%s exited %d: %s", to, res.ExitCode, detail)), nil
+		}
+		return mcpmcp.NewToolResultText(res.Output), nil
+	}
 }

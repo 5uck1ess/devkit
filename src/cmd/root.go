@@ -56,7 +56,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().String("agent", "claude", "AI agent to use (claude, codex, gemini)")
+	rootCmd.PersistentFlags().String("agent", "claude", "AI agent to use (claude, codex, gemini, agy)")
 }
 
 func Execute() error {
@@ -90,7 +90,7 @@ func resolveRunnerFrom(name string, available []runners.Runner) (runners.Runner,
 		names = append(names, a.Name())
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("no AI agents found in PATH — install claude, codex, or gemini")
+		return nil, fmt.Errorf("no AI agents found in PATH — install claude, codex, gemini, or agy")
 	}
 	return nil, fmt.Errorf("agent %q not found — available: %s", name, strings.Join(names, ", "))
 }
