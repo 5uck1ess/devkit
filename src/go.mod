@@ -3,7 +3,7 @@ module github.com/5uck1ess/devkit
 go 1.26.1
 
 require (
-	github.com/mark3labs/mcp-go v1.2.1
+	github.com/mark3labs/mcp-go v1.3.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
