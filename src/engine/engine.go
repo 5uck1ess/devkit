@@ -436,6 +436,9 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		result, err := e.runner.Run(ctx, prompt, opts)
 		if err != nil {
 			// Count spend from failed runs so overBudget stays accurate.
+			// The failed run may still have edited files; those edits never
+			// faced the gate, so revert them before retrying — otherwise a
+			// later commit (iteration or final) would keep unvalidated work.
 			dbStep.Status = "failed"
 			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = err.Error()
@@ -444,8 +447,11 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if addCost != nil {
 				addCost(result.CostUSD)
 			}
+			if revertErr := e.git.RevertAll(); revertErr != nil {
+				return totalCost, fmt.Errorf("loop %s: revert failed after runner error: %w", step.ID, revertErr)
+			}
 			consecutiveFailures++
-			fmt.Printf("  failed, retrying\n\n")
+			fmt.Printf("  failed, reverted, retrying\n\n")
 			continue
 		}
 		if err := ValidateRequiredOutput(*step, result.Output); err != nil {
@@ -457,8 +463,11 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if addCost != nil {
 				addCost(result.CostUSD)
 			}
+			if revertErr := e.git.RevertAll(); revertErr != nil {
+				return totalCost, fmt.Errorf("loop %s: revert failed after required-output failure: %w", step.ID, revertErr)
+			}
 			consecutiveFailures++
-			fmt.Printf("  failed required output check, retrying\n\n")
+			fmt.Printf("  failed required output check, reverted, retrying\n\n")
 			continue
 		}
 

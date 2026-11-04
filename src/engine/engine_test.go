@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/5uck1ess/devkit/lib"
@@ -1717,12 +1718,12 @@ func TestInterpolateDeterministic(t *testing.T) {
 
 // erroringCostRunner fails every call but reports spend, like claude -p
 // hitting max-turns after real work.
-type erroringCostRunner struct{ calls int }
+type erroringCostRunner struct{ calls atomic.Int32 }
 
 func (r *erroringCostRunner) Name() string    { return "err-cost" }
 func (r *erroringCostRunner) Available() bool { return true }
 func (r *erroringCostRunner) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
-	r.calls++
+	r.calls.Add(1)
 	return runners.RunResult{CostUSD: 0.50}, errors.New("max turns")
 }
 
@@ -1735,8 +1736,8 @@ func TestRunWorkflowFailedRunsCountTowardBudget(t *testing.T) {
 		{ID: "fix", Prompt: "Fix", Loop: &Loop{Max: 10, Until: "DONE"}},
 	}}
 	res, _ := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x", BudgetUSD: 1.00})
-	if runner.calls > 2 {
-		t.Errorf("runner called %d times; failed runs' cost must count toward the $1.00 budget (want <= 2)", runner.calls)
+	if n := runner.calls.Load(); n > 2 {
+		t.Errorf("runner called %d times; failed runs' cost must count toward the $1.00 budget (want <= 2)", n)
 	}
 	if res != nil && res.TotalUSD < 1.00 {
 		t.Errorf("TotalUSD = %.2f, want >= 1.00 (failed-run spend dropped)", res.TotalUSD)
@@ -1773,5 +1774,46 @@ func TestRunWorkflowLoopRequireFailureCountsTowardBudget(t *testing.T) {
 	eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x", BudgetUSD: 1.00})
 	if runner.callIdx > 2 {
 		t.Errorf("runner called %d times; require-failed iterations must count toward the budget", runner.callIdx)
+	}
+}
+
+// editThenFailRunner succeeds on the first call and, on the second, edits a
+// tracked file and then errors — like claude -p writing code and hitting
+// max-turns.
+type editThenFailRunner struct {
+	dir   string
+	calls int
+}
+
+func (r *editThenFailRunner) Name() string    { return "edit-fail" }
+func (r *editThenFailRunner) Available() bool { return true }
+func (r *editThenFailRunner) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
+	r.calls++
+	if r.calls == 1 {
+		return runners.RunResult{Output: "progress"}, nil
+	}
+	if err := os.WriteFile(filepath.Join(r.dir, "state.txt"), []byte("bad\n"), 0o644); err != nil {
+		return runners.RunResult{}, err
+	}
+	return runners.RunResult{}, errors.New("error_max_turns")
+}
+
+func TestRunWorkflowLoopRunnerErrorRevertsEdits(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	eng := mustEngine(t, db, git, &editThenFailRunner{dir: dir}, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "fix", Prompt: "Fix", Loop: &Loop{Max: 2, Until: "DONE"}},
+	}}
+	eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"})
+	if _, err := os.Stat(filepath.Join(dir, "state.txt")); err == nil {
+		t.Fatal("edits from a failed runner call survived; they must be reverted, never committed")
+	}
+	out, err := exec.Command("git", "-C", dir, "log", "--all", "--name-only", "--format=").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(out), "state.txt") {
+		t.Fatal("unvalidated edit from failed runner call was committed")
 	}
 }
