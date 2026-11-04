@@ -1819,3 +1819,25 @@ func TestShippedWorkflowsFullPathEndsBeforeQuickFix(t *testing.T) {
 		}
 	}
 }
+
+func TestRunWorkflowEndOnParallelDispatcher(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner([]runners.RunResult{
+		result("a out"), result("b out"), result("must not run"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "a", Prompt: "A"},
+		{ID: "b", Prompt: "B"},
+		{ID: "fan", Parallel: []string{"a", "b"}, End: true},
+		{ID: "trailing", Prompt: "T"},
+	}}
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if _, ok := res.Outputs["trailing"]; ok {
+		t.Error("trailing step ran after an end: true dispatcher")
+	}
+}

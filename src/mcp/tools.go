@@ -437,6 +437,12 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 
 		currentStep := wf.Steps[state.CurrentIndex]
 
+		// freshOutput records whether this advance supplied the current
+		// step's output; loop until-sentinels only count when fresh, so
+		// a DONE from an earlier (gate-failed) iteration can't complete
+		// the loop later.
+		freshOutput := false
+
 		// Handle command steps — engine executes them. Command strings
 		// are run literally (no {{...}} expansion); values are passed
 		// through env vars DEVKIT_INPUT and DEVKIT_OUT_<step_id> to
@@ -475,7 +481,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				return mcpmcp.NewToolResultError(err.Error()), nil
 			}
 			if len(currentStep.Parallel) > 0 {
-				childOut, err := parallelOutputs(currentStep, args["outputs"])
+				childOut, err := parallelOutputs(wf, currentStep, args["outputs"])
 				if err != nil {
 					return mcpmcp.NewToolResultError(err.Error()), nil
 				}
@@ -486,6 +492,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			if outputProvided || (currentStep.Require != nil && currentStep.Require.HasChecks()) {
 				state.Outputs[currentStep.ID] = output
 			}
+			freshOutput = outputProvided
 		}
 
 		// Handle loop steps. Do NOT pre-release the claim here — if
@@ -495,7 +502,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		// writes with Busy=false, and the defer's follow-up write is
 		// a harmless no-op.
 		if currentStep.Loop != nil {
-			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
+			return s.handleLoopAdvance(ctx, wf, state, &currentStep, freshOutput)
 		}
 
 		return s.transition(wf, state, &currentStep, "")
@@ -517,7 +524,7 @@ func findStep(wf *engine.Workflow, id string) *engine.WfStep {
 // dispatched child and nothing else. Downstream prompts reference
 // children by id ({{review-a}}), so a single consolidated blob is not
 // enough.
-func parallelOutputs(step engine.WfStep, raw any) (map[string]string, error) {
+func parallelOutputs(wf *engine.Workflow, step engine.WfStep, raw any) (map[string]string, error) {
 	want := strings.Join(step.Parallel, ", ")
 	obj, ok := raw.(map[string]any)
 	if !ok {
@@ -544,6 +551,15 @@ func parallelOutputs(step engine.WfStep, raw any) (map[string]string, error) {
 	}
 	if len(missing) > 0 {
 		return nil, fmt.Errorf("parallel step %s: outputs missing a string result for: %s", step.ID, strings.Join(missing, ", "))
+	}
+	// Children are skipped in the sequential walk, so their own
+	// require: contracts must be checked here.
+	for _, id := range step.Parallel {
+		if child := findStep(wf, id); child != nil {
+			if err := engine.ValidateRequiredOutput(*child, out[id]); err != nil {
+				return nil, fmt.Errorf("parallel step %s: %w", step.ID, err)
+			}
+		}
 	}
 	return out, nil
 }
@@ -737,7 +753,7 @@ func commandEnv(state *lib.SessionState) []string {
 // through the same function the validator uses.
 func sanitizeEnvKey(id string) string { return engine.EnvKey(id) }
 
-func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
+func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, freshOutput bool) (*mcpmcp.CallToolResult, error) {
 	// Initialize loop tracking on first call
 	if state.LoopMax == 0 {
 		state.LoopMax = step.Loop.Max
@@ -771,7 +787,7 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 	if step.Loop.Until != "" {
 		// Line-anchored match (see engine.MatchUntil).
 		output, ok := state.Outputs[step.ID]
-		untilMet = ok && engine.MatchUntil(output, step.Loop.Until)
+		untilMet = freshOutput && ok && engine.MatchUntil(output, step.Loop.Until)
 	}
 	if hasCondition && gatePassed && untilMet {
 		return s.advancePastLoop(wf, state, step, "")

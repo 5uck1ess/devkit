@@ -168,6 +168,9 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 				break
 			}
 			totalUSD += cost
+			if step.End {
+				break
+			}
 			i++
 			continue
 		}

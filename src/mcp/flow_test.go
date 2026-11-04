@@ -298,3 +298,52 @@ func TestEndNotReachedOnBranchPath(t *testing.T) {
 		t.Fatalf("at %q, want quick", st.CurrentStep)
 	}
 }
+
+func TestAdvanceParallelValidatesChildRequire(t *testing.T) {
+	h, _ := newFlow(t, `name: req
+description: child require
+steps:
+  - id: a
+    prompt: A
+    require:
+      until: APPROVED
+  - id: b
+    prompt: B
+  - id: fan
+    parallel: [a, b]
+  - id: after
+    prompt: "{{a}}"
+`, "x")
+	text, isErr := h.advance(map[string]interface{}{
+		"outputs": map[string]interface{}{"a": "", "b": "fine"},
+	})
+	if !isErr || !strings.Contains(text, "a") {
+		t.Fatalf("child require must be enforced, got isErr=%v:\n%s", isErr, text)
+	}
+	if st := h.state(); st.CurrentStep != "fan" || st.Busy {
+		t.Fatalf("rejected advance must stay on fan and release claim, got %q busy=%v", st.CurrentStep, st.Busy)
+	}
+	_, isErr = h.advance(map[string]interface{}{
+		"outputs": map[string]interface{}{"a": "APPROVED", "b": "fine"},
+	})
+	if isErr {
+		t.Fatal("valid child outputs rejected")
+	}
+}
+
+func TestLoopUntilRequiresFreshOutput(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "green")
+	h, _ := newFlow(t, strings.Replace(gatedLoop, "%s", "test -f "+marker, 1), "x")
+	// Iteration 1: agent says DONE but gate is red → stay.
+	h.advance(map[string]interface{}{"output": "DONE"})
+	if st := h.state(); st.CurrentStep != "fix" {
+		t.Fatalf("at %q, want fix", st.CurrentStep)
+	}
+	// Gate turns green; agent advances WITHOUT a new output. The stale
+	// DONE from iteration 1 must not complete the loop.
+	writeFile(t, marker, "ok")
+	h.advance(map[string]interface{}{})
+	if st := h.state(); st.CurrentStep != "fix" {
+		t.Fatalf("stale DONE completed the loop: at %q", st.CurrentStep)
+	}
+}
