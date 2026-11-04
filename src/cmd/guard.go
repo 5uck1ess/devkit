@@ -415,6 +415,42 @@ func baseName(p string) string {
 // outside single quotes all fail. Variable references like
 // ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words, with
 // flags recording where expansions occur.
+// paramRefEnd checks the expansion starting at cmd[i] == '$' and returns
+// the index just past it. Only plain references are accepted: $NAME,
+// ${NAME}, or a lone $. Anything inside ${...} beyond a name — subscripts
+// (${x['$(cmd)']} runs cmd), operators, transformations — and $[...]
+// arithmetic can execute code, so it is rejected.
+func paramRefEnd(cmd string, i int) (int, bool) {
+	j := i + 1
+	if j >= len(cmd) {
+		return j, true
+	}
+	switch cmd[j] {
+	case '[':
+		return 0, false
+	case '{':
+		k := j + 1
+		for k < len(cmd) && isNameByte(cmd[k], k == j+1) {
+			k++
+		}
+		if k == j+1 || k >= len(cmd) || cmd[k] != '}' {
+			return 0, false
+		}
+		return k + 1, true
+	}
+	return j, true
+}
+
+func isNameByte(b byte, first bool) bool {
+	switch {
+	case b == '_', b >= 'A' && b <= 'Z', b >= 'a' && b <= 'z':
+		return true
+	case b >= '0' && b <= '9':
+		return !first
+	}
+	return false
+}
+
 func splitSimpleCommand(cmd string) ([]shellWord, bool) {
 	var words []shellWord
 	var cur strings.Builder
@@ -452,11 +488,25 @@ func splitSimpleCommand(cmd string) ([]shellWord, bool) {
 			case c == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
 				return nil, false
 			case c == '$':
+				end, ok := paramRefEnd(cmd, i)
+				if !ok {
+					return nil, false
+				}
 				w.anyExp = true
-				cur.WriteByte(c)
+				cur.WriteString(cmd[i:end])
+				i = end - 1
 			case c == '\\' && i+1 < len(cmd):
-				i++
-				cur.WriteByte(cmd[i])
+				// Inside double quotes a backslash only escapes $ ` " \
+				// and newline; before anything else bash keeps it.
+				switch cmd[i+1] {
+				case '$', '`', '"', '\\':
+					i++
+					cur.WriteByte(cmd[i])
+				case '\n':
+					i++
+				default:
+					cur.WriteByte(c)
+				}
 			default:
 				cur.WriteByte(c)
 			}
@@ -489,8 +539,13 @@ func splitSimpleCommand(cmd string) ([]shellWord, bool) {
 			if i+1 < len(cmd) && cmd[i+1] == '(' {
 				return nil, false
 			}
+			end, ok := paramRefEnd(cmd, i)
+			if !ok {
+				return nil, false
+			}
 			w.unquotedExp, w.anyExp = true, true
-			cur.WriteByte(c)
+			cur.WriteString(cmd[i:end])
+			i = end - 1
 			inWord = true
 		default:
 			cur.WriteByte(c)

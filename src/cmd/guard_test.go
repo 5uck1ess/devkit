@@ -996,6 +996,72 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (array subscript in arg (reviewer repro)) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node /p/codex-companion.mj\\\"s\\\" task ${x['$(printf 129 >&2)']}\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (array subscript in double-quoted arg) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node /p/codex-companion.mjs task \\\"${x['$(id)']}\\\"\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass ($[ ] arithmetic in arg) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node /p/codex-companion.mjs task $[x['$(id)']]\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (parameter operator in arg) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node /p/codex-companion.mjs task \\\"${x:-y}\\\"\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (double-quote backslash-quote escape (reviewer repro)) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"bash -c \\\"node /p/codex-companion.mj\\\\\\\"s\\\\\\\" task \\\\'\\\\$(printf 129 >&2)\\\\'\\\"\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion escaped quotes inside double-quoted prompt → allow",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Bash","tool_input":{"command":"node \"${CLAUDE_PLUGIN_ROOT}/scripts/codex-companion.mjs\" task \"say \\\"hi\\\" to $USER\""}}`,
+			wantExit: 0,
+		},
+		{
 			name:       "prompt+hard+Bash companion bypass (@P prompt transform quoted) → block",
 			dataDir:    true,
 			hasSession: true,
