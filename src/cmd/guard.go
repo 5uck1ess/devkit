@@ -354,6 +354,16 @@ func isCompanionInvocation(cmd string, depth int) bool {
 	if prog.unquotedExp || script.unquotedExp {
 		return false
 	}
+	// Quoted expansions can still rewrite the word: "${PWD:+--eval}..."
+	// turns the script into a node option. The program word must be
+	// literal, and the script word may only reference the plugin root
+	// as a plain variable — no operators, no other variables.
+	if prog.anyExp {
+		return false
+	}
+	if script.anyExp && strings.Contains(pluginRootRef.ReplaceAllString(script.text, ""), "$") {
+		return false
+	}
 	// `NAME=value cmd` makes the first word an env assignment, so the
 	// real program is word 2 (e.g. NODE_OPTIONS='--import=...#/node').
 	if strings.Contains(prog.text, "=") {
@@ -377,6 +387,10 @@ func isCompanionInvocation(cmd string, depth int) bool {
 	}
 	return false
 }
+
+// pluginRootRef matches the only expansion allowed in a companion script
+// path: a plain reference to CLAUDE_PLUGIN_ROOT.
+var pluginRootRef = regexp.MustCompile(`\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT\b`)
 
 // shellWord is one word of a simple command after quote removal.
 type shellWord struct {

@@ -916,6 +916,72 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (bash -c quoted ${PWD:+--eval} in script (reviewer repro)) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"bash -c 'node \\\"${PWD:+--eval}${BASH_EXECUTION_STRING: -1}console.log(129)///codex-companion.mj\\\"s ='\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (quoted ${X:+--eval} in script) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node \\\"${PWD:+--eval}=x///codex-companion.mjs\\\" task\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (quoted other var in script) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node \\\"$HOME/codex-companion.mjs\\\" task\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (quoted expansion in program word) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"\\\"${NODE:-node}\\\" /x/codex-companion.mjs task\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (plugin root with operator) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node \\\"${CLAUDE_PLUGIN_ROOT:-/tmp}/codex-companion.mjs\\\" task\"}}",
+			wantExit: 2,
+		},
+		{
+			name:       "prompt+hard+Bash companion $CLAUDE_PLUGIN_ROOT unbraced → allow",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Bash","tool_input":{"command":"node \"$CLAUDE_PLUGIN_ROOT/scripts/codex-companion.mjs\" task 'x'"}}`,
+			wantExit: 0,
+		},
+		{
 			name:       "prompt+hard+Bash companion bypass (@P prompt transform quoted) → block",
 			dataDir:    true,
 			hasSession: true,
