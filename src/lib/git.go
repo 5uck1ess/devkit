@@ -53,8 +53,24 @@ func (g *Git) CommitAll(msg string) error {
 	return err
 }
 
-func (g *Git) RevertAll() error {
-	if _, err := g.run("checkout", "--", "."); err != nil {
+// Snapshot records the current working tree (tracked and untracked,
+// honoring .gitignore) as a git tree object and returns its id. Unlike a
+// commit it runs no hooks, so it works even when the tree would fail a
+// pre-commit check.
+func (g *Git) Snapshot() (string, error) {
+	if _, err := g.run("add", "-A"); err != nil {
+		return "", err
+	}
+	return g.run("write-tree")
+}
+
+// RestoreSnapshot makes the working tree match a tree from Snapshot:
+// modified and deleted files come back, files created since are removed.
+func (g *Git) RestoreSnapshot(tree string) error {
+	if _, err := g.run("read-tree", tree); err != nil {
+		return err
+	}
+	if _, err := g.run("checkout-index", "-a", "-f"); err != nil {
 		return err
 	}
 	_, err := g.run("clean", "-fd")

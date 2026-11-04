@@ -161,13 +161,13 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		// Parallel dispatcher step
 		if step.Prompt == "" && len(step.Parallel) > 0 {
 			cost, err := e.runParallel(ctx, step, wf.Steps, stepIndex, session, cfg.Input, outputs, opts, &iterNum)
+			totalUSD += cost
 			if err != nil {
 				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
 			}
-			totalUSD += cost
 			if step.End {
 				break
 			}
@@ -194,6 +194,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		} else {
 			cost, output, err := e.runStep(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
+				totalUSD += cost
 				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
@@ -373,10 +374,12 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 	result, err := e.runner.Run(ctx, prompt, opts)
 	if err != nil {
+		// Runners may report spend on failure (e.g. claude max-turns).
 		dbStep.Status = "failed"
+		dbStep.CostUSD = result.CostUSD
 		dbStep.ChangeSummary = err.Error()
 		e.db.UpdateStep(dbStep)
-		return 0, "", fmt.Errorf("step %s failed: %w", step.ID, err)
+		return result.CostUSD, "", fmt.Errorf("step %s failed: %w", step.ID, err)
 	}
 	if err := ValidateRequiredOutput(*step, result.Output); err != nil {
 		dbStep.Status = "failed"
@@ -406,6 +409,16 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		maxIter = 1
 	}
 
+	// Snapshot the tree before the first iteration so a failed iteration
+	// rolls back only its own edits, keeping uncommitted output from
+	// earlier steps. A snapshot (not a commit) runs no hooks, so a repair
+	// loop still starts when pre-commit would reject the current state.
+	snapshot, err := e.git.Snapshot()
+	if err != nil {
+		return 0, fmt.Errorf("loop %s: snapshot failed: %w", step.ID, err)
+	}
+	rollback := func() error { return e.git.RestoreSnapshot(snapshot) }
+
 	succeeded := false
 	consecutiveFailures := 0
 	stuckDetected := false
@@ -433,11 +446,23 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 
 		result, err := e.runner.Run(ctx, prompt, opts)
 		if err != nil {
+			// Count spend from failed runs so overBudget stays accurate.
+			// The failed run may still have edited files; those edits never
+			// faced the gate, so revert them before retrying — otherwise a
+			// later commit (iteration or final) would keep unvalidated work.
 			dbStep.Status = "failed"
+			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = err.Error()
 			e.db.UpdateStep(dbStep)
+			totalCost += result.CostUSD
+			if addCost != nil {
+				addCost(result.CostUSD)
+			}
+			if revertErr := rollback(); revertErr != nil {
+				return totalCost, fmt.Errorf("loop %s: revert failed after runner error: %w", step.ID, revertErr)
+			}
 			consecutiveFailures++
-			fmt.Printf("  failed, retrying\n\n")
+			fmt.Printf("  failed, reverted, retrying\n\n")
 			continue
 		}
 		if err := ValidateRequiredOutput(*step, result.Output); err != nil {
@@ -445,8 +470,15 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = err.Error()
 			e.db.UpdateStep(dbStep)
+			totalCost += result.CostUSD
+			if addCost != nil {
+				addCost(result.CostUSD)
+			}
+			if revertErr := rollback(); revertErr != nil {
+				return totalCost, fmt.Errorf("loop %s: revert failed after required-output failure: %w", step.ID, revertErr)
+			}
 			consecutiveFailures++
-			fmt.Printf("  failed required output check, retrying\n\n")
+			fmt.Printf("  failed required output check, reverted, retrying\n\n")
 			continue
 		}
 
@@ -475,7 +507,7 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if exitCode != 0 {
 				reason := fmt.Sprintf("gate failed (exit %d)", exitCode)
 				fmt.Printf("  → %s, reverting iteration\n\n", reason)
-				if revertErr := e.git.RevertAll(); revertErr != nil {
+				if revertErr := rollback(); revertErr != nil {
 					fmt.Printf("  → revert failed: %s\n", revertErr)
 					dbStep.Status = "failed"
 					dbStep.ChangeSummary = fmt.Sprintf("%s; revert failed: %s", reason, revertErr)
@@ -521,6 +553,12 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		if commitErr := e.git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt)); commitErr != nil {
 			fmt.Printf("  → commit failed: %s\n", commitErr)
 		}
+		// Kept work is the new rollback point even if its commit failed.
+		snap, snapErr := e.git.Snapshot()
+		if snapErr != nil {
+			return totalCost, fmt.Errorf("loop %s: snapshot failed: %w", step.ID, snapErr)
+		}
+		snapshot = snap
 
 		// Check until condition. Line-anchored (see MatchUntil) —
 		// sentinel must appear on its own line to avoid matching
@@ -599,9 +637,10 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 
 			if err != nil {
 				dbStep.Status = "failed"
+				dbStep.CostUSD = result.CostUSD
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)
-				results[j] = parallelResult{id: pid, err: err}
+				results[j] = parallelResult{id: pid, err: err, cost: result.CostUSD}
 				return
 			}
 			if err := ValidateRequiredOutput(*step, result.Output); err != nil {
@@ -609,7 +648,7 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 				dbStep.CostUSD = result.CostUSD
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)
-				results[j] = parallelResult{id: pid, err: err}
+				results[j] = parallelResult{id: pid, err: err, cost: result.CostUSD}
 				return
 			}
 
@@ -629,6 +668,8 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 	var failCount int
 	var firstErr error
 	for _, r := range results {
+		// Failed children still spent money; count it for the budget.
+		totalCost += r.cost
 		if r.err != nil {
 			fmt.Printf("  %s: failed (%v)\n", r.id, r.err)
 			failCount++
@@ -638,7 +679,6 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			continue
 		}
 		outputs[r.id] = r.output
-		totalCost += r.cost
 		fmt.Printf("  %s: done ($%.4f)\n", r.id, r.cost)
 	}
 	fmt.Println()

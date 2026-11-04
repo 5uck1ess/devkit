@@ -14,10 +14,12 @@ import (
 type ClaudeRunner struct{}
 
 type claudeResponse struct {
-	Result       string  `json:"result"`
-	SessionID    string  `json:"session_id"`
-	IsError      bool    `json:"is_error"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
+	Result       string   `json:"result"`
+	SessionID    string   `json:"session_id"`
+	IsError      bool     `json:"is_error"`
+	Subtype      string   `json:"subtype"`
+	Errors       []string `json:"errors"`
+	TotalCostUSD float64  `json:"total_cost_usd"`
 	Usage        struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
@@ -85,12 +87,31 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 			fmt.Errorf("claude returned non-JSON output: %s", TruncStr(stdout.String(), 200))
 	}
 
-	return RunResult{
+	result := RunResult{
 		Output:    resp.Result,
 		SessionID: resp.SessionID,
 		TokensIn:  resp.Usage.InputTokens,
 		TokensOut: resp.Usage.OutputTokens,
 		CostUSD:   resp.TotalCostUSD,
 		ExitCode:  exitCode,
-	}, nil
+	}
+	// claude -p reports API errors, auth failures and max-turns
+	// exhaustion as valid JSON with is_error=true (often with a non-zero
+	// exit). Treat either signal as a failed run so the engine does not
+	// record the error text as a kept step output. Output and cost are
+	// kept on the result for reporting/budget accounting.
+	if resp.IsError || exitCode != 0 {
+		msg := strings.TrimSpace(resp.Result)
+		if msg == "" {
+			msg = strings.Join(resp.Errors, "; ")
+		}
+		if msg == "" {
+			msg = strings.TrimSpace(stderr.String())
+		}
+		if resp.Subtype != "" && resp.Subtype != "success" {
+			msg = resp.Subtype + ": " + msg
+		}
+		return result, fmt.Errorf("claude error (exit %d, is_error=%t): %s", exitCode, resp.IsError, TruncStr(msg, 500))
+	}
+	return result, nil
 }
