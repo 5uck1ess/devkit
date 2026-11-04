@@ -85,12 +85,25 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 			fmt.Errorf("claude returned non-JSON output: %s", TruncStr(stdout.String(), 200))
 	}
 
-	return RunResult{
+	result := RunResult{
 		Output:    resp.Result,
 		SessionID: resp.SessionID,
 		TokensIn:  resp.Usage.InputTokens,
 		TokensOut: resp.Usage.OutputTokens,
 		CostUSD:   resp.TotalCostUSD,
 		ExitCode:  exitCode,
-	}, nil
+	}
+	// claude -p reports API errors, auth failures and max-turns
+	// exhaustion as valid JSON with is_error=true (often with a non-zero
+	// exit). Treat either signal as a failed run so the engine does not
+	// record the error text as a kept step output. Output and cost are
+	// kept on the result for reporting/budget accounting.
+	if resp.IsError || exitCode != 0 {
+		msg := strings.TrimSpace(resp.Result)
+		if msg == "" {
+			msg = strings.TrimSpace(stderr.String())
+		}
+		return result, fmt.Errorf("claude error (exit %d, is_error=%t): %s", exitCode, resp.IsError, TruncStr(msg, 500))
+	}
+	return result, nil
 }
