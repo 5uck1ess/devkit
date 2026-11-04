@@ -1742,3 +1742,36 @@ func TestRunWorkflowFailedRunsCountTowardBudget(t *testing.T) {
 		t.Errorf("TotalUSD = %.2f, want >= 1.00 (failed-run spend dropped)", res.TotalUSD)
 	}
 }
+
+func TestRunWorkflowParallelFailedRunsCountCost(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	eng := mustEngine(t, db, git, &erroringCostRunner{}, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "a", Prompt: "A"},
+		{ID: "b", Prompt: "B"},
+		{ID: "fan", Parallel: []string{"a", "b"}},
+	}}
+	res, _ := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"})
+	if res == nil || res.TotalUSD < 1.00 {
+		t.Fatalf("failed parallel children's spend dropped: %+v", res)
+	}
+}
+
+func TestRunWorkflowLoopRequireFailureCountsTowardBudget(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	responses := make([]runners.RunResult, 10)
+	for i := range responses {
+		responses[i] = runners.RunResult{Output: "no marker", CostUSD: 0.50}
+	}
+	runner := newMockRunner(responses, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "fix", Prompt: "Fix", Loop: &Loop{Max: 10, Until: "DONE"}, Require: &Require{Contains: []string{"MARKER"}}},
+	}}
+	eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x", BudgetUSD: 1.00})
+	if runner.callIdx > 2 {
+		t.Errorf("runner called %d times; require-failed iterations must count toward the budget", runner.callIdx)
+	}
+}

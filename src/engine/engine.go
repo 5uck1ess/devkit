@@ -166,13 +166,13 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		// Parallel dispatcher step
 		if step.Prompt == "" && len(step.Parallel) > 0 {
 			cost, err := e.runParallel(ctx, step, wf.Steps, stepIndex, session, cfg.Input, outputs, opts, &iterNum)
+			totalUSD += cost
 			if err != nil {
 				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
 				break
 			}
-			totalUSD += cost
 			i++
 			continue
 		}
@@ -453,6 +453,10 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = err.Error()
 			e.db.UpdateStep(dbStep)
+			totalCost += result.CostUSD
+			if addCost != nil {
+				addCost(result.CostUSD)
+			}
 			consecutiveFailures++
 			fmt.Printf("  failed required output check, retrying\n\n")
 			continue
@@ -607,9 +611,10 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 
 			if err != nil {
 				dbStep.Status = "failed"
+				dbStep.CostUSD = result.CostUSD
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)
-				results[j] = parallelResult{id: pid, err: err}
+				results[j] = parallelResult{id: pid, err: err, cost: result.CostUSD}
 				return
 			}
 			if err := ValidateRequiredOutput(*step, result.Output); err != nil {
@@ -617,7 +622,7 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 				dbStep.CostUSD = result.CostUSD
 				dbStep.ChangeSummary = err.Error()
 				e.db.UpdateStep(dbStep)
-				results[j] = parallelResult{id: pid, err: err}
+				results[j] = parallelResult{id: pid, err: err, cost: result.CostUSD}
 				return
 			}
 
@@ -637,6 +642,8 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 	var failCount int
 	var firstErr error
 	for _, r := range results {
+		// Failed children still spent money; count it for the budget.
+		totalCost += r.cost
 		if r.err != nil {
 			fmt.Printf("  %s: failed (%v)\n", r.id, r.err)
 			failCount++
@@ -646,7 +653,6 @@ func (e *Engine) runParallel(ctx context.Context, dispatcher *WfStep, allSteps [
 			continue
 		}
 		outputs[r.id] = r.output
-		totalCost += r.cost
 		fmt.Printf("  %s: done ($%.4f)\n", r.id, r.cost)
 	}
 	fmt.Println()
