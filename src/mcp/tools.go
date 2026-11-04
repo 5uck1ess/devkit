@@ -1,7 +1,6 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -23,6 +22,13 @@ const commandTimeout = 5 * time.Minute
 // gateTimeout bounds each loop gate independently so a wedged gate
 // cannot consume the full commandTimeout budget.
 const gateTimeout = 60 * time.Second
+
+// commandWaitDelay bounds how long we keep reading output after the shell
+// exits or is killed. Without it, a child that inherited the output pipe
+// blocks the step until the child exits, ignoring the timeout (#126).
+// Output still open after this delay is treated as incomplete.
+// A var so tests can shorten it.
+var commandWaitDelay = 5 * time.Second
 
 // sessionStaleTTL is the age after which an existing "running" session
 // is considered orphaned — i.e. the previous engine process crashed
@@ -583,10 +589,14 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = s.repoRoot
 	cmd.Env = append(os.Environ(), commandEnv(state)...)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
+	configureCommandProcess(cmd)
+	// Backstop: if the process is still alive commandWaitDelay after
+	// Cancel ran, Go SIGKILLs it directly so Wait cannot block forever.
+	cmd.WaitDelay = commandWaitDelay
+	output, err, startErr, truncated := runDrained(cmd, commandWaitDelay)
+	if startErr != nil {
+		return "", 1, fmt.Errorf("command execution failed: %w", startErr)
+	}
 	// Timeout must be checked BEFORE the exec.ExitError branch —
 	// on Unix, CommandContext kills the process with SIGKILL when
 	// the deadline fires, and that surfaces as an *exec.ExitError
@@ -595,7 +605,16 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	// so timeouts were reported as "exit code -1" instead of the
 	// promised exit 124 with a clear timeout message.
 	if ctx.Err() == context.DeadlineExceeded {
-		return out.String(), 124, fmt.Errorf("command timed out after %s", timeout)
+		return output, 124, fmt.Errorf("command timed out after %s", timeout)
+	}
+	// Truncated: the shell exited (with ANY code) but a leftover
+	// background child still held the output pipe after
+	// commandWaitDelay. The captured output is incomplete — the child
+	// could still print FAIL after a PASS we already captured — so fail
+	// closed rather than let expect/require/gate checks judge it.
+	// runDrained has already killed the leftovers.
+	if truncated {
+		return output, 1, fmt.Errorf("command exited but a background process still held its output after %s; output is incomplete (redirect or wait for background jobs)", commandWaitDelay)
 	}
 	exitCode := 0
 	if err != nil {
@@ -607,10 +626,10 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 			// permission denied). Surface whatever the command
 			// produced on its combined stream so the user sees
 			// the real cause, not just the Go wrapper.
-			return out.String(), 1, fmt.Errorf("command execution failed: %w", err)
+			return output, 1, fmt.Errorf("command execution failed: %w", err)
 		}
 	}
-	return out.String(), exitCode, nil
+	return output, exitCode, nil
 }
 
 // commandEnv returns the DEVKIT_INPUT and DEVKIT_OUT_<id> env vars that
