@@ -62,3 +62,11 @@ func TestClaudeRun_Success(t *testing.T) {
 		t.Errorf("got %+v", res)
 	}
 }
+
+func TestClaudeRun_MaxTurnsUsesErrorsField(t *testing.T) {
+	fakeClaude(t, `{"subtype":"error_max_turns","is_error":true,"total_cost_usd":0.8,"errors":["Reached maximum number of turns (30)"]}`, 1)
+	_, err := (&ClaudeRunner{}).Run(context.Background(), "hi", RunOpts{})
+	if err == nil || !strings.Contains(err.Error(), "Reached maximum number of turns") {
+		t.Fatalf("error should carry the errors[] text, got %v", err)
+	}
+}

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1711,5 +1712,33 @@ func TestInterpolateDeterministic(t *testing.T) {
 		if got != first {
 			t.Fatalf("nondeterministic interpolate: %q vs %q", first, got)
 		}
+	}
+}
+
+// erroringCostRunner fails every call but reports spend, like claude -p
+// hitting max-turns after real work.
+type erroringCostRunner struct{ calls int }
+
+func (r *erroringCostRunner) Name() string    { return "err-cost" }
+func (r *erroringCostRunner) Available() bool { return true }
+func (r *erroringCostRunner) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
+	r.calls++
+	return runners.RunResult{CostUSD: 0.50}, errors.New("max turns")
+}
+
+func TestRunWorkflowFailedRunsCountTowardBudget(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := &erroringCostRunner{}
+	eng := mustEngine(t, db, git, runner, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "fix", Prompt: "Fix", Loop: &Loop{Max: 10, Until: "DONE"}},
+	}}
+	res, _ := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x", BudgetUSD: 1.00})
+	if runner.calls > 2 {
+		t.Errorf("runner called %d times; failed runs' cost must count toward the $1.00 budget (want <= 2)", runner.calls)
+	}
+	if res != nil && res.TotalUSD < 1.00 {
+		t.Errorf("TotalUSD = %.2f, want >= 1.00 (failed-run spend dropped)", res.TotalUSD)
 	}
 }

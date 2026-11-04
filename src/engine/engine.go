@@ -196,6 +196,7 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		} else {
 			cost, output, err := e.runStep(ctx, step, session, cfg.Input, outputs, opts, &iterNum)
 			if err != nil {
+				totalUSD += cost
 				e.db.UpdateSessionStatus(session.ID, "failed")
 				failed = true
 				stepErr = err
@@ -372,10 +373,12 @@ func (e *Engine) runStep(ctx context.Context, step *WfStep, session *lib.Session
 
 	result, err := e.runner.Run(ctx, prompt, opts)
 	if err != nil {
+		// Runners may report spend on failure (e.g. claude max-turns).
 		dbStep.Status = "failed"
+		dbStep.CostUSD = result.CostUSD
 		dbStep.ChangeSummary = err.Error()
 		e.db.UpdateStep(dbStep)
-		return 0, "", fmt.Errorf("step %s failed: %w", step.ID, err)
+		return result.CostUSD, "", fmt.Errorf("step %s failed: %w", step.ID, err)
 	}
 	if err := ValidateRequiredOutput(*step, result.Output); err != nil {
 		dbStep.Status = "failed"
@@ -432,9 +435,15 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 
 		result, err := e.runner.Run(ctx, prompt, opts)
 		if err != nil {
+			// Count spend from failed runs so overBudget stays accurate.
 			dbStep.Status = "failed"
+			dbStep.CostUSD = result.CostUSD
 			dbStep.ChangeSummary = err.Error()
 			e.db.UpdateStep(dbStep)
+			totalCost += result.CostUSD
+			if addCost != nil {
+				addCost(result.CostUSD)
+			}
 			consecutiveFailures++
 			fmt.Printf("  failed, retrying\n\n")
 			continue

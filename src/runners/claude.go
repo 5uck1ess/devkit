@@ -14,10 +14,12 @@ import (
 type ClaudeRunner struct{}
 
 type claudeResponse struct {
-	Result       string  `json:"result"`
-	SessionID    string  `json:"session_id"`
-	IsError      bool    `json:"is_error"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
+	Result       string   `json:"result"`
+	SessionID    string   `json:"session_id"`
+	IsError      bool     `json:"is_error"`
+	Subtype      string   `json:"subtype"`
+	Errors       []string `json:"errors"`
+	TotalCostUSD float64  `json:"total_cost_usd"`
 	Usage        struct {
 		InputTokens  int `json:"input_tokens"`
 		OutputTokens int `json:"output_tokens"`
@@ -101,7 +103,13 @@ func (r *ClaudeRunner) Run(ctx context.Context, prompt string, opts RunOpts) (Ru
 	if resp.IsError || exitCode != 0 {
 		msg := strings.TrimSpace(resp.Result)
 		if msg == "" {
+			msg = strings.Join(resp.Errors, "; ")
+		}
+		if msg == "" {
 			msg = strings.TrimSpace(stderr.String())
+		}
+		if resp.Subtype != "" && resp.Subtype != "success" {
+			msg = resp.Subtype + ": " + msg
 		}
 		return result, fmt.Errorf("claude error (exit %d, is_error=%t): %s", exitCode, resp.IsError, TruncStr(msg, 500))
 	}
