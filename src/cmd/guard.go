@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -322,6 +323,8 @@ func isCompanionRescueCommand(cmd string) bool {
 	return isCompanionInvocation(cmd, 0)
 }
 
+var paramTransform = regexp.MustCompile(`\$\{[^}]*@[A-Za-z]\}`)
+
 var companionScripts = map[string]bool{
 	"codex-companion.mjs":  true,
 	"gemini-companion.mjs": true,
@@ -336,6 +339,14 @@ func isCompanionInvocation(cmd string, depth int) bool {
 		return false
 	}
 	prog, script := words[0], words[1]
+	// ${var@P} (prompt expansion) re-parses the value and runs any
+	// $(...) inside it, even within double quotes. Reject every
+	// ${...@op} transformation in any word.
+	for _, w := range words {
+		if w.anyExp && paramTransform.MatchString(w.text) {
+			return false
+		}
+	}
 	// An unquoted $ in the program or script word is subject to field
 	// splitting: `node ${IFS}-e${IFS}'code'${IFS}/x/codex-companion.mjs`
 	// parses as two words here but bash runs `node -e code ...`.

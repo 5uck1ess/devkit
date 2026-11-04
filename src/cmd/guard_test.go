@@ -916,6 +916,30 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (@P prompt transform quoted) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node /p/codex-companion.mjs task \"${PWN@P}\""}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (@P prompt transform unquoted) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node /p/codex-companion.mjs task ${PWN@P}"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
 			// Negative: command-step Bash must still block even if the
 			// command looks like a companion rescue. Command steps are
 			// run by the engine directly; any Bash from the model is a
