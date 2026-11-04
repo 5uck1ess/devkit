@@ -15,7 +15,12 @@ set -euo pipefail
 # fail open (skip validation) rather than surface a hook error.
 INPUT=$(cat || true)
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null || true)
-TOOL_OUTPUT=$(echo "$INPUT" | jq -r '.tool_output // empty' 2>/dev/null || true)
+# PostToolUse delivers the tool result as .tool_response. For Bash it is an
+# object ({stdout, stderr, interrupted, ...}); other tools may send a string.
+TOOL_OUTPUT=$(echo "$INPUT" | jq -r '.tool_response // empty
+  | if type == "object" then ((.stdout // "") + "\n" + (.stderr // ""))
+    elif type == "string" then .
+    else tostring end' 2>/dev/null || true)
 FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty' 2>/dev/null || true)
 CONTENT=$(echo "$INPUT" | jq -r '.tool_input.content // empty' 2>/dev/null || true)
 
