@@ -333,7 +333,7 @@ steps:
 
 func TestLoopUntilRequiresFreshOutput(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "green")
-	h, _ := newFlow(t, strings.Replace(gatedLoop, "%s", "test -f "+marker, 1), "x")
+	h, _ := newFlow(t, strings.Replace(gatedLoop, "%s", "test -f "+filepath.ToSlash(marker), 1), "x")
 	// Iteration 1: agent says DONE but gate is red → stay.
 	h.advance(map[string]interface{}{"output": "DONE"})
 	if st := h.state(); st.CurrentStep != "fix" {
