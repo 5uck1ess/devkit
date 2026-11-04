@@ -503,7 +503,9 @@ func splitSimpleCommand(cmd string) ([]shellWord, bool) {
 					i++
 					cur.WriteByte(cmd[i])
 				case '\n':
-					i++
+					// Line continuation: bash deletes both characters, which
+					// can join "$" and "(" after the $( check ran.
+					return nil, false
 				default:
 					cur.WriteByte(c)
 				}

@@ -1062,6 +1062,17 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (backslash-newline joins $ and ( in double quotes) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    "{\"tool_name\": \"Bash\", \"tool_input\": {\"command\": \"node /p/codex-companion.mj\\\"s\\\" task \\\"$\\\\\\n(printf 129 >&2)\\\"\"}}",
+			wantExit: 2,
+		},
+		{
 			name:       "prompt+hard+Bash companion bypass (@P prompt transform quoted) → block",
 			dataDir:    true,
 			hasSession: true,
