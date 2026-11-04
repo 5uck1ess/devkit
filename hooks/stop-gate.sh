@@ -29,7 +29,9 @@ TRANSCRIPT=""
 if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" && ! -L "$TRANSCRIPT_PATH" ]]; then
   TRANSCRIPT=$(tail -c 2000000 "$TRANSCRIPT_PATH" 2>/dev/null || true)
 fi
-[[ -n "$LAST_MSG" ]] && TRANSCRIPT="$TRANSCRIPT
+# last_assistant_message only supplements a transcript we could read — on
+# its own it is too little history to conclude evidence is missing.
+[[ -n "$TRANSCRIPT" && -n "$LAST_MSG" ]] && TRANSCRIPT="$TRANSCRIPT
 $LAST_MSG"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -98,11 +100,11 @@ STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/nul
 if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]] && [[ "$STOP_HOOK_ACTIVE" != "true" ]]; then
   MISSING=""
 
-  $HAS_GO && ! grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING go"
-  $HAS_TS && ! grep -qiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING typescript"
-  $HAS_RUST && ! grep -qiE '(cargo test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING rust"
-  $HAS_PYTHON && ! grep -qiE '(pytest|python.*-m.*test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING python"
-  $HAS_SQL && ! grep -qiE '(migrate|migration.*up|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING sql"
+  $HAS_GO && ! grep -aqiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING go"
+  $HAS_TS && ! grep -aqiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING typescript"
+  $HAS_RUST && ! grep -aqiE '(cargo test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING rust"
+  $HAS_PYTHON && ! grep -aqiE '(pytest|python.*-m.*test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING python"
+  $HAS_SQL && ! grep -aqiE '(migrate|migration.*up|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING sql"
 
   MISSING=$(echo "$MISSING" | xargs)
   if [[ -n "$MISSING" ]]; then

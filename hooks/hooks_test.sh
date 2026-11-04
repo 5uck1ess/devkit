@@ -827,6 +827,20 @@ if ! printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
 else
   fail "subagent-stop: re-blocked while stop_hook_active (got: $out)"
 fi
+out=$(sub '{"agent_type":"test-writer","last_assistant_message":"Ran cargo test: test result: ok. 8 passed; 0 failed","stop_hook_active":false}')
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "subagent-stop: cargo test output counts as evidence"
+else
+  fail "subagent-stop: cargo test evidence not recognised (got: $out)"
+fi
+sub_tx=$(mktemp); GUARD_TMPS+=("$sub_tx")
+printf '%s\n' '{"type":"tool_use","name":"Bash","input":{"command":"go test ./..."}}' > "$sub_tx"
+out=$(sub "$(jq -n --arg p "$sub_tx" '{agent_type:"devkit:test-writer",agent_transcript_path:$p,last_assistant_message:"Added parser unit tests; all 14 cases green.",stop_hook_active:false}')")
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "subagent-stop: test command in agent_transcript_path counts as evidence"
+else
+  fail "subagent-stop: agent_transcript_path not consulted (got: $out)"
+fi
 if jq -e '[.hooks.SubagentStop[] | select(.matcher=="Stop")] | length == 0' "$HOOK_DIR/hooks.json" >/dev/null 2>&1; then
   pass "hooks.json: SubagentStop has no dead \"Stop\" matcher"
 else
@@ -846,6 +860,15 @@ if printf '%s' "$out" | jq -e '.decision=="block" and (.reason|test("Missing tes
   pass "stop-gate: cross-domain change without evidence in transcript_path → block"
 else
   fail "stop-gate: cross-domain check skipped (got: $out)"
+fi
+# No readable transcript_path: last_assistant_message alone is not enough
+# history to judge, so the cross-domain check must not block.
+out=$(cd "$sg_repo" && jq -n '{transcript_path:"/nonexistent/t.jsonl",stop_hook_active:false,last_assistant_message:"Done."}' \
+  | bash "$HOOK_DIR/stop-gate.sh" 2>/dev/null || true)
+if ! printf '%s' "$out" | jq -e '(.reason // "")|test("Missing test evidence")' >/dev/null 2>&1; then
+  pass "stop-gate: missing transcript_path → cross-domain check skipped"
+else
+  fail "stop-gate: blocked on last_assistant_message alone (got: $out)"
 fi
 # Evidence early in a large transcript: grep -q exits on first match, and
 # under pipefail the upstream echo's SIGPIPE must not flip the result.

@@ -40,36 +40,50 @@ if [ ${#AGENT_OUTPUT} -lt 20 ]; then
   exit 0
 fi
 
+# Evidence may be in the final message or in the tool calls recorded in
+# the subagent's own transcript (a concise summary often omits the command).
+EVIDENCE_TEXT="$AGENT_OUTPUT"
+AGENT_TX=$(echo "$INPUT" | jq -r '.agent_transcript_path // empty' 2>/dev/null || true)
+if [ -n "$AGENT_TX" ] && [ -f "$AGENT_TX" ] && [ ! -L "$AGENT_TX" ]; then
+  EVIDENCE_TEXT="$EVIDENCE_TEXT
+$(tail -c 2000000 "$AGENT_TX" 2>/dev/null || true)"
+fi
+
 # Check for evidence that tests/metrics were actually run
 TEST_EVIDENCE=false
 
 # Go test
-if grep -qE '(PASS|FAIL|ok\s+\S+\s+[0-9.]+s|--- PASS|--- FAIL|go test)' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(PASS|FAIL|ok\s+\S+\s+[0-9.]+s|--- PASS|--- FAIL|go test)' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
 # Node/Jest/Vitest
-if grep -qE '(Tests?:\s+[0-9]|test suites?|✓|✗|✘|PASS\s|FAIL\s|npm test|npx jest|npx vitest)' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(Tests?:\s+[0-9]|test suites?|✓|✗|✘|PASS\s|FAIL\s|npm test|npx jest|npx vitest)' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
 # Python pytest
-if grep -qE '(passed|failed|error).*(pytest|test)|pytest\s|python.*-m.*test' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(passed|failed|error).*(pytest|test)|pytest\s|python.*-m.*test' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
 # Go vet (race detector evidence)
-if grep -qE '(go vet|go test.*-race|-vet=|vet: )' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(go vet|go test.*-race|-vet=|vet: )' <<< "$EVIDENCE_TEXT"; then
+  TEST_EVIDENCE=true
+fi
+
+# Rust / linters
+if grep -aqE '(cargo (test|clippy)|test result: ok|[0-9]+ passed|ruff check|eslint|golangci-lint|tsc --noEmit)' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
 # Generic pass/fail signals
-if grep -qE '(ALL_PASSING|ALL_DONE|ALL_TESTS_PASSING|BUILD_SUCCESS|LINT_CLEAN|RESEARCH_COMPLETE)' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(ALL_PASSING|ALL_DONE|ALL_TESTS_PASSING|BUILD_SUCCESS|LINT_CLEAN|RESEARCH_COMPLETE)' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
 # Metric command output (exit code references)
-if grep -qE '(exit\s+(code\s+)?0|metric.*pass|tests?\s+pass)' <<< "$AGENT_OUTPUT"; then
+if grep -aqE '(exit\s+(code\s+)?0|metric.*pass|tests?\s+pass)' <<< "$EVIDENCE_TEXT"; then
   TEST_EVIDENCE=true
 fi
 
