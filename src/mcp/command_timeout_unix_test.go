@@ -5,6 +5,7 @@ package mcp
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -142,5 +143,29 @@ func TestRunCommandWithTimeout_RedirectedBackgroundJobSucceeds(t *testing.T) {
 	}
 	if elapsed > 2*time.Second {
 		t.Fatalf("redirected background job delayed the step by %s", elapsed)
+	}
+}
+
+// The direct process can leave its process group before the deadline;
+// the group kill then misses it, so the timeout must also kill it
+// directly or Wait blocks until it exits on its own.
+func TestRunCommandWithTimeout_KillsProcessThatLeftGroup(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 not available")
+	}
+	s := newTestServer(t, t.TempDir(), t.TempDir())
+	state := &lib.SessionState{Input: "", Outputs: map[string]string{}}
+
+	start := time.Now()
+	out, code, err := s.runCommandWithTimeout(context.Background(),
+		`exec python3 -c 'import os,time; os.setpgid(0,os.getpgid(os.getppid())); time.sleep(10)'`,
+		state, 500*time.Millisecond)
+	elapsed := time.Since(start)
+
+	if code != 124 || err == nil {
+		t.Fatalf("want exit 124 timeout, got code=%d err=%v out=%q", code, err, out)
+	}
+	if elapsed > 3*time.Second {
+		t.Fatalf("timeout not enforced after group escape: returned after %s", elapsed)
 	}
 }

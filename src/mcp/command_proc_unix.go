@@ -16,7 +16,20 @@ import (
 // deadline.
 func configureCommandProcess(cmd *exec.Cmd) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return killCommandProcessGroup(cmd) }
+	cmd.Cancel = func() error {
+		// Kill the group for children, and the direct process too: it
+		// can leave the group (setpgid) and would otherwise survive the
+		// group kill, keeping cmd.Wait blocked past the deadline.
+		groupErr := killCommandProcessGroup(cmd)
+		procErr := cmd.Process.Kill()
+		if groupErr == nil || procErr == nil {
+			return nil
+		}
+		if errors.Is(procErr, os.ErrProcessDone) {
+			return groupErr
+		}
+		return procErr
+	}
 }
 
 // killCommandProcessGroup SIGKILLs every process left in cmd's group.

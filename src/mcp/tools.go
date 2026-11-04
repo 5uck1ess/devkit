@@ -590,6 +590,9 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	cmd.Dir = s.repoRoot
 	cmd.Env = append(os.Environ(), commandEnv(state)...)
 	configureCommandProcess(cmd)
+	// Backstop: if the process is still alive commandWaitDelay after
+	// Cancel ran, Go SIGKILLs it directly so Wait cannot block forever.
+	cmd.WaitDelay = commandWaitDelay
 	output, err, startErr, truncated := runDrained(cmd, commandWaitDelay)
 	if startErr != nil {
 		return "", 1, fmt.Errorf("command execution failed: %w", startErr)
