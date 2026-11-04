@@ -331,27 +331,47 @@ func isCompanionInvocation(cmd string, depth int) bool {
 	if depth > 1 {
 		return false
 	}
-	words, unquotedExp, ok := splitSimpleCommand(cmd)
+	words, ok := splitSimpleCommand(cmd)
 	if !ok || len(words) < 2 {
 		return false
 	}
+	prog, script := words[0], words[1]
 	// An unquoted $ in the program or script word is subject to field
 	// splitting: `node ${IFS}-e${IFS}'code'${IFS}/x/codex-companion.mjs`
 	// parses as two words here but bash runs `node -e code ...`.
 	// Quoted expansions ("${CLAUDE_PLUGIN_ROOT}/...") don't split.
-	if unquotedExp[0] || unquotedExp[1] {
+	if prog.unquotedExp || script.unquotedExp {
 		return false
 	}
-	prog := strings.TrimSuffix(baseName(words[0]), ".exe")
-	switch prog {
+	// `NAME=value cmd` makes the first word an env assignment, so the
+	// real program is word 2 (e.g. NODE_OPTIONS='--import=...#/node').
+	if strings.Contains(prog.text, "=") {
+		return false
+	}
+	switch strings.TrimSuffix(baseName(prog.text), ".exe") {
 	case "node":
-		return companionScripts[baseName(words[1])]
+		// A leading - makes the "script" a node option:
+		// node '--eval=code///codex-companion.mjs' runs code.
+		if strings.HasPrefix(script.text, "-") || strings.Contains(script.text, "=") {
+			return false
+		}
+		return companionScripts[baseName(script.text)]
 	case "bash", "sh":
-		if len(words) == 3 && words[1] == "-c" {
-			return isCompanionInvocation(words[2], depth+1)
+		// The -c script must reach the inner shell exactly as written:
+		// any $ the OUTER shell expands (unquoted, double-quoted, or
+		// $'...' ANSI-C quoting) can inject separators after this check.
+		if len(words) == 3 && script.text == "-c" && !words[2].anyExp {
+			return isCompanionInvocation(words[2].text, depth+1)
 		}
 	}
 	return false
+}
+
+// shellWord is one word of a simple command after quote removal.
+type shellWord struct {
+	text        string
+	unquotedExp bool // contains a $ outside any quotes (field-split by the shell)
+	anyExp      bool // contains a $ the shell would expand (unquoted or in double quotes)
 }
 
 // baseName returns the last path segment, splitting on both / and \\ so
@@ -368,18 +388,19 @@ func baseName(p string) string {
 // the string is anything other than one simple command: unquoted
 // control/redirect operators, comments, newlines, backticks, or $( )
 // outside single quotes all fail. Variable references like
-// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words;
-// unquotedExp[i] reports whether word i contains an unquoted $ (and so
-// may be field-split by the shell).
-func splitSimpleCommand(cmd string) (words []string, unquotedExp []bool, ok bool) {
+// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words, with
+// flags recording where expansions occur.
+func splitSimpleCommand(cmd string) ([]shellWord, bool) {
+	var words []shellWord
 	var cur strings.Builder
+	var w shellWord
 	inWord := false
-	curExp := false
 	flush := func() {
-		words = append(words, cur.String())
-		unquotedExp = append(unquotedExp, curExp)
+		w.text = cur.String()
+		words = append(words, w)
 		cur.Reset()
-		inWord, curExp = false, false
+		w = shellWord{}
+		inWord = false
 	}
 	const (
 		none = iota
@@ -402,9 +423,12 @@ func splitSimpleCommand(cmd string) (words []string, unquotedExp []bool, ok bool
 			case c == '"':
 				quote = none
 			case c == '`':
-				return nil, nil, false
+				return nil, false
 			case c == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
-				return nil, nil, false
+				return nil, false
+			case c == '$':
+				w.anyExp = true
+				cur.WriteByte(c)
 			case c == '\\' && i+1 < len(cmd):
 				i++
 				cur.WriteByte(cmd[i])
@@ -424,36 +448,37 @@ func splitSimpleCommand(cmd string) (words []string, unquotedExp []bool, ok bool
 			quote, inWord = double, true
 		case '\\':
 			if i+1 >= len(cmd) || cmd[i+1] == '\n' {
-				return nil, nil, false
+				return nil, false
 			}
 			i++
 			cur.WriteByte(cmd[i])
 			inWord = true
 		case ';', '&', '|', '<', '>', '\n', '\r', '`', '(', ')':
-			return nil, nil, false
+			return nil, false
 		case '#':
 			if !inWord {
-				return nil, nil, false
+				return nil, false
 			}
 			cur.WriteByte(c)
 		case '$':
 			if i+1 < len(cmd) && cmd[i+1] == '(' {
-				return nil, nil, false
+				return nil, false
 			}
+			w.unquotedExp, w.anyExp = true, true
 			cur.WriteByte(c)
-			inWord, curExp = true, true
+			inWord = true
 		default:
 			cur.WriteByte(c)
 			inWord = true
 		}
 	}
 	if quote != none {
-		return nil, nil, false
+		return nil, false
 	}
 	if inWord {
 		flush()
 	}
-	return words, unquotedExp, true
+	return words, true
 }
 
 func runPreToolGuard() {
@@ -622,6 +647,10 @@ func runPreToolGuard() {
 			fmt.Fprintf(guardStderr,
 				"BLOCKED: devkit workflow %s is at a prompt step — gather evidence with Read/Grep/Glob then call devkit_advance. (attempted tool: %s)\n",
 				stepLabel(state), attemptedTool)
+			if attemptedTool == "Bash" && strings.Contains(command, "companion.mjs") {
+				fmt.Fprintf(guardStderr,
+					"hint: companion calls are allowed only as one plain command — node \"<path>/codex-companion.mjs\" task '<prompt>' — with plain quotes and no $( ), heredocs, pipes, redirects, or chained commands.\n")
+			}
 			guardExit(2)
 			return
 		}

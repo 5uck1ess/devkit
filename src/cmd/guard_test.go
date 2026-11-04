@@ -845,6 +845,77 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (node flag in script word) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node '--eval=require(1)///codex-companion.mjs'"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (env-assignment program word) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"NODE_OPTIONS='--import=x#/node' /p/codex-companion.mjs task"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (bash -c double-quoted IFS) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"bash -c \"node /p/codex-companion.mjs ${IFS}touch pwned\""}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (bash -c ANSI-C quote) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"bash -c 'node /p/codex-companion.mjs '$'\\x3b'' touch pwned'"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash blocked companion call gets a retry hint",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node /p/codex-companion.mjs task \"x\" 2>&1"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "plain quotes",
+		},
+		{
+			name:       "prompt+hard+Bash bash -c single-quoted companion → allow",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Bash","tool_input":{"command":"bash -c 'node \"${CLAUDE_PLUGIN_ROOT}/s/codex-companion.mjs\" task'"}}`,
+			wantExit: 0,
+		},
+		{
 			// Negative: command-step Bash must still block even if the
 			// command looks like a companion rescue. Command steps are
 			// run by the engine directly; any Bash from the model is a
