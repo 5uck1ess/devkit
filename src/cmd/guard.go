@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -299,33 +300,267 @@ func isDevkitMCPTool(name string) bool {
 	return false
 }
 
-// isCompanionRescueCommand reports whether a Bash command string
-// invokes a known rescue-subagent companion script. Used by the
-// prompt+hard carve-out so tri-* workflows' rescue subagents (codex,
-// gemini) can reach external models through their companion adapters.
+// isCompanionRescueCommand reports whether a Bash command string is a
+// single, direct invocation of a known rescue-subagent companion script.
+// Used by the prompt+hard carve-out so tri-* workflows' rescue subagents
+// (codex, gemini) can reach external models through their companion
+// adapters.
 //
-// Matched via substring so invocation style doesn't matter — the
-// adapters call their scripts as `node /abs/path/codex-companion.mjs`,
-// `bash -c '... gemini-companion.mjs ...'`, or through env-var
-// overrides, and we must tolerate all of them. The .mjs suffix is
-// load-bearing: without it, a Bash comment token like
-// `rm -rf $HOME # codex-companion` would satisfy the substring match
-// and bypass the prompt+hard Bash block. Both real companions ship
-// as .mjs files, so requiring the extension doesn't break any
-// intended invocation style. A future .js / .cjs adapter must be
-// added to this allowlist deliberately rather than relying on the
-// looser bare-name match.
+// Accepted shapes (after shell-word parsing):
 //
-// The cost of a broader match (even with .mjs pinned) is negligible:
-// the only "bypass" it enables is the main agent invoking a real
-// external model directly, which produces a real external review
-// (just not one dispatched through the subagent indirection).
+//	node <path>/codex-companion.mjs <args...>
+//	node <path>/gemini-companion.mjs <args...>
+//	bash|sh -c '<one of the above>'
+//
+// Anything that could run a second command is rejected: unquoted
+// operators (; & | < > newline), comments, backticks, and $( ) command
+// substitution outside single quotes. Arguments may contain those
+// characters only when quoted, so a raw prompt like
+// `task "review: a && b"` still works. A substring match is NOT enough:
+// `touch x # codex-companion.mjs` would satisfy it and let the main
+// agent run arbitrary Bash during a hard prompt step.
 func isCompanionRescueCommand(cmd string) bool {
-	if cmd == "" {
+	return isCompanionInvocation(cmd, 0)
+}
+
+var paramTransform = regexp.MustCompile(`\$\{[^}]*@[A-Za-z]\}`)
+
+var companionScripts = map[string]bool{
+	"codex-companion.mjs":  true,
+	"gemini-companion.mjs": true,
+}
+
+func isCompanionInvocation(cmd string, depth int) bool {
+	if depth > 1 {
 		return false
 	}
-	return strings.Contains(cmd, "codex-companion.mjs") ||
-		strings.Contains(cmd, "gemini-companion.mjs")
+	words, ok := splitSimpleCommand(cmd)
+	if !ok || len(words) < 2 {
+		return false
+	}
+	prog, script := words[0], words[1]
+	// ${var@P} (prompt expansion) re-parses the value and runs any
+	// $(...) inside it, even within double quotes. Reject every
+	// ${...@op} transformation in any word.
+	for _, w := range words {
+		if w.anyExp && paramTransform.MatchString(w.text) {
+			return false
+		}
+	}
+	// An unquoted $ in the program or script word is subject to field
+	// splitting: `node ${IFS}-e${IFS}'code'${IFS}/x/codex-companion.mjs`
+	// parses as two words here but bash runs `node -e code ...`.
+	// Quoted expansions ("${CLAUDE_PLUGIN_ROOT}/...") don't split.
+	if prog.unquotedExp || script.unquotedExp {
+		return false
+	}
+	// Quoted expansions can still rewrite the word: "${PWD:+--eval}..."
+	// turns the script into a node option. The program word must be
+	// literal, and the script word may only reference the plugin root
+	// as a plain variable — no operators, no other variables.
+	if prog.anyExp {
+		return false
+	}
+	if script.anyExp && strings.Contains(pluginRootRef.ReplaceAllString(script.text, ""), "$") {
+		return false
+	}
+	// `NAME=value cmd` makes the first word an env assignment, so the
+	// real program is word 2 (e.g. NODE_OPTIONS='--import=...#/node').
+	if strings.Contains(prog.text, "=") {
+		return false
+	}
+	switch strings.TrimSuffix(baseName(prog.text), ".exe") {
+	case "node":
+		// A leading - makes the "script" a node option:
+		// node '--eval=code///codex-companion.mjs' runs code.
+		if strings.HasPrefix(script.text, "-") || strings.Contains(script.text, "=") {
+			return false
+		}
+		return companionScripts[baseName(script.text)]
+	case "bash", "sh":
+		// The -c script must reach the inner shell exactly as written:
+		// any $ the OUTER shell expands (unquoted, double-quoted, or
+		// $'...' ANSI-C quoting) can inject separators after this check.
+		if len(words) == 3 && script.text == "-c" && !words[2].anyExp {
+			return isCompanionInvocation(words[2].text, depth+1)
+		}
+	}
+	return false
+}
+
+// pluginRootRef matches the only expansion allowed in a companion script
+// path: a plain reference to CLAUDE_PLUGIN_ROOT.
+var pluginRootRef = regexp.MustCompile(`\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT\b`)
+
+// shellWord is one word of a simple command after quote removal.
+type shellWord struct {
+	text        string
+	unquotedExp bool // contains a $ outside any quotes (field-split by the shell)
+	anyExp      bool // contains a $ the shell would expand (unquoted or in double quotes)
+}
+
+// baseName returns the last path segment, splitting on both / and \\ so
+// Windows-style script paths resolve the same way as POSIX ones.
+func baseName(p string) string {
+	if i := strings.LastIndexAny(p, `/\\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// splitSimpleCommand splits cmd into shell words, honouring single
+// quotes, double quotes and backslash escapes. It returns ok=false if
+// the string is anything other than one simple command: unquoted
+// control/redirect operators, comments, newlines, backticks, or $( )
+// outside single quotes all fail. Variable references like
+// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words, with
+// flags recording where expansions occur.
+// paramRefEnd checks the expansion starting at cmd[i] == '$' and returns
+// the index just past it. Only plain references are accepted: $NAME,
+// ${NAME}, or a lone $. Anything inside ${...} beyond a name — subscripts
+// (${x['$(cmd)']} runs cmd), operators, transformations — and $[...]
+// arithmetic can execute code, so it is rejected.
+func paramRefEnd(cmd string, i int) (int, bool) {
+	j := i + 1
+	if j >= len(cmd) {
+		return j, true
+	}
+	switch cmd[j] {
+	case '[':
+		return 0, false
+	case '{':
+		k := j + 1
+		for k < len(cmd) && isNameByte(cmd[k], k == j+1) {
+			k++
+		}
+		if k == j+1 || k >= len(cmd) || cmd[k] != '}' {
+			return 0, false
+		}
+		return k + 1, true
+	}
+	return j, true
+}
+
+func isNameByte(b byte, first bool) bool {
+	switch {
+	case b == '_', b >= 'A' && b <= 'Z', b >= 'a' && b <= 'z':
+		return true
+	case b >= '0' && b <= '9':
+		return !first
+	}
+	return false
+}
+
+func splitSimpleCommand(cmd string) ([]shellWord, bool) {
+	var words []shellWord
+	var cur strings.Builder
+	var w shellWord
+	inWord := false
+	flush := func() {
+		w.text = cur.String()
+		words = append(words, w)
+		cur.Reset()
+		w = shellWord{}
+		inWord = false
+	}
+	const (
+		none = iota
+		single
+		double
+	)
+	quote := none
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		switch quote {
+		case single:
+			if c == '\'' {
+				quote = none
+			} else {
+				cur.WriteByte(c)
+			}
+			continue
+		case double:
+			switch {
+			case c == '"':
+				quote = none
+			case c == '`':
+				return nil, false
+			case c == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
+				return nil, false
+			case c == '$':
+				end, ok := paramRefEnd(cmd, i)
+				if !ok {
+					return nil, false
+				}
+				w.anyExp = true
+				cur.WriteString(cmd[i:end])
+				i = end - 1
+			case c == '\\' && i+1 < len(cmd):
+				// Inside double quotes a backslash only escapes $ ` " \
+				// and newline; before anything else bash keeps it.
+				switch cmd[i+1] {
+				case '$', '`', '"', '\\':
+					i++
+					cur.WriteByte(cmd[i])
+				case '\n':
+					// Line continuation: bash deletes both characters, which
+					// can join "$" and "(" after the $( check ran.
+					return nil, false
+				default:
+					cur.WriteByte(c)
+				}
+			default:
+				cur.WriteByte(c)
+			}
+			continue
+		}
+		switch c {
+		case ' ', '\t':
+			if inWord {
+				flush()
+			}
+		case '\'':
+			quote, inWord = single, true
+		case '"':
+			quote, inWord = double, true
+		case '\\':
+			if i+1 >= len(cmd) || cmd[i+1] == '\n' {
+				return nil, false
+			}
+			i++
+			cur.WriteByte(cmd[i])
+			inWord = true
+		case ';', '&', '|', '<', '>', '\n', '\r', '`', '(', ')':
+			return nil, false
+		case '#':
+			if !inWord {
+				return nil, false
+			}
+			cur.WriteByte(c)
+		case '$':
+			if i+1 < len(cmd) && cmd[i+1] == '(' {
+				return nil, false
+			}
+			end, ok := paramRefEnd(cmd, i)
+			if !ok {
+				return nil, false
+			}
+			w.unquotedExp, w.anyExp = true, true
+			cur.WriteString(cmd[i:end])
+			i = end - 1
+			inWord = true
+		default:
+			cur.WriteByte(c)
+			inWord = true
+		}
+	}
+	if quote != none {
+		return nil, false
+	}
+	if inWord {
+		flush()
+	}
+	return words, true
 }
 
 func runPreToolGuard() {
@@ -498,6 +733,10 @@ func runPreToolGuard() {
 			fmt.Fprintf(guardStderr,
 				"BLOCKED: devkit workflow %s is at a prompt step — gather evidence with Read/Grep/Glob then call devkit_advance. (attempted tool: %s)\n",
 				stepLabel(state), attemptedTool)
+			if attemptedTool == "Bash" && strings.Contains(command, "companion.mjs") {
+				fmt.Fprintf(guardStderr,
+					"hint: companion calls are allowed only as one plain command — node \"<path>/codex-companion.mjs\" task '<prompt>' — with plain quotes and no $( ), heredocs, pipes, redirects, or chained commands.\n")
+			}
 			guardExit(2)
 			return
 		}
