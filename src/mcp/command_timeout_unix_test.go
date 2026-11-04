@@ -68,28 +68,67 @@ func TestRunCommandWithTimeout_KillsChildrenOnTimeout(t *testing.T) {
 	}
 }
 
-// A command that exits on its own but leaves a background child holding
-// the output pipe must not block until the child exits.
-func TestRunCommandWithTimeout_DoesNotWaitOnOrphanedPipe(t *testing.T) {
+// A command that exits 0 but leaves a background child holding the output
+// pipe must not block until the child exits — and must not report success,
+// because the captured output is incomplete: the child could still print
+// FAIL after the PASS we saw, and a last-line check would wrongly pass.
+func TestRunCommandWithTimeout_FailsClosedOnOrphanedPipe(t *testing.T) {
 	old := commandWaitDelay
 	commandWaitDelay = 200 * time.Millisecond
 	t.Cleanup(func() { commandWaitDelay = old })
 
 	s := newTestServer(t, t.TempDir(), t.TempDir())
+	pidFile := filepath.Join(t.TempDir(), "child.pid")
 	state := &lib.SessionState{Input: "", Outputs: map[string]string{}}
 
 	start := time.Now()
 	out, code, err := s.runCommandWithTimeout(context.Background(),
-		"sleep 10 & echo done", state, time.Minute)
+		"(sleep 10; echo FAIL) & echo $! > "+pidFile+"; echo PASS", state, time.Minute)
 	elapsed := time.Since(start)
 
-	if err != nil || code != 0 {
-		t.Fatalf("want exit 0, got code=%d err=%v out=%q", code, err, out)
+	if err == nil || code == 0 {
+		t.Fatalf("truncated output reported as success: code=%d err=%v out=%q", code, err, out)
 	}
-	if !strings.Contains(out, "done") {
-		t.Fatalf("output lost: %q", out)
+	if !strings.Contains(err.Error(), "incomplete") {
+		t.Fatalf("error should say output is incomplete: %v", err)
 	}
 	if elapsed > 3*time.Second {
 		t.Fatalf("blocked on orphaned pipe for %s", elapsed)
+	}
+
+	raw, readErr := os.ReadFile(pidFile)
+	if readErr != nil {
+		t.Fatalf("read child pid: %v", readErr)
+	}
+	pid, _ := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if pid <= 0 {
+		t.Fatalf("bad child pid %q", raw)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !processGone(pid) {
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatalf("leftover child %d survived the step", pid)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// A command whose background job does not hold the output pipe is
+// unaffected: it succeeds immediately with full output.
+func TestRunCommandWithTimeout_RedirectedBackgroundJobSucceeds(t *testing.T) {
+	s := newTestServer(t, t.TempDir(), t.TempDir())
+	state := &lib.SessionState{Input: "", Outputs: map[string]string{}}
+
+	start := time.Now()
+	out, code, err := s.runCommandWithTimeout(context.Background(),
+		"sleep 10 >/dev/null 2>&1 & echo PASS", state, time.Minute)
+	elapsed := time.Since(start)
+
+	if err != nil || code != 0 || !strings.Contains(out, "PASS") {
+		t.Fatalf("want exit 0 with PASS, got code=%d err=%v out=%q", code, err, out)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("redirected background job delayed the step by %s", elapsed)
 	}
 }

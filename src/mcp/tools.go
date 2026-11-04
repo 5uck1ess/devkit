@@ -607,9 +607,13 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	}
 	// ErrWaitDelay: the shell exited 0 but a leftover background child
 	// still held the output pipe, so Wait stopped reading after
-	// commandWaitDelay. The command itself succeeded.
+	// commandWaitDelay. The captured output is incomplete — the child
+	// could still print FAIL after a PASS we already captured — so fail
+	// closed rather than let expect/require/gate checks judge a truncated
+	// stream. Kill the leftovers so they don't outlive the step.
 	if errors.Is(err, exec.ErrWaitDelay) {
-		err = nil
+		killCommandProcessGroup(cmd)
+		return out.String(), 1, fmt.Errorf("command exited but a background process still held its output after %s; output is incomplete (redirect or wait for background jobs)", commandWaitDelay)
 	}
 	exitCode := 0
 	if err != nil {
