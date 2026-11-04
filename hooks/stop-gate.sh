@@ -19,7 +19,20 @@ trap 'printf "stop-gate: ERR trap fired — approving to avoid hang\n" >&2; jq -
 INPUT=$(cat || true)
 [[ -z "$INPUT" ]] && { jq -n '{ decision: "approve" }'; exit 0; }
 
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript // empty' 2>/dev/null || true)
+# Stop input carries the transcript as a file path (transcript_path), not
+# inline text. Read the tail of that JSONL (bounded so a long session can't
+# slow the hook) and append last_assistant_message, which the docs note may
+# not be flushed to the transcript yet at Stop time.
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null || true)
+TRANSCRIPT=""
+if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" && ! -L "$TRANSCRIPT_PATH" ]]; then
+  TRANSCRIPT=$(tail -c 2000000 "$TRANSCRIPT_PATH" 2>/dev/null || true)
+fi
+# last_assistant_message only supplements a transcript we could read — on
+# its own it is too little history to conclude evidence is missing.
+[[ -n "$TRANSCRIPT" && -n "$LAST_MSG" ]] && TRANSCRIPT="$TRANSCRIPT
+$LAST_MSG"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 CHANGED_FILES=$(cd "$REPO_ROOT" && {
@@ -80,15 +93,18 @@ $HAS_PYTHON && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS python"
 $HAS_SQL && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS sql"
 DOMAINS=$(echo "$DOMAINS" | xargs)
 
-# Skip cross-domain check if transcript is empty (no data to verify against)
-if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]]; then
+# Skip cross-domain check if transcript is empty (no data to verify against),
+# or if Claude is already continuing because of a Stop hook block — re-blocking
+# on the same missing evidence would loop forever.
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
+if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]] && [[ "$STOP_HOOK_ACTIVE" != "true" ]]; then
   MISSING=""
 
-  $HAS_GO && ! echo "$TRANSCRIPT" | grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' && MISSING="$MISSING go"
-  $HAS_TS && ! echo "$TRANSCRIPT" | grep -qiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' && MISSING="$MISSING typescript"
-  $HAS_RUST && ! echo "$TRANSCRIPT" | grep -qiE '(cargo test|ALL_PASSING)' && MISSING="$MISSING rust"
-  $HAS_PYTHON && ! echo "$TRANSCRIPT" | grep -qiE '(pytest|python.*-m.*test|ALL_PASSING)' && MISSING="$MISSING python"
-  $HAS_SQL && ! echo "$TRANSCRIPT" | grep -qiE '(migrate|migration.*up|ALL_PASSING)' && MISSING="$MISSING sql"
+  $HAS_GO && ! grep -aqiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING go"
+  $HAS_TS && ! grep -aqiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING typescript"
+  $HAS_RUST && ! grep -aqiE '(cargo test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING rust"
+  $HAS_PYTHON && ! grep -aqiE '(pytest|python.*-m.*test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING python"
+  $HAS_SQL && ! grep -aqiE '(migrate|migration.*up|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING sql"
 
   MISSING=$(echo "$MISSING" | xargs)
   if [[ -n "$MISSING" ]]; then

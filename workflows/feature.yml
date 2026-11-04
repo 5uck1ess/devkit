@@ -169,6 +169,7 @@ steps:
   - id: final-report
     model: fast
     enforce: soft  # deletes scratchpad file
+    end: true  # full path stops here; quick-fix below is the TINY branch target
     prompt: |
       Feature session complete. Produce a summary:
 

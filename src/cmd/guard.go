@@ -626,7 +626,11 @@ func runPreToolGuard() {
 		guardExit(2)
 		return
 
-	case "prompt":
+	case "prompt", "parallel":
+		// A parallel dispatcher is a prompt step whose work runs in
+		// subagents; it carries the same fence (Agent/Task allowed,
+		// Write/Edit/Bash blocked under hard). MCP parks on the
+		// dispatcher now that children are skipped in the walk.
 		if enforce == lib.EnforceHard {
 			if isDevkitMCPTool(tool) {
 				guardExit(0)
@@ -688,7 +692,7 @@ func runPreToolGuard() {
 		return
 
 	default:
-		// parallel or unknown — engine is dispatching, allow through.
+		// unknown step type — allow through rather than wedge the session.
 		guardExit(0)
 	}
 }

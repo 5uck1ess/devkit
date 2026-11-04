@@ -376,6 +376,32 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantStderrSubstr: "cannot read session state",
 		},
 		{
+			// MCP now parks on the parallel dispatcher (children are
+			// skipped), so the dispatcher must carry the prompt fence:
+			// subagents may run, but Write/Edit stay blocked under hard.
+			name:       "parallel+hard+Write → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceHard, CurrentStep: "dispatch-reviews",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Write"}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "parallel+hard+Agent → allow (dispatch subagents)",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceHard, CurrentStep: "dispatch-reviews",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:    `{"tool_name":"Agent"}`,
+			wantExit: 0,
+		},
+		{
 			// Empty step_type is non-command and non-prompt, so the
 			// default branch (parallel/unknown) allows through. This
 			// protects the agent from being wedged by a schema gap.
@@ -444,19 +470,7 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 2,
 		},
 		{
-			name:       "parallel+hard+Write → allow",
-			dataDir:    true,
-			hasSession: true,
-			session: lib.SessionState{
-				Status: "running", StepType: "parallel", StepEnforce: lib.EnforceHard, CurrentStep: "fanout",
-			},
-			stdin:    `{"tool_name":"Write"}`,
-			wantExit: 0,
-		},
-		{
-			// parallel+soft should allow exactly the same as parallel+hard.
-			// Explicit row so a future refactor that adds an enforce
-			// check to the parallel branch cannot sneak through.
+			// parallel+soft behaves like prompt+soft: allow with a nudge.
 			name:       "parallel+soft+Bash → allow",
 			dataDir:    true,
 			hasSession: true,
