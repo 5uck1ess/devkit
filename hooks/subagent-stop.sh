@@ -31,22 +31,30 @@ esac
 # Already continuing because of an earlier block — don't loop.
 [ "$STOP_HOOK_ACTIVE" = "true" ] && approve
 
-# If agent output is empty or very short, block — something went wrong
-if [ ${#AGENT_OUTPUT} -lt 20 ]; then
+# Evidence may be in the final message or in the Bash commands recorded in
+# the subagent's own transcript (a concise summary often omits them). Only
+# Bash tool_use commands count from the transcript — file contents and task
+# text that merely mention "go test" are not evidence of running it.
+EVIDENCE_TEXT="$AGENT_OUTPUT"
+TX_COMMANDS=""
+AGENT_TX=$(echo "$INPUT" | jq -r '.agent_transcript_path // empty' 2>/dev/null || true)
+if [ -n "$AGENT_TX" ] && [ -f "$AGENT_TX" ] && [ ! -L "$AGENT_TX" ]; then
+  TX_COMMANDS=$(tail -c 2000000 "$AGENT_TX" 2>/dev/null \
+    | jq -rR 'fromjson? | .. | objects
+        | select(.type == "tool_use" and .name == "Bash")
+        | .input.command // empty' 2>/dev/null || true)
+  EVIDENCE_TEXT="$EVIDENCE_TEXT
+$TX_COMMANDS"
+fi
+
+# If there is no transcript evidence and the final message is empty or very
+# short, block — something went wrong.
+if [ -z "$TX_COMMANDS" ] && [ ${#AGENT_OUTPUT} -lt 20 ]; then
   jq -n '{
     decision: "block",
     reason: "Agent output is suspiciously short. Please verify your work is complete and run any test/metric commands before stopping."
   }'
   exit 0
-fi
-
-# Evidence may be in the final message or in the tool calls recorded in
-# the subagent's own transcript (a concise summary often omits the command).
-EVIDENCE_TEXT="$AGENT_OUTPUT"
-AGENT_TX=$(echo "$INPUT" | jq -r '.agent_transcript_path // empty' 2>/dev/null || true)
-if [ -n "$AGENT_TX" ] && [ -f "$AGENT_TX" ] && [ ! -L "$AGENT_TX" ]; then
-  EVIDENCE_TEXT="$EVIDENCE_TEXT
-$(tail -c 2000000 "$AGENT_TX" 2>/dev/null || true)"
 fi
 
 # Check for evidence that tests/metrics were actually run

@@ -841,6 +841,20 @@ if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
 else
   fail "subagent-stop: agent_transcript_path not consulted (got: $out)"
 fi
+sub_tx2=$(mktemp); GUARD_TMPS+=("$sub_tx2")
+printf '%s\n' '{"type":"tool_use","name":"Read","input":{"file_path":"Makefile"}}' '{"type":"tool_result","content":"test:\n\tgo test ./..."}' > "$sub_tx2"
+out=$(sub "$(jq -n --arg p "$sub_tx2" '{agent_type:"test-writer",agent_transcript_path:$p,last_assistant_message:"Updated the parser and cleaned up call sites.",stop_hook_active:false}')")
+if printf '%s' "$out" | jq -e '.decision=="block"' >/dev/null 2>&1; then
+  pass "subagent-stop: 'go test' only in file contents is not evidence"
+else
+  fail "subagent-stop: file contents counted as test evidence (got: $out)"
+fi
+out=$(sub "$(jq -n --arg p "$sub_tx" '{agent_type:"test-writer",agent_transcript_path:$p,last_assistant_message:"Done.",stop_hook_active:false}')")
+if printf '%s' "$out" | jq -e '.decision=="approve"' >/dev/null 2>&1; then
+  pass "subagent-stop: short final message OK when transcript shows a test run"
+else
+  fail "subagent-stop: short message blocked despite transcript evidence (got: $out)"
+fi
 if jq -e '[.hooks.SubagentStop[] | select(.matcher=="Stop")] | length == 0' "$HOOK_DIR/hooks.json" >/dev/null 2>&1; then
   pass "hooks.json: SubagentStop has no dead \"Stop\" matcher"
 else
