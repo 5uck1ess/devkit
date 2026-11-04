@@ -125,7 +125,11 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		// window will also correctly report "no active session" until
 		// we publish the transition to "running" below.
 		sessionID := lib.NewSessionID()
-		firstStep := wf.Steps[0]
+		firstIdx := wf.NextIndex(0)
+		if firstIdx >= len(wf.Steps) {
+			return mcpmcp.NewToolResultError(fmt.Sprintf("workflow %q has no runnable steps (every step is a parallel child)", wfName)), nil
+		}
+		firstStep := wf.Steps[firstIdx]
 		var reclaimedNote string
 		state, err := lib.UpdateSessionJSON(s.dataDir, func(cur *lib.SessionState) (*lib.SessionState, error) {
 			if cur != nil && (cur.Status == "running" || cur.Status == "starting") {
@@ -157,7 +161,7 @@ func (s *Server) startTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 				Workflow:     wfName, // store filename, not wf.Name, to prevent traversal in advance
 				Input:        input,
 				CurrentStep:  firstStep.ID,
-				CurrentIndex: 0,
+				CurrentIndex: firstIdx,
 				TotalSteps:   len(wf.Steps),
 				StepType:     stepType(firstStep),
 				// StepEnforce is the current step's effective enforce,
@@ -290,8 +294,19 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 	} else if len(step.Parallel) > 0 {
 		fmt.Fprintf(&b, "TYPE: parallel dispatch\n")
 		fmt.Fprintf(&b, "DISPATCH: %s\n", strings.Join(step.Parallel, ", "))
-		fmt.Fprintf(&b, "Run each listed step concurrently through the host subagent facility, then call devkit_advance with a consolidated result.\n")
+		fmt.Fprintf(&b, "Run each listed step concurrently through the host subagent facility, then call devkit_advance with `outputs`: an object mapping every step id above to that subagent's result (e.g. {\"%s\": \"...\"}). If a subagent failed, report the failure text as its output. An optional `output` may carry a consolidated summary.\n", step.Parallel[0])
 		fmt.Fprintf(&b, "Use host-native subagents or external runners when available; give each subagent a bounded scope, separate write ownership, and require files changed, verification run, and remaining risks before completion.\n")
+		for _, cid := range step.Parallel {
+			child := findStep(wf, cid)
+			if child == nil {
+				continue
+			}
+			fmt.Fprintf(&b, "\n--- %s", cid)
+			if child.Model != "" {
+				fmt.Fprintf(&b, " (model: %s)", child.Model)
+			}
+			fmt.Fprintf(&b, " ---\nPROMPT: %s\n", engine.Interpolate(child.Prompt, input, state.Outputs))
+		}
 	} else {
 		prompt := engine.Interpolate(step.Prompt, input, state.Outputs)
 		fmt.Fprintf(&b, "PROMPT: %s\n", prompt)
@@ -352,6 +367,7 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		mcpmcp.WithDescription("Complete current step and get next"),
 		mcpmcp.WithString("session", mcpmcp.Required(), mcpmcp.Description("Session ID")),
 		mcpmcp.WithString("output", mcpmcp.Description("Summary of step output (for prompt steps)")),
+		mcpmcp.WithObject("outputs", mcpmcp.Description("Parallel dispatch steps only: object mapping each dispatched step id to its result")),
 	)
 	return tool, func(ctx context.Context, req mcpmcp.CallToolRequest) (*mcpmcp.CallToolResult, error) {
 		sessionID, err := req.RequireString("session")
@@ -458,6 +474,15 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			if err := engine.ValidateRequiredOutput(currentStep, output); err != nil {
 				return mcpmcp.NewToolResultError(err.Error()), nil
 			}
+			if len(currentStep.Parallel) > 0 {
+				childOut, err := parallelOutputs(currentStep, args["outputs"])
+				if err != nil {
+					return mcpmcp.NewToolResultError(err.Error()), nil
+				}
+				for id, out := range childOut {
+					state.Outputs[id] = out
+				}
+			}
 			if outputProvided || (currentStep.Require != nil && currentStep.Require.HasChecks()) {
 				state.Outputs[currentStep.ID] = output
 			}
@@ -473,52 +498,132 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			return s.handleLoopAdvance(ctx, wf, state, &currentStep, req)
 		}
 
-		// Advance to next step
-		nextIndex := state.CurrentIndex + 1
+		return s.transition(wf, state, &currentStep, "")
+	}
+}
 
-		// Check branch conditions
-		if len(currentStep.Branch) > 0 {
-			if output, ok := state.Outputs[currentStep.ID]; ok {
-				target := engine.EvalBranch(output, currentStep.Branch)
-				if target != "" {
-					for i, step := range wf.Steps {
-						if step.ID == target {
-							nextIndex = i
-							break
-						}
+// findStep returns the step with the given id, or nil.
+func findStep(wf *engine.Workflow, id string) *engine.WfStep {
+	for i := range wf.Steps {
+		if wf.Steps[i].ID == id {
+			return &wf.Steps[i]
+		}
+	}
+	return nil
+}
+
+// parallelOutputs validates the `outputs` argument for a parallel
+// dispatch step: it must be an object with a string entry for every
+// dispatched child and nothing else. Downstream prompts reference
+// children by id ({{review-a}}), so a single consolidated blob is not
+// enough.
+func parallelOutputs(step engine.WfStep, raw any) (map[string]string, error) {
+	want := strings.Join(step.Parallel, ", ")
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("parallel step %s: pass `outputs` as an object mapping each dispatched step id (%s) to its result", step.ID, want)
+	}
+	allowed := make(map[string]bool, len(step.Parallel))
+	for _, id := range step.Parallel {
+		allowed[id] = true
+	}
+	for k := range obj {
+		if !allowed[k] {
+			return nil, fmt.Errorf("parallel step %s: unknown id %q in outputs (expected: %s)", step.ID, k, want)
+		}
+	}
+	out := make(map[string]string, len(step.Parallel))
+	var missing []string
+	for _, id := range step.Parallel {
+		v, ok := obj[id].(string)
+		if !ok {
+			missing = append(missing, id)
+			continue
+		}
+		out[id] = v
+	}
+	if len(missing) > 0 {
+		return nil, fmt.Errorf("parallel step %s: outputs missing a string result for: %s", step.ID, strings.Join(missing, ", "))
+	}
+	return out, nil
+}
+
+// transition moves the session past `step`: a matching branch rule
+// wins, otherwise `end: true` completes the workflow, otherwise the
+// walk continues at the next step that is not a parallel child. The
+// claim is cleared in the same write. notice is prepended to the
+// response (used for loop-exhaustion warnings).
+func (s *Server) transition(wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, notice string) (*mcpmcp.CallToolResult, error) {
+	nextIndex := -1
+	if len(step.Branch) > 0 {
+		if output, ok := state.Outputs[step.ID]; ok {
+			if target := engine.EvalBranch(output, step.Branch); target != "" {
+				for i := range wf.Steps {
+					if wf.Steps[i].ID == target {
+						nextIndex = i
+						break
 					}
 				}
 			}
 		}
-
-		if nextIndex >= len(wf.Steps) {
-			// Do NOT pre-release the claim — if completeWorkflow's
-			// initial WriteSessionJSON fails the session file still
-			// has Busy=true on disk and we need the deferred release
-			// to clean it up. On the success path completeWorkflow
-			// removes session.json via ClearSessionJSON, so the
-			// defer's UpdateSessionJSON finds nil and no-ops.
-			return s.completeWorkflow(state)
-		}
-
-		// Write next step state. Clear the claim as part of this same
-		// write so the common case is a single atomic transition; the
-		// deferred releaseClaim will then observe Busy=false and
-		// no-op. We do NOT set claimReleased=true here so the defer
-		// still runs on subsequent panics or added return paths.
-		nextStep := wf.Steps[nextIndex]
-		state.CurrentStep = nextStep.ID
-		state.CurrentIndex = nextIndex
-		state.StepType = stepType(nextStep)
-		state.StepEnforce = engine.EffectiveEnforce(*wf, nextStep)
-		state.Busy = false
-		if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
-			return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
-		}
-
-		response := s.formatStepResponse(wf, state, &nextStep, state.Input)
-		return mcpmcp.NewToolResultText(response), nil
 	}
+	if nextIndex < 0 {
+		if step.End {
+			nextIndex = len(wf.Steps)
+		} else {
+			nextIndex = wf.NextIndex(state.CurrentIndex + 1)
+		}
+	}
+
+	if nextIndex >= len(wf.Steps) {
+		// Do NOT pre-release the claim — if completeWorkflow's initial
+		// write fails, the deferred release in advanceTool cleans up.
+		res, err := s.completeWorkflow(state)
+		return withNotice(res, notice), err
+	}
+
+	nextStep := wf.Steps[nextIndex]
+	state.CurrentStep = nextStep.ID
+	state.CurrentIndex = nextIndex
+	state.StepType = stepType(nextStep)
+	state.StepEnforce = engine.EffectiveEnforce(*wf, nextStep)
+	state.Busy = false
+	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
+	}
+	return mcpmcp.NewToolResultText(notice + s.formatStepResponse(wf, state, &nextStep, state.Input)), nil
+}
+
+// withNotice prepends notice to a text result.
+func withNotice(res *mcpmcp.CallToolResult, notice string) *mcpmcp.CallToolResult {
+	if notice == "" || res == nil || len(res.Content) == 0 {
+		return res
+	}
+	if tc, ok := res.Content[0].(mcpmcp.TextContent); ok {
+		tc.Text = notice + tc.Text
+		res.Content[0] = tc
+	}
+	return res
+}
+
+// haltWorkflow ends a session that cannot continue safely (e.g. a
+// gated loop ran out of iterations with its gate still failing). The
+// session slot is freed and the DB row records why.
+func (s *Server) haltWorkflow(state *lib.SessionState, status, reason string) (*mcpmcp.CallToolResult, error) {
+	var warnings []string
+	if s.db != nil {
+		if err := s.db.UpdateSessionStatus(state.ID, status); err != nil {
+			warnings = append(warnings, fmt.Sprintf("db session status update failed: %v", err))
+		}
+	}
+	if err := lib.ClearSessionJSON(s.dataDir); err != nil {
+		warnings = append(warnings, fmt.Sprintf("clear session state failed: %v", err))
+	}
+	msg := fmt.Sprintf("=== WORKFLOW HALTED (%s) ===\nSession: %s\nStep: %s\n%s", status, state.ID, state.CurrentStep, reason)
+	for _, w := range warnings {
+		msg += "\nwarning: " + w
+	}
+	return mcpmcp.NewToolResultError(msg), nil
 }
 
 // completeWorkflow marks a session as done, updates DB, and clears hot state.
@@ -642,35 +747,48 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 	}
 	state.LoopIteration++
 
-	// Check gate command if present. Gate strings are also literal —
-	// values come via env vars DEVKIT_INPUT / DEVKIT_OUT_<step_id>.
-	// Gates get a shorter independent timeout so a wedged gate cannot
-	// eat the full command budget.
+	// A loop completes when its gate (if any) passes AND its until
+	// sentinel (if any) appears in this iteration's output. A failing
+	// gate is objective evidence the work is broken, so the agent's
+	// "DONE" never overrides it. Gate strings are literal — values come
+	// via env vars DEVKIT_INPUT / DEVKIT_OUT_<step_id>. Gates get a
+	// shorter independent timeout so a wedged gate cannot eat the full
+	// command budget.
+	hasCondition := step.Loop.Gate != "" || step.Loop.Until != ""
+	gatePassed := true
+	gateNote := ""
 	if step.Loop.Gate != "" {
 		gateOut, exitCode, err := s.runCommandWithTimeout(ctx, step.Loop.Gate, state, gateTimeout)
 		if err != nil {
 			return mcpmcp.NewToolResultError(fmt.Sprintf("gate command failed: %v\n%s", err, gateOut)), nil
 		}
-		if exitCode == 0 {
-			// Gate passed — advance past loop
-			return s.advancePastLoop(wf, state)
+		if exitCode != 0 {
+			gatePassed = false
+			gateNote = fmt.Sprintf("GATE FAILED (exit %d): %s\n%s\n\n", exitCode, step.Loop.Gate, tailString(gateOut, 4000))
 		}
-		// Gate failed — continue loop
 	}
-
-	// Check "until" condition. Line-anchored match (see engine.MatchUntil)
-	// so sentinels like "DONE" do not match prose mentions.
+	untilMet := true
 	if step.Loop.Until != "" {
-		if output, ok := state.Outputs[step.ID]; ok {
-			if engine.MatchUntil(output, step.Loop.Until) {
-				return s.advancePastLoop(wf, state)
-			}
-		}
+		// Line-anchored match (see engine.MatchUntil).
+		output, ok := state.Outputs[step.ID]
+		untilMet = ok && engine.MatchUntil(output, step.Loop.Until)
+	}
+	if hasCondition && gatePassed && untilMet {
+		return s.advancePastLoop(wf, state, step, "")
 	}
 
-	// Check max iterations
 	if state.LoopIteration >= state.LoopMax {
-		return s.advancePastLoop(wf, state)
+		if !hasCondition {
+			return s.advancePastLoop(wf, state, step, "")
+		}
+		if !gatePassed {
+			return s.haltWorkflow(state, "loop_exhausted", fmt.Sprintf(
+				"Loop %s ran %d/%d iterations and its gate is still failing — stopping instead of continuing on broken work.\n%s",
+				step.ID, state.LoopIteration, state.LoopMax, gateNote))
+		}
+		notice := fmt.Sprintf("=== LOOP EXHAUSTED: %s ran %d/%d iterations without %q — continuing, but treat its result as unverified. ===\n\n",
+			step.ID, state.LoopIteration, state.LoopMax, step.Loop.Until)
+		return s.advancePastLoop(wf, state, step, notice)
 	}
 
 	// Continue loop — return same step for another iteration.
@@ -684,30 +802,23 @@ func (s *Server) handleLoopAdvance(ctx context.Context, wf *engine.Workflow, sta
 		return mcpmcp.NewToolResultError(fmt.Sprintf("write loop state: %v", err)), nil
 	}
 	response := fmt.Sprintf("=== LOOP ITERATION %d/%d: %s ===\n", state.LoopIteration, state.LoopMax, step.ID)
+	response += gateNote
 	response += s.formatStepResponse(wf, state, step, state.Input)
 	return mcpmcp.NewToolResultText(response), nil
 }
 
-func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState) (*mcpmcp.CallToolResult, error) {
-	nextIndex := state.CurrentIndex + 1
-	// Reset loop state
+func (s *Server) advancePastLoop(wf *engine.Workflow, state *lib.SessionState, step *engine.WfStep, notice string) (*mcpmcp.CallToolResult, error) {
+	// Reset loop state, then transition like any other step so branch
+	// rules and end: true apply to loop steps too.
 	state.LoopIteration = 0
 	state.LoopMax = 0
+	return s.transition(wf, state, step, notice)
+}
 
-	if nextIndex >= len(wf.Steps) {
-		return s.completeWorkflow(state)
+// tailString returns the last n bytes of s (prefixed with "…" if cut).
+func tailString(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
-
-	nextStep := wf.Steps[nextIndex]
-	state.CurrentStep = nextStep.ID
-	state.CurrentIndex = nextIndex
-	state.StepType = stepType(nextStep)
-	state.StepEnforce = engine.EffectiveEnforce(*wf, nextStep)
-	state.Busy = false
-	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
-		return mcpmcp.NewToolResultError(fmt.Sprintf("write state: %v", err)), nil
-	}
-
-	response := s.formatStepResponse(wf, state, &nextStep, state.Input)
-	return mcpmcp.NewToolResultText(response), nil
+	return "…" + s[len(s)-n:]
 }

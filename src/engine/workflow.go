@@ -56,6 +56,11 @@ type WfStep struct {
 	Branch     []Branch `yaml:"branch"`
 	Principles []string `yaml:"principles"` // per-step override
 	Require    *Require `yaml:"require,omitempty"`
+	// End marks a terminal step: after it runs (and no branch rule
+	// matched), the workflow completes instead of falling through to
+	// the next step in the file. Lets alternative paths (e.g. a TINY
+	// quick-fix placed after the full path) live in one workflow.
+	End bool `yaml:"end,omitempty"`
 	// Enforce overrides the workflow-level enforce for this step only.
 	// Empty inherits from Workflow.Enforce. Lets a workflow keep most
 	// prompt steps under hard (mid-step tool block) while allowing
@@ -259,6 +264,8 @@ func validate(wf *Workflow) error {
 		}
 	}
 
+	children := wf.ParallelChildren()
+
 	// Validate branch targets exist
 	for _, s := range wf.Steps {
 		for _, b := range s.Branch {
@@ -271,6 +278,9 @@ func validate(wf *Workflow) error {
 			if !ids[b.Goto] {
 				return fmt.Errorf("branch target %q not found (step %q)", b.Goto, s.ID)
 			}
+			if children[b.Goto] {
+				return fmt.Errorf("branch target %q (step %q) is a parallel child — it only runs inside its dispatcher; goto the dispatcher instead", b.Goto, s.ID)
+			}
 		}
 		// Validate parallel references exist
 		for _, pid := range s.Parallel {
@@ -278,9 +288,44 @@ func validate(wf *Workflow) error {
 				return fmt.Errorf("parallel step %q not found (step %q)", pid, s.ID)
 			}
 		}
+		// Parallel children are dispatched as plain prompts by both
+		// executors; anything else would be silently ignored.
+		if children[s.ID] {
+			switch {
+			case s.Prompt == "":
+				return fmt.Errorf("parallel child %q must be a prompt step", s.ID)
+			case s.Loop != nil, len(s.Branch) > 0, s.End:
+				return fmt.Errorf("parallel child %q must not set loop, branch, or end — they are not honoured inside a parallel dispatch", s.ID)
+			}
+		}
 	}
 
 	return nil
+}
+
+// ParallelChildren returns the set of step IDs dispatched by some
+// step's `parallel:` list. Those steps never run in their sequential
+// position — only inside their dispatcher.
+func (wf *Workflow) ParallelChildren() map[string]bool {
+	children := make(map[string]bool)
+	for _, s := range wf.Steps {
+		for _, pid := range s.Parallel {
+			children[pid] = true
+		}
+	}
+	return children
+}
+
+// NextIndex returns the first index >= from that is not a parallel
+// child, or len(wf.Steps) if there is none. Both executors use it so
+// the sequential walk skips children identically.
+func (wf *Workflow) NextIndex(from int) int {
+	children := wf.ParallelChildren()
+	i := from
+	for i < len(wf.Steps) && children[wf.Steps[i].ID] {
+		i++
+	}
+	return i
 }
 
 // Validate re-validates a workflow that may have been constructed directly

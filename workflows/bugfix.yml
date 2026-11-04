@@ -111,6 +111,7 @@ steps:
   - id: summary
     model: fast
     enforce: soft  # deletes scratchpad file
+    end: true  # full path stops here; quick-fix below is the TINY branch target
     prompt: |
       Bug fix complete. Summary:
 

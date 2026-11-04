@@ -1713,3 +1713,109 @@ func TestInterpolateDeterministic(t *testing.T) {
 		}
 	}
 }
+
+func TestRunWorkflowEndStopsBeforeTrailingSteps(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	runner := newMockRunner([]runners.RunResult{
+		result("BIG change"),
+		result("full path done"),
+	}, nil)
+	eng := mustEngine(t, db, git, runner, dir)
+	wf := &Workflow{
+		Name: "test",
+		Steps: []WfStep{
+			{ID: "triage", Prompt: "Classify {{input}}", Branch: []Branch{{When: "TINY", Goto: "quick"}}},
+			{ID: "full", Prompt: "Full", End: true},
+			{ID: "quick", Prompt: "Quick"},
+		},
+	}
+	res, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"})
+	if err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if runner.callIdx != 2 {
+		t.Errorf("runner called %d times, want 2 (quick must not run after end)", runner.callIdx)
+	}
+	if _, ok := res.Outputs["quick"]; ok {
+		t.Error("quick ran after an end: true step")
+	}
+}
+
+func TestValidateRejectsUnsupportedParallelChildren(t *testing.T) {
+	base := func(child WfStep) *Workflow {
+		return &Workflow{Name: "w", Steps: []WfStep{
+			{ID: "fan", Parallel: []string{"c"}},
+			child,
+			{ID: "after", Prompt: "after"},
+		}}
+	}
+	cases := map[string]WfStep{
+		"command child": {ID: "c", Command: "true"},
+		"loop child":    {ID: "c", Prompt: "p", Loop: &Loop{Max: 2}},
+		"branch child":  {ID: "c", Prompt: "p", Branch: []Branch{{When: "X", Goto: "after"}}},
+		"end child":     {ID: "c", Prompt: "p", End: true},
+	}
+	for name, child := range cases {
+		if err := base(child).Validate(); err == nil {
+			t.Errorf("%s: expected validation error", name)
+		}
+	}
+	// goto into a parallel child would be silently skipped by the walk.
+	wf := &Workflow{Name: "w", Steps: []WfStep{
+		{ID: "t", Prompt: "t", Branch: []Branch{{When: "X", Goto: "c"}}},
+		{ID: "c", Prompt: "c"},
+		{ID: "fan", Parallel: []string{"c"}},
+	}}
+	if err := wf.Validate(); err == nil {
+		t.Error("branch goto targeting a parallel child should be rejected")
+	}
+}
+
+func TestNextIndexSkipsParallelChildren(t *testing.T) {
+	wf := &Workflow{Name: "w", Steps: []WfStep{
+		{ID: "a", Prompt: "a"},
+		{ID: "b", Prompt: "b"},
+		{ID: "fan", Parallel: []string{"a", "b"}},
+		{ID: "z", Prompt: "z"},
+	}}
+	if got := wf.NextIndex(0); got != 2 {
+		t.Errorf("NextIndex(0) = %d, want 2", got)
+	}
+	if got := wf.NextIndex(3); got != 3 {
+		t.Errorf("NextIndex(3) = %d, want 3", got)
+	}
+	if got := wf.NextIndex(4); got != 4 {
+		t.Errorf("NextIndex(4) = %d, want 4 (past end)", got)
+	}
+}
+
+// The full paths of feature and bugfix must stop at their report step
+// instead of falling through into the TINY quick-fix step placed last.
+func TestShippedWorkflowsFullPathEndsBeforeQuickFix(t *testing.T) {
+	for wfFile, terminal := range map[string]string{
+		"feature.yml": "final-report",
+		"bugfix.yml":  "summary",
+	} {
+		wf, err := ParseFile(filepath.Join("..", "..", "workflows", wfFile))
+		if err != nil {
+			t.Fatalf("%s: %v", wfFile, err)
+		}
+		var found bool
+		for i, s := range wf.Steps {
+			if s.ID != terminal {
+				continue
+			}
+			found = true
+			if !s.End {
+				t.Errorf("%s: step %q must set end: true", wfFile, terminal)
+			}
+			if i+1 >= len(wf.Steps) || wf.Steps[i+1].ID != "quick-fix" {
+				t.Errorf("%s: expected quick-fix right after %q", wfFile, terminal)
+			}
+		}
+		if !found {
+			t.Errorf("%s: step %q not found", wfFile, terminal)
+		}
+	}
+}

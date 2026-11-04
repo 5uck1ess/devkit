@@ -108,14 +108,9 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 	// addCost updates the running total (used by loops to keep overBudget accurate)
 	addCost := func(c float64) { totalUSD += c }
 
-	// Build set of step IDs that are dispatched by parallel steps,
-	// so we skip them during sequential walk (they run inside runParallel).
-	parallelChildren := make(map[string]bool)
-	for _, s := range wf.Steps {
-		for _, pid := range s.Parallel {
-			parallelChildren[pid] = true
-		}
-	}
+	// Steps dispatched by a parallel step are skipped during the
+	// sequential walk (they run inside runParallel).
+	parallelChildren := wf.ParallelChildren()
 
 	// Walk steps sequentially, with branch jumps
 	failed := false
@@ -215,6 +210,9 @@ func (e *Engine) RunWorkflow(ctx context.Context, wf *Workflow, cfg RunConfig) (
 		if jump >= 0 {
 			i = jump
 			continue
+		}
+		if step.End {
+			break
 		}
 
 		i++
