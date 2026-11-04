@@ -809,6 +809,42 @@ func TestGuardPreToolUse(t *testing.T) {
 			wantExit: 0,
 		},
 		{
+			name:       "prompt+hard+Bash companion bypass (IFS split in script word) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"node ${IFS}-e${IFS}'console.log(1)'${IFS}/codex-companion.mjs"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (unquoted var as program) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"$NODE /p/codex-companion.mjs task"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
+			name:       "prompt+hard+Bash companion bypass (bash -c inner IFS split) → block",
+			dataDir:    true,
+			hasSession: true,
+			session: lib.SessionState{
+				Status: "running", StepType: "prompt", StepEnforce: lib.EnforceHard, CurrentStep: "review-smart",
+				Workflow: "tri-review", TotalSteps: 6,
+			},
+			stdin:            `{"tool_name":"Bash","tool_input":{"command":"bash -c 'node ${IFS}-e${IFS}x${IFS}/p/gemini-companion.mjs'"}}`,
+			wantExit:         2,
+			wantStderrSubstr: "gather evidence with Read/Grep/Glob",
+		},
+		{
 			// Negative: command-step Bash must still block even if the
 			// command looks like a companion rescue. Command steps are
 			// run by the engine directly; any Bash from the model is a

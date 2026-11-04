@@ -331,8 +331,15 @@ func isCompanionInvocation(cmd string, depth int) bool {
 	if depth > 1 {
 		return false
 	}
-	words, ok := splitSimpleCommand(cmd)
+	words, unquotedExp, ok := splitSimpleCommand(cmd)
 	if !ok || len(words) < 2 {
+		return false
+	}
+	// An unquoted $ in the program or script word is subject to field
+	// splitting: `node ${IFS}-e${IFS}'code'${IFS}/x/codex-companion.mjs`
+	// parses as two words here but bash runs `node -e code ...`.
+	// Quoted expansions ("${CLAUDE_PLUGIN_ROOT}/...") don't split.
+	if unquotedExp[0] || unquotedExp[1] {
 		return false
 	}
 	prog := strings.TrimSuffix(baseName(words[0]), ".exe")
@@ -361,11 +368,19 @@ func baseName(p string) string {
 // the string is anything other than one simple command: unquoted
 // control/redirect operators, comments, newlines, backticks, or $( )
 // outside single quotes all fail. Variable references like
-// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words.
-func splitSimpleCommand(cmd string) ([]string, bool) {
-	var words []string
+// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words;
+// unquotedExp[i] reports whether word i contains an unquoted $ (and so
+// may be field-split by the shell).
+func splitSimpleCommand(cmd string) (words []string, unquotedExp []bool, ok bool) {
 	var cur strings.Builder
 	inWord := false
+	curExp := false
+	flush := func() {
+		words = append(words, cur.String())
+		unquotedExp = append(unquotedExp, curExp)
+		cur.Reset()
+		inWord, curExp = false, false
+	}
 	const (
 		none = iota
 		single
@@ -387,9 +402,9 @@ func splitSimpleCommand(cmd string) ([]string, bool) {
 			case c == '"':
 				quote = none
 			case c == '`':
-				return nil, false
+				return nil, nil, false
 			case c == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
-				return nil, false
+				return nil, nil, false
 			case c == '\\' && i+1 < len(cmd):
 				i++
 				cur.WriteByte(cmd[i])
@@ -401,9 +416,7 @@ func splitSimpleCommand(cmd string) ([]string, bool) {
 		switch c {
 		case ' ', '\t':
 			if inWord {
-				words = append(words, cur.String())
-				cur.Reset()
-				inWord = false
+				flush()
 			}
 		case '\'':
 			quote, inWord = single, true
@@ -411,36 +424,36 @@ func splitSimpleCommand(cmd string) ([]string, bool) {
 			quote, inWord = double, true
 		case '\\':
 			if i+1 >= len(cmd) || cmd[i+1] == '\n' {
-				return nil, false
+				return nil, nil, false
 			}
 			i++
 			cur.WriteByte(cmd[i])
 			inWord = true
 		case ';', '&', '|', '<', '>', '\n', '\r', '`', '(', ')':
-			return nil, false
+			return nil, nil, false
 		case '#':
 			if !inWord {
-				return nil, false
+				return nil, nil, false
 			}
 			cur.WriteByte(c)
 		case '$':
 			if i+1 < len(cmd) && cmd[i+1] == '(' {
-				return nil, false
+				return nil, nil, false
 			}
 			cur.WriteByte(c)
-			inWord = true
+			inWord, curExp = true, true
 		default:
 			cur.WriteByte(c)
 			inWord = true
 		}
 	}
 	if quote != none {
-		return nil, false
+		return nil, nil, false
 	}
 	if inWord {
-		words = append(words, cur.String())
+		flush()
 	}
-	return words, true
+	return words, unquotedExp, true
 }
 
 func runPreToolGuard() {
