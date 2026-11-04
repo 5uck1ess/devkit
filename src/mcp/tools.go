@@ -24,6 +24,12 @@ const commandTimeout = 5 * time.Minute
 // cannot consume the full commandTimeout budget.
 const gateTimeout = 60 * time.Second
 
+// commandWaitDelay bounds how long cmd.Wait keeps reading output after the
+// shell exits or is killed. Without it, a child that inherited the output
+// pipe blocks Wait until the child exits, ignoring the timeout (#126).
+// A var so tests can shorten it.
+var commandWaitDelay = 5 * time.Second
+
 // sessionStaleTTL is the age after which an existing "running" session
 // is considered orphaned — i.e. the previous engine process crashed
 // without clearing state. devkit_start will overwrite such a session
@@ -583,6 +589,8 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	cmd := exec.CommandContext(ctx, "sh", "-c", command)
 	cmd.Dir = s.repoRoot
 	cmd.Env = append(os.Environ(), commandEnv(state)...)
+	configureCommandProcess(cmd)
+	cmd.WaitDelay = commandWaitDelay
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
@@ -596,6 +604,12 @@ func (s *Server) runCommandWithTimeout(ctx context.Context, command string, stat
 	// promised exit 124 with a clear timeout message.
 	if ctx.Err() == context.DeadlineExceeded {
 		return out.String(), 124, fmt.Errorf("command timed out after %s", timeout)
+	}
+	// ErrWaitDelay: the shell exited 0 but a leftover background child
+	// still held the output pipe, so Wait stopped reading after
+	// commandWaitDelay. The command itself succeeded.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		err = nil
 	}
 	exitCode := 0
 	if err != nil {
