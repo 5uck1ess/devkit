@@ -98,11 +98,11 @@ STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/nul
 if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]] && [[ "$STOP_HOOK_ACTIVE" != "true" ]]; then
   MISSING=""
 
-  $HAS_GO && ! echo "$TRANSCRIPT" | grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' && MISSING="$MISSING go"
-  $HAS_TS && ! echo "$TRANSCRIPT" | grep -qiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' && MISSING="$MISSING typescript"
-  $HAS_RUST && ! echo "$TRANSCRIPT" | grep -qiE '(cargo test|ALL_PASSING)' && MISSING="$MISSING rust"
-  $HAS_PYTHON && ! echo "$TRANSCRIPT" | grep -qiE '(pytest|python.*-m.*test|ALL_PASSING)' && MISSING="$MISSING python"
-  $HAS_SQL && ! echo "$TRANSCRIPT" | grep -qiE '(migrate|migration.*up|ALL_PASSING)' && MISSING="$MISSING sql"
+  $HAS_GO && ! grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING go"
+  $HAS_TS && ! grep -qiE '(npm test|npx jest|npx vitest|yarn test|pnpm test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING typescript"
+  $HAS_RUST && ! grep -qiE '(cargo test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING rust"
+  $HAS_PYTHON && ! grep -qiE '(pytest|python.*-m.*test|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING python"
+  $HAS_SQL && ! grep -qiE '(migrate|migration.*up|ALL_PASSING)' <<< "$TRANSCRIPT" && MISSING="$MISSING sql"
 
   MISSING=$(echo "$MISSING" | xargs)
   if [[ -n "$MISSING" ]]; then

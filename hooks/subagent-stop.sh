@@ -44,32 +44,32 @@ fi
 TEST_EVIDENCE=false
 
 # Go test
-if echo "$AGENT_OUTPUT" | grep -qE '(PASS|FAIL|ok\s+\S+\s+[0-9.]+s|--- PASS|--- FAIL|go test)'; then
+if grep -qE '(PASS|FAIL|ok\s+\S+\s+[0-9.]+s|--- PASS|--- FAIL|go test)' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 
 # Node/Jest/Vitest
-if echo "$AGENT_OUTPUT" | grep -qE '(Tests?:\s+[0-9]|test suites?|✓|✗|✘|PASS\s|FAIL\s|npm test|npx jest|npx vitest)'; then
+if grep -qE '(Tests?:\s+[0-9]|test suites?|✓|✗|✘|PASS\s|FAIL\s|npm test|npx jest|npx vitest)' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 
 # Python pytest
-if echo "$AGENT_OUTPUT" | grep -qE '(passed|failed|error).*(pytest|test)|pytest\s|python.*-m.*test'; then
+if grep -qE '(passed|failed|error).*(pytest|test)|pytest\s|python.*-m.*test' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 
 # Go vet (race detector evidence)
-if echo "$AGENT_OUTPUT" | grep -qE '(go vet|go test.*-race|-vet=|vet: )'; then
+if grep -qE '(go vet|go test.*-race|-vet=|vet: )' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 
 # Generic pass/fail signals
-if echo "$AGENT_OUTPUT" | grep -qE '(ALL_PASSING|ALL_DONE|ALL_TESTS_PASSING|BUILD_SUCCESS|LINT_CLEAN|RESEARCH_COMPLETE)'; then
+if grep -qE '(ALL_PASSING|ALL_DONE|ALL_TESTS_PASSING|BUILD_SUCCESS|LINT_CLEAN|RESEARCH_COMPLETE)' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 
 # Metric command output (exit code references)
-if echo "$AGENT_OUTPUT" | grep -qE '(exit\s+(code\s+)?0|metric.*pass|tests?\s+pass)'; then
+if grep -qE '(exit\s+(code\s+)?0|metric.*pass|tests?\s+pass)' <<< "$AGENT_OUTPUT"; then
   TEST_EVIDENCE=true
 fi
 

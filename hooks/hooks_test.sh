@@ -847,6 +847,16 @@ if printf '%s' "$out" | jq -e '.decision=="block" and (.reason|test("Missing tes
 else
   fail "stop-gate: cross-domain check skipped (got: $out)"
 fi
+# Evidence early in a large transcript: grep -q exits on first match, and
+# under pipefail the upstream echo's SIGPIPE must not flip the result.
+{ printf '%s\n' '{"type":"assistant","message":"ran pytest -q and the migration up"}'; head -c 400000 /dev/zero | tr '\0' 'x'; printf '\n'; } > "$sg_repo/big.jsonl"
+out=$(cd "$sg_repo" && jq -n --arg p "$sg_repo/big.jsonl" '{transcript_path:$p,stop_hook_active:false,last_assistant_message:"done"}' \
+  | bash "$HOOK_DIR/stop-gate.sh" 2>/dev/null || true)
+if ! printf '%s' "$out" | jq -e '(.reason // "")|test("Missing test evidence")' >/dev/null 2>&1; then
+  pass "stop-gate: early evidence in a large transcript is found"
+else
+  fail "stop-gate: early evidence in large transcript missed (got: $out)"
+fi
 out=$(cd "$sg_repo" && jq -n --arg p "$sg_repo/evidence.jsonl" '{transcript_path:$p,stop_hook_active:false,last_assistant_message:"done"}' \
   | bash "$HOOK_DIR/stop-gate.sh" 2>/dev/null || true)
 if ! printf '%s' "$out" | jq -e '(.reason // "")|test("Missing test evidence")' >/dev/null 2>&1; then
