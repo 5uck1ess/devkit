@@ -347,3 +347,42 @@ func TestLoopUntilRequiresFreshOutput(t *testing.T) {
 		t.Fatalf("stale DONE completed the loop: at %q", st.CurrentStep)
 	}
 }
+
+func TestAdvanceWithoutOutputDoesNotReuseStaleBranchOutput(t *testing.T) {
+	h, _ := newFlow(t, `name: stale
+description: revisit
+steps:
+  - id: decide
+    prompt: Decide; say AGAIN to repeat.
+    branch:
+      - when: AGAIN
+        goto: decide
+  - id: done
+    prompt: Done.
+`, "x")
+	h.advance(map[string]interface{}{"output": "AGAIN"})
+	if st := h.state(); st.CurrentStep != "decide" {
+		t.Fatalf("at %q, want decide", st.CurrentStep)
+	}
+	// Second visit, no output: the first visit's AGAIN must not loop us back.
+	h.advance(map[string]interface{}{})
+	if st := h.state(); st.CurrentStep != "done" {
+		t.Fatalf("stale AGAIN re-used: at %q, want done", st.CurrentStep)
+	}
+}
+
+func TestParallelDispatchShowsChildRequire(t *testing.T) {
+	_, text := newFlow(t, `name: req2
+description: child require shown
+steps:
+  - id: fan
+    parallel: [a]
+  - id: a
+    prompt: A
+    require:
+      until: APPROVED
+`, "x")
+	if !strings.Contains(text, "APPROVED") {
+		t.Errorf("dispatch response should show child require contract:\n%s", text)
+	}
+}

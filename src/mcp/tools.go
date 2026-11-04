@@ -306,6 +306,10 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 				fmt.Fprintf(&b, " (model: %s)", child.Model)
 			}
 			fmt.Fprintf(&b, " ---\nPROMPT: %s\n", engine.Interpolate(child.Prompt, input, state.Outputs))
+			if child.Require != nil {
+				fmt.Fprintf(&b, "REQUIRE (checked on this step's entry in outputs):\n")
+				writeRequire(&b, child.Require)
+			}
 		}
 	} else {
 		prompt := engine.Interpolate(step.Prompt, input, state.Outputs)
@@ -344,18 +348,7 @@ func (s *Server) formatStepResponse(wf *engine.Workflow, state *lib.SessionState
 	}
 	if step.Require != nil {
 		fmt.Fprintf(&b, "\nREQUIRE:\n")
-		if step.Require.NonEmpty {
-			fmt.Fprintf(&b, "- non_empty\n")
-		}
-		for _, want := range step.Require.Contains {
-			fmt.Fprintf(&b, "- contains: %s\n", want)
-		}
-		if step.Require.Until != "" {
-			fmt.Fprintf(&b, "- until: %s\n", step.Require.Until)
-		}
-		if step.Require.LastLineRegex != "" {
-			fmt.Fprintf(&b, "- last_line_regex: %s\n", step.Require.LastLineRegex)
-		}
+		writeRequire(&b, step.Require)
 	}
 
 	fmt.Fprintf(&b, "\nCall devkit_advance when this step is complete.\n")
@@ -491,6 +484,10 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 			}
 			if outputProvided || (currentStep.Require != nil && currentStep.Require.HasChecks()) {
 				state.Outputs[currentStep.ID] = output
+			} else {
+				// No output this visit: drop any value from an earlier
+				// visit so branch rules and {{id}} can't act on it.
+				delete(state.Outputs, currentStep.ID)
 			}
 			freshOutput = outputProvided
 		}
@@ -506,6 +503,22 @@ func (s *Server) advanceTool() (mcpmcp.Tool, mcpgo.ToolHandlerFunc) {
 		}
 
 		return s.transition(wf, state, &currentStep, "")
+	}
+}
+
+// writeRequire renders a require: contract as "- check" lines.
+func writeRequire(b *strings.Builder, r *engine.Require) {
+	if r.NonEmpty {
+		fmt.Fprintf(b, "- non_empty\n")
+	}
+	for _, want := range r.Contains {
+		fmt.Fprintf(b, "- contains: %s\n", want)
+	}
+	if r.Until != "" {
+		fmt.Fprintf(b, "- until: %s\n", r.Until)
+	}
+	if r.LastLineRegex != "" {
+		fmt.Fprintf(b, "- last_line_regex: %s\n", r.LastLineRegex)
 	}
 }
 
@@ -627,6 +640,14 @@ func withNotice(res *mcpmcp.CallToolResult, notice string) *mcpmcp.CallToolResul
 // session slot is freed and the DB row records why.
 func (s *Server) haltWorkflow(state *lib.SessionState, status, reason string) (*mcpmcp.CallToolResult, error) {
 	var warnings []string
+	// Persist the terminal status first (like completeWorkflow), so a
+	// failed clear below leaves a non-running session the guards and
+	// devkit_advance will not treat as live.
+	state.Status = status
+	state.Busy = false
+	if err := lib.WriteSessionJSON(s.dataDir, state); err != nil {
+		warnings = append(warnings, fmt.Sprintf("write halted state failed: %v", err))
+	}
 	if s.db != nil {
 		if err := s.db.UpdateSessionStatus(state.ID, status); err != nil {
 			warnings = append(warnings, fmt.Sprintf("db session status update failed: %v", err))

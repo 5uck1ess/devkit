@@ -99,6 +99,19 @@ func EffectiveEnforce(wf Workflow, step WfStep) EnforceMode {
 	if step.Enforce != EnforceInherit {
 		return step.Enforce
 	}
+	// A parallel dispatcher's tool calls are its children's (run in
+	// subagents under the dispatcher's session state). If any child
+	// declares soft — e.g. research fan-outs that need WebSearch/Bash —
+	// the dispatcher must not be harder than that child.
+	if len(step.Parallel) > 0 {
+		for _, cid := range step.Parallel {
+			for _, c := range wf.Steps {
+				if c.ID == cid && c.Enforce == EnforceSoft {
+					return EnforceSoft
+				}
+			}
+		}
+	}
 	if wf.Enforce != EnforceInherit {
 		return wf.Enforce
 	}
@@ -232,6 +245,9 @@ func validate(wf *Workflow) error {
 		}
 		if len(s.Parallel) > 0 && s.Loop != nil {
 			return fmt.Errorf("step %q has both parallel and loop — these are mutually exclusive", s.ID)
+		}
+		if len(s.Parallel) > 0 && len(s.Branch) > 0 {
+			return fmt.Errorf("step %q has both parallel and branch — a dispatcher has no single output to branch on", s.ID)
 		}
 		// Command strings are never interpolated — values are passed
 		// through env vars ($DEVKIT_INPUT, $DEVKIT_OUT_<id>) to avoid

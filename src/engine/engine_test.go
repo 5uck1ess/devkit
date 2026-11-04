@@ -1841,3 +1841,33 @@ func TestRunWorkflowEndOnParallelDispatcher(t *testing.T) {
 		t.Error("trailing step ran after an end: true dispatcher")
 	}
 }
+
+func TestEffectiveEnforceParallelDispatcherInheritsSoftChildren(t *testing.T) {
+	wf := Workflow{Name: "w", Enforce: EnforceHard, Steps: []WfStep{
+		{ID: "a", Prompt: "a", Enforce: EnforceSoft},
+		{ID: "b", Prompt: "b"},
+		{ID: "fan", Parallel: []string{"a", "b"}},
+		{ID: "fan-hard", Parallel: []string{"b"}},
+		{ID: "fan-pinned", Parallel: []string{"a"}, Enforce: EnforceHard},
+	}}
+	if got := EffectiveEnforce(wf, wf.Steps[2]); got != EnforceSoft {
+		t.Errorf("dispatcher with a soft child = %q, want soft (children need their tools)", got)
+	}
+	if got := EffectiveEnforce(wf, wf.Steps[3]); got != EnforceHard {
+		t.Errorf("dispatcher with only hard children = %q, want hard", got)
+	}
+	if got := EffectiveEnforce(wf, wf.Steps[4]); got != EnforceHard {
+		t.Errorf("explicit enforce on dispatcher = %q, want hard", got)
+	}
+}
+
+func TestValidateRejectsBranchOnParallelDispatcher(t *testing.T) {
+	wf := &Workflow{Name: "w", Steps: []WfStep{
+		{ID: "fan", Parallel: []string{"c"}, Branch: []Branch{{When: "X", Goto: "after"}}},
+		{ID: "c", Prompt: "c"},
+		{ID: "after", Prompt: "after"},
+	}}
+	if err := wf.Validate(); err == nil {
+		t.Error("branch on a parallel dispatcher should be rejected (CLI never evaluates it)")
+	}
+}
