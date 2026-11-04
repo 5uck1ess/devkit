@@ -1,19 +1,35 @@
 #!/bin/bash
-# devkit SubagentStop hook — prevents agents from exiting without running tests
+# devkit SubagentStop hook — prevents code-modifying devkit agents from
+# exiting without running tests.
 #
-# Checks the agent's transcript for evidence that a test/metric command was
-# actually executed before allowing the agent to stop.
+# Only gates agents whose job is to change code and prove it works
+# (test-writer, improver). Read-only agents (Explore, reviewer, researcher,
+# security-auditor, documenter, third-party agents) are always approved —
+# blocking them for lack of test output would be wrong.
 #
+# SubagentStop input (Claude Code): agent_type, last_assistant_message,
+# agent_transcript_path, stop_hook_active, ...
 # SubagentStop hook schema:
 #   { "decision": "approve" | "block", "reason": "string" }
 
 set -euo pipefail
 
-# SubagentStop must always emit a JSON verdict — a jq parse failure under
-# set -e would kill the hook with no output. Degrade to empty (which the
-# short-output check below converts into a block with a clear reason).
+# Must always emit a JSON verdict — jq failures degrade to empty values.
 INPUT=$(cat || true)
-AGENT_OUTPUT=$(echo "$INPUT" | jq -r '.agent_output // empty' 2>/dev/null || true)
+AGENT_TYPE=$(echo "$INPUT" | jq -r '.agent_type // empty' 2>/dev/null || true)
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
+AGENT_OUTPUT=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null || true)
+
+approve() { jq -n '{ decision: "approve" }'; exit 0; }
+
+# Plugin agents may be namespaced (devkit:test-writer) — match the suffix.
+case "${AGENT_TYPE##*:}" in
+  test-writer|improver) ;;
+  *) approve ;;
+esac
+
+# Already continuing because of an earlier block — don't loop.
+[ "$STOP_HOOK_ACTIVE" = "true" ] && approve
 
 # If agent output is empty or very short, block — something went wrong
 if [ ${#AGENT_OUTPUT} -lt 20 ]; then

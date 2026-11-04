@@ -19,7 +19,18 @@ trap 'printf "stop-gate: ERR trap fired — approving to avoid hang\n" >&2; jq -
 INPUT=$(cat || true)
 [[ -z "$INPUT" ]] && { jq -n '{ decision: "approve" }'; exit 0; }
 
-TRANSCRIPT=$(echo "$INPUT" | jq -r '.transcript // empty' 2>/dev/null || true)
+# Stop input carries the transcript as a file path (transcript_path), not
+# inline text. Read the tail of that JSONL (bounded so a long session can't
+# slow the hook) and append last_assistant_message, which the docs note may
+# not be flushed to the transcript yet at Stop time.
+TRANSCRIPT_PATH=$(echo "$INPUT" | jq -r '.transcript_path // empty' 2>/dev/null || true)
+LAST_MSG=$(echo "$INPUT" | jq -r '.last_assistant_message // empty' 2>/dev/null || true)
+TRANSCRIPT=""
+if [[ -n "$TRANSCRIPT_PATH" && -f "$TRANSCRIPT_PATH" && ! -L "$TRANSCRIPT_PATH" ]]; then
+  TRANSCRIPT=$(tail -c 2000000 "$TRANSCRIPT_PATH" 2>/dev/null || true)
+fi
+[[ -n "$LAST_MSG" ]] && TRANSCRIPT="$TRANSCRIPT
+$LAST_MSG"
 
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 CHANGED_FILES=$(cd "$REPO_ROOT" && {
@@ -80,8 +91,11 @@ $HAS_PYTHON && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS python"
 $HAS_SQL && CODE_DOMAINS=$((CODE_DOMAINS + 1)) && DOMAINS="$DOMAINS sql"
 DOMAINS=$(echo "$DOMAINS" | xargs)
 
-# Skip cross-domain check if transcript is empty (no data to verify against)
-if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]]; then
+# Skip cross-domain check if transcript is empty (no data to verify against),
+# or if Claude is already continuing because of a Stop hook block — re-blocking
+# on the same missing evidence would loop forever.
+STOP_HOOK_ACTIVE=$(echo "$INPUT" | jq -r '.stop_hook_active // false' 2>/dev/null || echo false)
+if [[ "$CODE_DOMAINS" -gt 1 ]] && [[ -n "$TRANSCRIPT" ]] && [[ "$STOP_HOOK_ACTIVE" != "true" ]]; then
   MISSING=""
 
   $HAS_GO && ! echo "$TRANSCRIPT" | grep -qiE '(go test|ALL_PASSING|ALL_TESTS_PASSING)' && MISSING="$MISSING go"
