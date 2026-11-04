@@ -72,7 +72,19 @@ func TestRunCommandWithTimeout_KillsChildrenOnTimeout(t *testing.T) {
 // pipe must not block until the child exits — and must not report success,
 // because the captured output is incomplete: the child could still print
 // FAIL after the PASS we saw, and a last-line check would wrongly pass.
+//
+// The shell's exit code must not matter: with `exit 1`, an `expect: failure`
+// step would otherwise accept the truncated PASS.
 func TestRunCommandWithTimeout_FailsClosedOnOrphanedPipe(t *testing.T) {
+	for name, tail := range map[string]string{
+		"exit0": "echo PASS",
+		"exit1": "echo PASS; exit 1",
+	} {
+		t.Run(name, func(t *testing.T) { assertFailsClosedOnOrphanedPipe(t, tail) })
+	}
+}
+
+func assertFailsClosedOnOrphanedPipe(t *testing.T, tail string) {
 	old := commandWaitDelay
 	commandWaitDelay = 200 * time.Millisecond
 	t.Cleanup(func() { commandWaitDelay = old })
@@ -83,7 +95,7 @@ func TestRunCommandWithTimeout_FailsClosedOnOrphanedPipe(t *testing.T) {
 
 	start := time.Now()
 	out, code, err := s.runCommandWithTimeout(context.Background(),
-		"(sleep 10; echo FAIL) & echo $! > "+pidFile+"; echo PASS", state, time.Minute)
+		"(sleep 10; echo FAIL) & echo $! > "+pidFile+"; "+tail, state, time.Minute)
 	elapsed := time.Since(start)
 
 	if err == nil || code == 0 {
