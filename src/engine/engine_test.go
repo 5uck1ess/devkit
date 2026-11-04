@@ -1975,3 +1975,41 @@ func TestValidateRejectsBranchOnParallelDispatcher(t *testing.T) {
 		t.Error("branch on a parallel dispatcher should be rejected (CLI never evaluates it)")
 	}
 }
+
+// A failed loop iteration must roll back only its own edits, not
+// uncommitted output from steps that ran before the loop.
+func TestRunWorkflowLoopRollbackKeepsEarlierStepWork(t *testing.T) {
+	cases := map[string]struct {
+		runner *mockRunner
+		gate   string
+	}{
+		"runner error": {
+			runner: newMockRunner([]runners.RunResult{{}, result("DONE")}, []error{errors.New("exit 1"), nil}),
+		},
+		"gate failure": {
+			runner: newMockRunner([]runners.RunResult{result("try"), result("DONE")}, nil),
+			gate:   `test -f gate-ok || { touch gate-ok; exit 1; }`,
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			db := tempDB(t)
+			dir, git := initGitRepo(t)
+			if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte("gate-ok\n.devkit/\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			eng := mustEngine(t, db, git, tc.runner, dir)
+			wf := &Workflow{Name: "test", Steps: []WfStep{
+				{ID: "prep", Command: "printf good > state.txt"},
+				{ID: "fix", Prompt: "Fix", Loop: &Loop{Max: 2, Until: "DONE", Gate: tc.gate}},
+			}}
+			if _, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"}); err != nil {
+				t.Fatalf("RunWorkflow: %v", err)
+			}
+			got, err := os.ReadFile(filepath.Join(dir, "state.txt"))
+			if err != nil || string(got) != "good" {
+				t.Fatalf("earlier step's state.txt lost by loop rollback: %q, %v", got, err)
+			}
+		})
+	}
+}

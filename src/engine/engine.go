@@ -409,6 +409,13 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		maxIter = 1
 	}
 
+	// Checkpoint work from earlier steps before the first iteration.
+	// Failed iterations roll back with RevertAll (checkout + clean), which
+	// would otherwise also wipe uncommitted output from preceding steps.
+	if err := e.git.CommitAll(fmt.Sprintf("%s: checkpoint before %s", session.Workflow, step.ID)); err != nil {
+		return 0, fmt.Errorf("loop %s: checkpoint commit failed: %w", step.ID, err)
+	}
+
 	succeeded := false
 	consecutiveFailures := 0
 	stuckDetected := false
