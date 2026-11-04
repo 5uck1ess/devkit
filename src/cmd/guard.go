@@ -299,33 +299,148 @@ func isDevkitMCPTool(name string) bool {
 	return false
 }
 
-// isCompanionRescueCommand reports whether a Bash command string
-// invokes a known rescue-subagent companion script. Used by the
-// prompt+hard carve-out so tri-* workflows' rescue subagents (codex,
-// gemini) can reach external models through their companion adapters.
+// isCompanionRescueCommand reports whether a Bash command string is a
+// single, direct invocation of a known rescue-subagent companion script.
+// Used by the prompt+hard carve-out so tri-* workflows' rescue subagents
+// (codex, gemini) can reach external models through their companion
+// adapters.
 //
-// Matched via substring so invocation style doesn't matter — the
-// adapters call their scripts as `node /abs/path/codex-companion.mjs`,
-// `bash -c '... gemini-companion.mjs ...'`, or through env-var
-// overrides, and we must tolerate all of them. The .mjs suffix is
-// load-bearing: without it, a Bash comment token like
-// `rm -rf $HOME # codex-companion` would satisfy the substring match
-// and bypass the prompt+hard Bash block. Both real companions ship
-// as .mjs files, so requiring the extension doesn't break any
-// intended invocation style. A future .js / .cjs adapter must be
-// added to this allowlist deliberately rather than relying on the
-// looser bare-name match.
+// Accepted shapes (after shell-word parsing):
 //
-// The cost of a broader match (even with .mjs pinned) is negligible:
-// the only "bypass" it enables is the main agent invoking a real
-// external model directly, which produces a real external review
-// (just not one dispatched through the subagent indirection).
+//	node <path>/codex-companion.mjs <args...>
+//	node <path>/gemini-companion.mjs <args...>
+//	bash|sh -c '<one of the above>'
+//
+// Anything that could run a second command is rejected: unquoted
+// operators (; & | < > newline), comments, backticks, and $( ) command
+// substitution outside single quotes. Arguments may contain those
+// characters only when quoted, so a raw prompt like
+// `task "review: a && b"` still works. A substring match is NOT enough:
+// `touch x # codex-companion.mjs` would satisfy it and let the main
+// agent run arbitrary Bash during a hard prompt step.
 func isCompanionRescueCommand(cmd string) bool {
-	if cmd == "" {
+	return isCompanionInvocation(cmd, 0)
+}
+
+var companionScripts = map[string]bool{
+	"codex-companion.mjs":  true,
+	"gemini-companion.mjs": true,
+}
+
+func isCompanionInvocation(cmd string, depth int) bool {
+	if depth > 1 {
 		return false
 	}
-	return strings.Contains(cmd, "codex-companion.mjs") ||
-		strings.Contains(cmd, "gemini-companion.mjs")
+	words, ok := splitSimpleCommand(cmd)
+	if !ok || len(words) < 2 {
+		return false
+	}
+	prog := strings.TrimSuffix(baseName(words[0]), ".exe")
+	switch prog {
+	case "node":
+		return companionScripts[baseName(words[1])]
+	case "bash", "sh":
+		if len(words) == 3 && words[1] == "-c" {
+			return isCompanionInvocation(words[2], depth+1)
+		}
+	}
+	return false
+}
+
+// baseName returns the last path segment, splitting on both / and \\ so
+// Windows-style script paths resolve the same way as POSIX ones.
+func baseName(p string) string {
+	if i := strings.LastIndexAny(p, `/\\`); i >= 0 {
+		return p[i+1:]
+	}
+	return p
+}
+
+// splitSimpleCommand splits cmd into shell words, honouring single
+// quotes, double quotes and backslash escapes. It returns ok=false if
+// the string is anything other than one simple command: unquoted
+// control/redirect operators, comments, newlines, backticks, or $( )
+// outside single quotes all fail. Variable references like
+// ${CLAUDE_PLUGIN_ROOT} are left unexpanded in the returned words.
+func splitSimpleCommand(cmd string) ([]string, bool) {
+	var words []string
+	var cur strings.Builder
+	inWord := false
+	const (
+		none = iota
+		single
+		double
+	)
+	quote := none
+	for i := 0; i < len(cmd); i++ {
+		c := cmd[i]
+		switch quote {
+		case single:
+			if c == '\'' {
+				quote = none
+			} else {
+				cur.WriteByte(c)
+			}
+			continue
+		case double:
+			switch {
+			case c == '"':
+				quote = none
+			case c == '`':
+				return nil, false
+			case c == '$' && i+1 < len(cmd) && cmd[i+1] == '(':
+				return nil, false
+			case c == '\\' && i+1 < len(cmd):
+				i++
+				cur.WriteByte(cmd[i])
+			default:
+				cur.WriteByte(c)
+			}
+			continue
+		}
+		switch c {
+		case ' ', '\t':
+			if inWord {
+				words = append(words, cur.String())
+				cur.Reset()
+				inWord = false
+			}
+		case '\'':
+			quote, inWord = single, true
+		case '"':
+			quote, inWord = double, true
+		case '\\':
+			if i+1 >= len(cmd) || cmd[i+1] == '\n' {
+				return nil, false
+			}
+			i++
+			cur.WriteByte(cmd[i])
+			inWord = true
+		case ';', '&', '|', '<', '>', '\n', '\r', '`', '(', ')':
+			return nil, false
+		case '#':
+			if !inWord {
+				return nil, false
+			}
+			cur.WriteByte(c)
+		case '$':
+			if i+1 < len(cmd) && cmd[i+1] == '(' {
+				return nil, false
+			}
+			cur.WriteByte(c)
+			inWord = true
+		default:
+			cur.WriteByte(c)
+			inWord = true
+		}
+	}
+	if quote != none {
+		return nil, false
+	}
+	if inWord {
+		words = append(words, cur.String())
+	}
+	return words, true
 }
 
 func runPreToolGuard() {
