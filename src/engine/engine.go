@@ -409,12 +409,15 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		maxIter = 1
 	}
 
-	// Checkpoint work from earlier steps before the first iteration.
-	// Failed iterations roll back with RevertAll (checkout + clean), which
-	// would otherwise also wipe uncommitted output from preceding steps.
-	if err := e.git.CommitAll(fmt.Sprintf("%s: checkpoint before %s", session.Workflow, step.ID)); err != nil {
-		return 0, fmt.Errorf("loop %s: checkpoint commit failed: %w", step.ID, err)
+	// Snapshot the tree before the first iteration so a failed iteration
+	// rolls back only its own edits, keeping uncommitted output from
+	// earlier steps. A snapshot (not a commit) runs no hooks, so a repair
+	// loop still starts when pre-commit would reject the current state.
+	snapshot, err := e.git.Snapshot()
+	if err != nil {
+		return 0, fmt.Errorf("loop %s: snapshot failed: %w", step.ID, err)
 	}
+	rollback := func() error { return e.git.RestoreSnapshot(snapshot) }
 
 	succeeded := false
 	consecutiveFailures := 0
@@ -455,7 +458,7 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if addCost != nil {
 				addCost(result.CostUSD)
 			}
-			if revertErr := e.git.RevertAll(); revertErr != nil {
+			if revertErr := rollback(); revertErr != nil {
 				return totalCost, fmt.Errorf("loop %s: revert failed after runner error: %w", step.ID, revertErr)
 			}
 			consecutiveFailures++
@@ -471,7 +474,7 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if addCost != nil {
 				addCost(result.CostUSD)
 			}
-			if revertErr := e.git.RevertAll(); revertErr != nil {
+			if revertErr := rollback(); revertErr != nil {
 				return totalCost, fmt.Errorf("loop %s: revert failed after required-output failure: %w", step.ID, revertErr)
 			}
 			consecutiveFailures++
@@ -504,7 +507,7 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 			if exitCode != 0 {
 				reason := fmt.Sprintf("gate failed (exit %d)", exitCode)
 				fmt.Printf("  → %s, reverting iteration\n\n", reason)
-				if revertErr := e.git.RevertAll(); revertErr != nil {
+				if revertErr := rollback(); revertErr != nil {
 					fmt.Printf("  → revert failed: %s\n", revertErr)
 					dbStep.Status = "failed"
 					dbStep.ChangeSummary = fmt.Sprintf("%s; revert failed: %s", reason, revertErr)
@@ -550,6 +553,12 @@ func (e *Engine) runLoop(ctx context.Context, step *WfStep, session *lib.Session
 		if commitErr := e.git.CommitAll(fmt.Sprintf("%s: %s iteration %d", session.Workflow, step.ID, attempt)); commitErr != nil {
 			fmt.Printf("  → commit failed: %s\n", commitErr)
 		}
+		// Kept work is the new rollback point even if its commit failed.
+		snap, snapErr := e.git.Snapshot()
+		if snapErr != nil {
+			return totalCost, fmt.Errorf("loop %s: snapshot failed: %w", step.ID, snapErr)
+		}
+		snapshot = snap
 
 		// Check until condition. Line-anchored (see MatchUntil) —
 		// sentinel must appear on its own line to avoid matching

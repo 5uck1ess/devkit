@@ -2013,3 +2013,56 @@ func TestRunWorkflowLoopRollbackKeepsEarlierStepWork(t *testing.T) {
 		})
 	}
 }
+
+// funcRunner adapts a function to runners.Runner.
+type funcRunner func() (runners.RunResult, error)
+
+func (f funcRunner) Name() string    { return "func" }
+func (f funcRunner) Available() bool { return true }
+func (f funcRunner) Run(ctx context.Context, prompt string, opts runners.RunOpts) (runners.RunResult, error) {
+	return f()
+}
+
+// A repair loop must still start when a pre-commit hook rejects the state
+// it is meant to repair — rollback protection must not depend on commits.
+func TestRunWorkflowRepairLoopRunsDespiteRejectingPreCommitHook(t *testing.T) {
+	db := tempDB(t)
+	dir, git := initGitRepo(t)
+	gitIn := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s", args, out)
+		}
+	}
+	write := func(name, body string, mode os.FileMode) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(".gitignore", ".devkit/\n", 0o644)
+	write("state.txt", "good", 0o644)
+	gitIn("add", "-A")
+	gitIn("commit", "-m", "state")
+	write(filepath.Join(".git", "hooks", "pre-commit"), "#!/bin/sh\ntest \"$(cat state.txt)\" = good\n", 0o755)
+
+	calls := 0
+	repair := funcRunner(func() (runners.RunResult, error) {
+		calls++
+		write("state.txt", "good", 0o644)
+		return result("DONE"), nil
+	})
+	eng := mustEngine(t, db, git, repair, dir)
+	wf := &Workflow{Name: "test", Steps: []WfStep{
+		{ID: "break", Command: "printf bad > state.txt"},
+		{ID: "repair", Prompt: "Fix", Loop: &Loop{Max: 2, Until: "DONE"}},
+	}}
+	if _, err := eng.RunWorkflow(context.Background(), wf, RunConfig{Input: "x"}); err != nil {
+		t.Fatalf("RunWorkflow: %v", err)
+	}
+	if calls == 0 {
+		t.Fatal("repair loop never ran")
+	}
+}
