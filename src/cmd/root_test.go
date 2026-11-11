@@ -66,7 +66,7 @@ func TestResolveRunnerFrom_NoAgents(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when no agents available")
 	}
-	if got := err.Error(); got != "no AI agents found in PATH — install claude, codex, or gemini" {
+	if got := err.Error(); got != "no AI agents found in PATH — install claude, codex, gemini, or agy" {
 		t.Errorf("unexpected error: %s", got)
 	}
 }
