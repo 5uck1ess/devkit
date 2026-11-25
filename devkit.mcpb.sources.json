@@ -2,7 +2,7 @@
   "mcpb/launcher/main.go": "ad2ce60992bcff323663ac31a63dfae93e782c8556043be8b77ece3b874ade36",
   "mcpb/launcher/go.mod": "7f2e8c3f695fe8cbe8cafa7eb9a269e8d0e5141023f2ea20ef5fc7cbd2f22bc2",
   "mcpb/launcher/main_test.go": "b723d82d0ce371a6c46eb062a1a312cf6aaaf306ef7edf40f3e35972cc4b153f",
-  "mcpb/manifest.json": "348036d08c3e2d854a23a831c7030b8ee88cc15d1da8904adfe8ec6f51aee833",
+  "mcpb/manifest.json": "898120b024ea14d9f733b8907bf28ebb91233d535e725e249ea9f7f7646b6f92",
   "mcpb/server/devkit": "3833a48a67dfb8d9db7e1513617c0b1df5d7ebb6bf0c3023c60ab048ed63002f",
-  "mcpb/server/devkit.exe": "02751b8b81eb83276d9c0af849028a8585806789799b162d2b04bc4eb69da34e"
+  "mcpb/server/devkit.exe": "a288523d4cd0223621ccdda79aa4950e7fa545b7c1cc8605e013ec30bbfa7c01"
 }
