@@ -30,6 +30,7 @@ func DetectRunners() []Runner {
 		&ClaudeRunner{},
 		&CodexRunner{},
 		&GeminiRunner{},
+		&AgyRunner{},
 		&LocalRunner{},
 	}
 	var available []Runner

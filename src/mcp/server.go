@@ -83,6 +83,9 @@ func (s *Server) Serve(ctx context.Context) error {
 	tool, handler = s.listTool()
 	srv.AddTool(tool, handler)
 
+	tool, handler = s.askTool()
+	srv.AddTool(tool, handler)
+
 	stdio := mcpgo.NewStdioServer(srv)
 	return stdio.Listen(ctx, os.Stdin, os.Stdout)
 }
